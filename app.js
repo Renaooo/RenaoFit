@@ -1,6 +1,8 @@
-// --- Инициализация Supabase (замени на свои данные из проекта Supabase)
+// --- Инициализация Supabase
 const SUPABASE_URL = 'https://wviocztioezobgfktdrz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2aW9jenRpb2V6b2JnZmt0ZHJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MjMwNjYsImV4cCI6MjA4OTk5OTA2Nn0.NT66Ur7c8hnIjY5aZGeuSYPEM--coy9nAT7yLEK9nZ8';
+
+// Создаем клиент Supabase
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --- DOM элементы
@@ -25,12 +27,9 @@ function showScreen(screenName) {
 
 // --- Авторизация
 async function loginWithPhone(phone, name) {
-    // В Supabase можно сделать авторизацию по телефону через OTP, но для простоты сделаем вход через email-заглушку
-    // Создадим уникальный email на основе телефона
     const fakeEmail = `${phone.replace(/[^0-9]/g, '')}@user.local`;
     const fakePassword = phone + 'simplepass';
     
-    // Пытаемся войти
     let { data, error } = await supabase.auth.signUp({
         email: fakeEmail,
         password: fakePassword,
@@ -40,7 +39,6 @@ async function loginWithPhone(phone, name) {
     });
     
     if (error && error.message.includes('already registered')) {
-        // Входим
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
             email: fakeEmail,
             password: fakePassword
@@ -51,7 +49,6 @@ async function loginWithPhone(phone, name) {
         throw error;
     }
     
-    // Сохраняем профиль
     const { error: profileError } = await supabase
         .from('profiles')
         .upsert({ id: data.user.id, phone: phone, name: name });
@@ -76,6 +73,7 @@ async function loadSlots() {
 // --- Отображение слотов для записи
 function renderSlots(slots) {
     const container = document.getElementById('slots-list');
+    if (!container) return;
     container.innerHTML = '';
     
     slots.forEach(slot => {
@@ -98,7 +96,8 @@ function renderSlots(slots) {
             } else {
                 selectedSlotIds.delete(slot.id);
             }
-            document.getElementById('confirm-booking-btn').style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
+            const confirmBtn = document.getElementById('confirm-booking-btn');
+            if (confirmBtn) confirmBtn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
         });
         
         container.appendChild(div);
@@ -142,6 +141,7 @@ async function loadMyBookings() {
     if (error) throw error;
     
     const container = document.getElementById('my-bookings-list');
+    if (!container) return;
     container.innerHTML = '';
     
     for (let booking of bookings) {
@@ -173,47 +173,49 @@ async function loadMyBookings() {
     }
 }
 
-// --- Админ-панель (твоя)
+// --- Админ-панель
 async function loadAdminData() {
-    // Все слоты (включая недоступные)
     const { data: slots } = await supabase
         .from('slots')
         .select('*')
         .order('start_time');
     
     const adminSlotsDiv = document.getElementById('admin-slots');
-    adminSlotsDiv.innerHTML = '';
-    slots.forEach(slot => {
-        const start = new Date(slot.start_time);
-        const div = document.createElement('div');
-        div.className = 'admin-slot';
-        div.innerHTML = `
-            <span>${start.toLocaleString()}</span>
-            <button class="btn small" data-slot="${slot.id}" data-available="${slot.is_available}">
-                ${slot.is_available ? 'Закрыть' : 'Открыть'}
-            </button>
-        `;
-        adminSlotsDiv.appendChild(div);
-    });
+    if (adminSlotsDiv) {
+        adminSlotsDiv.innerHTML = '';
+        slots.forEach(slot => {
+            const start = new Date(slot.start_time);
+            const div = document.createElement('div');
+            div.className = 'admin-slot';
+            div.innerHTML = `
+                <span>${start.toLocaleString()}</span>
+                <button class="btn small" data-slot="${slot.id}" data-available="${slot.is_available}">
+                    ${slot.is_available ? 'Закрыть' : 'Открыть'}
+                </button>
+            `;
+            adminSlotsDiv.appendChild(div);
+        });
+    }
     
-    // Все бронирования
     const { data: bookings } = await supabase
         .from('bookings')
         .select('*, profiles(name, phone), slots(start_time)');
     
     const adminBookingsDiv = document.getElementById('admin-bookings');
-    adminBookingsDiv.innerHTML = '';
-    bookings.forEach(b => {
-        const start = new Date(b.slots.start_time);
-        adminBookingsDiv.innerHTML += `
-            <div class="booking-card">
-                <div>
-                    <strong>${b.profiles.name}</strong> (${b.profiles.phone})<br>
-                    ${start.toLocaleString()}
+    if (adminBookingsDiv) {
+        adminBookingsDiv.innerHTML = '';
+        bookings.forEach(b => {
+            const start = new Date(b.slots.start_time);
+            adminBookingsDiv.innerHTML += `
+                <div class="booking-card">
+                    <div>
+                        <strong>${b.profiles.name}</strong> (${b.profiles.phone})<br>
+                        ${start.toLocaleString()}
+                    </div>
                 </div>
-            </div>
-        `;
-    });
+            `;
+        });
+    }
 }
 
 // --- Инициализация и обработчики событий
@@ -222,10 +224,12 @@ document.addEventListener('DOMContentLoaded', () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
             currentUser = session.user;
-            document.getElementById('user-name').innerText = session.user.user_metadata.name || 'Друг';
-            // Показываем админ-кнопку, если email админа (настрой)
-            if (session.user.email === 'your-email@example.com') {
-                document.getElementById('admin-btn').style.display = 'block';
+            const userNameSpan = document.getElementById('user-name');
+            if (userNameSpan) userNameSpan.innerText = session.user.user_metadata.name || 'Друг';
+            const adminBtn = document.getElementById('admin-btn');
+            // Админ-доступ для renao.russia@gmail.com
+            if (adminBtn && session.user.email === 'renao.russia@gmail.com') {
+                adminBtn.style.display = 'block';
             }
             showScreen('menu');
         } else {
@@ -234,62 +238,84 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // Вход
-    document.getElementById('login-btn').addEventListener('click', async () => {
-        const phone = document.getElementById('phone-input').value;
-        const name = document.getElementById('name-input').value;
-        if (!phone || !name) return alert('Введите телефон и имя');
-        try {
-            const user = await loginWithPhone(phone, name);
-            currentUser = user;
-            document.getElementById('user-name').innerText = name;
-            showScreen('menu');
-        } catch(e) {
-            alert('Ошибка входа: ' + e.message);
-        }
-    });
+    const loginBtn = document.getElementById('login-btn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', async () => {
+            const phone = document.getElementById('phone-input').value;
+            const name = document.getElementById('name-input').value;
+            if (!phone || !name) return alert('Введите телефон и имя');
+            try {
+                const user = await loginWithPhone(phone, name);
+                currentUser = user;
+                const userNameSpan = document.getElementById('user-name');
+                if (userNameSpan) userNameSpan.innerText = name;
+                showScreen('menu');
+            } catch(e) {
+                alert('Ошибка входа: ' + e.message);
+            }
+        });
+    }
     
     // Навигация
-    document.getElementById('book-btn').addEventListener('click', async () => {
-        const slots = await loadSlots();
-        renderSlots(slots);
-        showScreen('booking');
-    });
+    const bookBtn = document.getElementById('book-btn');
+    if (bookBtn) {
+        bookBtn.addEventListener('click', async () => {
+            const slots = await loadSlots();
+            renderSlots(slots);
+            showScreen('booking');
+        });
+    }
     
-    document.getElementById('my-bookings-btn').addEventListener('click', async () => {
-        await loadMyBookings();
-        showScreen('myBookings');
-    });
+    const myBookingsBtn = document.getElementById('my-bookings-btn');
+    if (myBookingsBtn) {
+        myBookingsBtn.addEventListener('click', async () => {
+            await loadMyBookings();
+            showScreen('myBookings');
+        });
+    }
     
-    document.getElementById('confirm-booking-btn').addEventListener('click', confirmBooking);
+    const confirmBtn = document.getElementById('confirm-booking-btn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', confirmBooking);
+    }
     
-    document.getElementById('admin-btn').addEventListener('click', async () => {
-        await loadAdminData();
-        showScreen('admin');
-    });
+    const adminBtn = document.getElementById('admin-btn');
+    if (adminBtn) {
+        adminBtn.addEventListener('click', async () => {
+            await loadAdminData();
+            showScreen('admin');
+        });
+    }
     
     // Кнопки назад
     document.querySelectorAll('.back-btn').forEach(btn => {
         btn.addEventListener('click', () => showScreen('menu'));
     });
     
-    document.getElementById('logout-btn').addEventListener('click', async () => {
-        await supabase.auth.signOut();
-        currentUser = null;
-        showScreen('auth');
-    });
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            await supabase.auth.signOut();
+            currentUser = null;
+            showScreen('auth');
+        });
+    }
     
     // Добавление слота админом
-    document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
-        const start = document.getElementById('admin-start').value;
-        const end = document.getElementById('admin-end').value;
-        if (!start || !end) return alert('Заполните время');
-        const { error } = await supabase
-            .from('slots')
-            .insert({ start_time: start, end_time: end, is_available: true });
-        if (error) alert('Ошибка');
-        else {
-            alert('Слот добавлен');
-            loadAdminData();
-        }
-    });
+    const adminAddSlot = document.getElementById('admin-add-slot');
+    if (adminAddSlot) {
+        adminAddSlot.addEventListener('click', async () => {
+            const start = document.getElementById('admin-start').value;
+            const end = document.getElementById('admin-end').value;
+            if (!start || !end) return alert('Заполните время');
+            const { error } = await supabase
+                .from('slots')
+                .insert({ start_time: start, end_time: end, is_available: true });
+            if (error) alert('Ошибка');
+            else {
+                alert('Слот добавлен');
+                loadAdminData();
+            }
+        });
+    }
 });
