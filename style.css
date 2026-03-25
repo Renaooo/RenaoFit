@@ -1,0 +1,153 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: #f5f5f5;
+    color: #1e1e1e;
+    line-height: 1.4;
+}
+
+.container {
+    max-width: 500px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.screen {
+    display: none;
+    min-height: 100vh;
+    background: #fff;
+}
+
+.screen.active {
+    display: block;
+}
+
+h1, h2, h3 {
+    font-weight: 600;
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+h1 { font-size: 28px; }
+h2 { font-size: 22px; }
+h3 { font-size: 18px; margin-top: 20px; }
+
+input {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    background: #fff;
+}
+
+.btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 18px;
+    font-weight: 500;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.btn:active {
+    opacity: 0.7;
+}
+
+.primary {
+    background: #007aff;
+    color: white;
+}
+
+.secondary {
+    background: #e9ecef;
+    color: #1e1e1e;
+}
+
+.admin {
+    background: #ff9f0a;
+    color: white;
+}
+
+.logout {
+    background: #ff3b30;
+    color: white;
+}
+
+.back-btn {
+    background: none;
+    color: #007aff;
+    font-size: 16px;
+    text-align: left;
+    padding: 8px 0;
+}
+
+.slots-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.slot-item {
+    background: #f8f9fa;
+    padding: 16px;
+    border-radius: 14px;
+    border: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.slot-item.selected {
+    background: #e3f2fd;
+    border-color: #007aff;
+}
+
+.slot-time {
+    font-weight: 500;
+}
+
+.slot-select {
+    width: 24px;
+    height: 24px;
+}
+
+.booking-card {
+    background: #f8f9fa;
+    padding: 16px;
+    border-radius: 14px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cancel-btn {
+    background: #ff3b30;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+}
+
+.admin-slot {
+    background: #f1f3f5;
+    padding: 12px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+}
