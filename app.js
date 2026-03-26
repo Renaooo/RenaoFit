@@ -273,11 +273,28 @@ if (adminBtn) {
     });
     
     document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
-        const start = document.getElementById('admin-start').value;
-        const end = document.getElementById('admin-end').value;
-        if (!start || !end) return alert('Заполните время');
-        const { error } = await sb.from('slots').insert({ start_time: start, end_time: end, is_available: true });
-        if (error) alert('Ошибка');
-        else { alert('Слот добавлен'); loadAdminData(); }
+    const start = document.getElementById('admin-start').value;
+    if (!start) return alert('Выберите начало слота');
+    
+    // Автоматически добавляем 1 час к началу
+    const startDate = new Date(start);
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 час
+    const end = endDate.toISOString().slice(0, 16);
+    
+    const { error } = await sb.from('slots').insert({ 
+        start_time: start, 
+        end_time: end, 
+        is_available: true 
     });
+    
+    if (error) {
+        alert('Ошибка: ' + error.message);
+        console.error(error);
+    } else { 
+        alert('Слот добавлен (1 час)'); 
+        loadAdminData();
+        // Очищаем поле
+        document.getElementById('admin-start').value = '';
+    }
+});
 });
