@@ -453,7 +453,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         showScreen('auth');
     });
     
-    document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
+       document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
         const start = document.getElementById('admin-start').value;
         if (!start) return alert('Выберите начало слота');
         
@@ -475,9 +475,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('admin-start').value = '';
         }
     });
-});
-
-// Новая кнопка генерации недели
+    
+    // Новая кнопка генерации недели (ДОБАВЛЯЕМ СЮДА, ПЕРЕД ЗАКРЫВАЮЩЕЙ СКОБКОЙ)
     document.getElementById('generate-week-btn')?.addEventListener('click', async () => {
         if (confirm('Сгенерировать слоты на следующую неделю по расписанию?\n\nПн: 8,9,10,11,18,19,20,21\nВт: 8,9,10,11\nСр: 8,9,10,11,18,19,20,21\nЧт: 18,19,20,21\nПт: 8,9,10,11,18,19,20,21\nСб: 10,11,12,13\nВс: выходной')) {
             await generateNextWeekSlots();
