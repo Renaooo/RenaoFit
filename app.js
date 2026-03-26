@@ -29,15 +29,12 @@ async function loginWithPhone(phone, name) {
     const email = `${cleanPhoneNumber}@gmail.com`;
     const password = cleanPhoneNumber + 'simplepass';
     
-    console.log('Попытка входа с email:', email);
-    
     let { data, error } = await sb.auth.signInWithPassword({
         email: email,
         password: password
     });
     
     if (error && error.message.includes('Invalid login credentials')) {
-        console.log('Пользователь не найден, регистрируем...');
         const { data: signUpData, error: signUpError } = await sb.auth.signUp({
             email: email,
             password: password,
@@ -52,16 +49,11 @@ async function loginWithPhone(phone, name) {
         throw error;
     }
     
-    // Сохраняем профиль с обработкой ошибки
     const { error: profileError } = await sb
         .from('profiles')
         .upsert({ id: data.user.id, phone: phone, name: name });
     
-    if (profileError) {
-        console.error('Ошибка сохранения профиля:', profileError);
-        // Не выбрасываем ошибку, чтобы пользователь всё равно мог войти
-        // Но в админке не будет телефона и имени
-    }
+    if (profileError) console.error('Ошибка сохранения профиля:', profileError);
     
     return data.user;
 }
@@ -108,7 +100,6 @@ async function confirmBooking() {
         return;
     }
     
-    // Блокируем слоты
     for (let slotId of selectedSlotIds) {
         const { error: updateError } = await sb
             .from('slots')
@@ -121,7 +112,6 @@ async function confirmBooking() {
         }
     }
     
-    // Создаем бронирования
     const bookingsToInsert = Array.from(selectedSlotIds).map(slotId => ({
         slot_id: slotId,
         user_id: currentUser.id
@@ -132,7 +122,6 @@ async function confirmBooking() {
         .insert(bookingsToInsert);
     
     if (insertError) {
-        // Разблокируем слоты
         for (let slotId of selectedSlotIds) {
             await sb
                 .from('slots')
@@ -174,7 +163,6 @@ async function loadMyBookings() {
                 .eq('id', booking.id);
             
             if (!cancelError) {
-                // Разблокируем слот
                 await sb
                     .from('slots')
                     .update({ is_available: true })
@@ -212,50 +200,38 @@ async function loadAdminData() {
         }
     }
     
-    // Получаем все бронирования
+    // Бронирования
     const { data: bookings } = await sb
         .from('bookings')
         .select('*');
     
-    console.log('Все бронирования из БД:', bookings);
-    
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
-        // Очищаем и добавляем заголовок один раз
         adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
         
         if (bookings && bookings.length > 0) {
             for (let booking of bookings) {
-                console.log('Обрабатываю бронь:', booking);
-                
-                // Получаем профиль
-                const { data: profile, error: profileError } = await sb
+                const { data: profile } = await sb
                     .from('profiles')
                     .select('name, phone')
                     .eq('id', booking.user_id)
                     .single();
                 
-                console.log('Профиль для user_id', booking.user_id, ':', profile, profileError);
-                
-                // Получаем слот
-                const { data: slot, error: slotError } = await sb
+                const { data: slot } = await sb
                     .from('slots')
                     .select('start_time')
                     .eq('id', booking.slot_id)
                     .single();
                 
-                console.log('Слот для slot_id', booking.slot_id, ':', slot, slotError);
-                
                 const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Время не найдено';
-                const clientName = profile?.name || `ID: ${booking.user_id.substring(0,8)}`;
-                const clientPhone = profile?.phone || 'нет телефона';
+                const clientName = profile?.name || 'Имя не указано';
+                const clientPhone = profile?.phone || 'Телефон не указан';
                 
                 adminBookingsDiv.innerHTML += `
                     <div style="border:1px solid #ddd; margin:10px 0; padding:12px; border-radius:8px; background:#f9f9f9;">
                         <strong>${clientName}</strong><br>
                         📞 ${clientPhone}<br>
-                        🕐 ${startTime}<br>
-                        <small>debug: user_id=${booking.user_id}, slot_id=${booking.slot_id}</small>
+                        🕐 ${startTime}
                     </div>
                 `;
             }
@@ -274,16 +250,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nameSpan) nameSpan.innerText = session.user.user_metadata.name || 'Друг';
         
         const adminBtn = document.getElementById('admin-btn');
-if (adminBtn) {
-    // Проверяем, админ ли пользователь (по is_admin в метаданных)
-    const isAdmin = session.user.user_metadata?.is_admin === true;
-    if (isAdmin) {
-        adminBtn.style.display = 'block';
-        console.log('Админ-панель доступна');
-    } else {
-        console.log('Обычный пользователь, админ-панель скрыта');
-    }
-}
+        if (adminBtn && session.user.user_metadata?.is_admin === true) {
+            adminBtn.style.display = 'block';
+            console.log('Админ-панель доступна');
+        }
         
         showScreen('menu');
     } else {
