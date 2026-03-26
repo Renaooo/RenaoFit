@@ -520,6 +520,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('admin-start').value = '';
         }
     });
+
+// Кнопка очистки всех слотов
+document.getElementById('clear-all-slots-btn')?.addEventListener('click', async () => {
+    await clearAllSlots();
+});
     
     // Новая кнопка генерации недели (ДОБАВЛЯЕМ СЮДА, ПЕРЕД ЗАКРЫВАЮЩЕЙ СКОБКОЙ)
     document.getElementById('generate-week-btn')?.addEventListener('click', async () => {
