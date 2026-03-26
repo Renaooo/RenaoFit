@@ -124,26 +124,76 @@ async function loadMyBookings() {
 }
 
 async function loadAdminData() {
-    const { data: slots } = await sb.from('slots').select('*').order('start_time');
+    // Получаем слоты
+    const { data: slots, error: slotsError } = await sb
+        .from('slots')
+        .select('*')
+        .order('start_time');
+    
+    if (slotsError) {
+        console.error('Ошибка загрузки слотов:', slotsError);
+        alert('Ошибка загрузки слотов: ' + slotsError.message);
+        return;
+    }
+    
     const adminSlotsDiv = document.getElementById('admin-slots');
     if (adminSlotsDiv) {
         adminSlotsDiv.innerHTML = '';
-        slots.forEach(slot => {
-            const start = new Date(slot.start_time);
-            const div = document.createElement('div');
-            div.className = 'admin-slot';
-            div.innerHTML = `<span>${start.toLocaleString()}</span><button class="btn small">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>`;
-            adminSlotsDiv.appendChild(div);
-        });
+        if (slots && slots.length > 0) {
+            slots.forEach(slot => {
+                const start = new Date(slot.start_time);
+                const div = document.createElement('div');
+                div.className = 'admin-slot';
+                div.innerHTML = `<span>${start.toLocaleString()}</span><button class="btn small" data-id="${slot.id}">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>`;
+                adminSlotsDiv.appendChild(div);
+            });
+        } else {
+            adminSlotsDiv.innerHTML = '<p>Нет слотов. Добавьте первый слот!</p>';
+        }
     }
-    const { data: bookings } = await sb.from('bookings').select('*, profiles(name, phone), slots(start_time)');
+    
+    // Получаем бронирования (без связей)
+    const { data: bookings, error: bookingsError } = await sb
+        .from('bookings')
+        .select('*');
+    
+    if (bookingsError) {
+        console.error('Ошибка загрузки бронирований:', bookingsError);
+    }
+    
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
         adminBookingsDiv.innerHTML = '';
-        bookings.forEach(b => {
-            const start = new Date(b.slots.start_time);
-            adminBookingsDiv.innerHTML += `<div class="booking-card"><div><strong>${b.profiles.name}</strong> (${b.profiles.phone})<br>${start.toLocaleString()}</div></div>`;
-        });
+        if (bookings && bookings.length > 0) {
+            for (let booking of bookings) {
+                // Получаем информацию о пользователе
+                const { data: profile } = await sb
+                    .from('profiles')
+                    .select('name, phone')
+                    .eq('id', booking.user_id)
+                    .single();
+                
+                // Получаем информацию о слоте
+                const { data: slot } = await sb
+                    .from('slots')
+                    .select('start_time')
+                    .eq('id', booking.slot_id)
+                    .single();
+                
+                const start = slot ? new Date(slot.start_time) : new Date();
+                
+                adminBookingsDiv.innerHTML += `
+                    <div class="booking-card">
+                        <div>
+                            <strong>${profile?.name || 'Неизвестно'}</strong> (${profile?.phone || 'нет телефона'})<br>
+                            ${start.toLocaleString()}
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            adminBookingsDiv.innerHTML = '<p>Нет записей</p>';
+        }
     }
 }
 
