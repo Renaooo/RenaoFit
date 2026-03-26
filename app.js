@@ -100,6 +100,46 @@ async function confirmBooking() {
         return;
     }
     
+    // Сначала блокируем слоты
+    for (let slotId of selectedSlotIds) {
+        const { error: updateError } = await sb
+            .from('slots')
+            .update({ is_available: false })
+            .eq('id', slotId);
+        
+        if (updateError) {
+            console.error('Ошибка блокировки слота:', updateError);
+            alert('Ошибка при бронировании: ' + updateError.message);
+            return;
+        }
+    }
+    
+    // Потом создаем бронирования
+    const bookingsToInsert = Array.from(selectedSlotIds).map(slotId => ({
+        slot_id: slotId,
+        user_id: currentUser.id
+    }));
+    
+    const { error: insertError } = await sb
+        .from('bookings')
+        .insert(bookingsToInsert);
+    
+    if (insertError) {
+        // Если ошибка — разблокируем слоты
+        for (let slotId of selectedSlotIds) {
+            await sb
+                .from('slots')
+                .update({ is_available: true })
+                .eq('id', slotId);
+        }
+        alert('Ошибка записи: ' + insertError.message);
+    } else {
+        alert('Успешно записано!');
+        selectedSlotIds.clear();
+        showScreen('menu');
+    }
+}
+    
     // Проверяем, что все слоты еще свободны
     const { data: slots, error: checkError } = await sb
         .from('slots')
@@ -183,17 +223,73 @@ async function loadMyBookings() {
 }
 
 async function loadAdminData() {
-    // Получаем слоты
-    const { data: slots, error: slotsError } = await sb
+    console.log('Загрузка админ-панели...');
+    
+    // Слоты
+    const { data: slots } = await sb
         .from('slots')
         .select('*')
         .order('start_time');
     
-    if (slotsError) {
-        console.error('Ошибка загрузки слотов:', slotsError);
-        alert('Ошибка загрузки слотов: ' + slotsError.message);
-        return;
+    const adminSlotsDiv = document.getElementById('admin-slots');
+    if (adminSlotsDiv) {
+        adminSlotsDiv.innerHTML = '';
+        if (slots && slots.length > 0) {
+            slots.forEach(slot => {
+                const start = new Date(slot.start_time);
+                const div = document.createElement('div');
+                div.className = 'admin-slot';
+                div.innerHTML = `
+                    <span>${start.toLocaleString()} ${slot.is_available ? '✅' : '❌'}</span>
+                    <button class="btn small">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>
+                `;
+                adminSlotsDiv.appendChild(div);
+            });
+        } else {
+            adminSlotsDiv.innerHTML = '<p>Нет слотов</p>';
+        }
     }
+    
+    // Бронирования - самый простой способ
+    const { data: bookings } = await sb
+        .from('bookings')
+        .select('*');
+    
+    const adminBookingsDiv = document.getElementById('admin-bookings');
+    if (adminBookingsDiv) {
+        adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
+        
+        if (bookings && bookings.length > 0) {
+            for (let booking of bookings) {
+                // Получаем профиль
+                const { data: profile } = await sb
+                    .from('profiles')
+                    .select('name, phone')
+                    .eq('id', booking.user_id)
+                    .single();
+                
+                // Получаем слот
+                const { data: slot } = await sb
+                    .from('slots')
+                    .select('start_time, is_available')
+                    .eq('id', booking.slot_id)
+                    .single();
+                
+                const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Неизвестно';
+                
+                adminBookingsDiv.innerHTML += `
+                    <div class="booking-card" style="margin-bottom: 10px; padding: 10px; background: #f5f5f5; border-radius: 8px;">
+                        <strong>${profile?.name || 'Неизвестно'}</strong><br>
+                        📞 ${profile?.phone || 'нет телефона'}<br>
+                        🕐 ${startTime}
+                    </div>
+                `;
+            }
+        } else {
+            adminBookingsDiv.innerHTML += '<p>Нет записей</p>';
+        }
+    }
+}
     
     const adminSlotsDiv = document.getElementById('admin-slots');
     if (adminSlotsDiv) {
