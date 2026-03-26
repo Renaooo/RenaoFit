@@ -204,16 +204,18 @@ async function loadAdminData() {
                 const start = new Date(slot.start_time);
                 const div = document.createElement('div');
                 div.className = 'admin-slot';
-                div.innerHTML = `<span>${start.toLocaleString()}</span><button class="btn small" data-id="${slot.id}">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>`;
+                div.innerHTML = `<span>${start.toLocaleString()}</span><button class="btn small">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>`;
                 adminSlotsDiv.appendChild(div);
             });
         } else {
-            adminSlotsDiv.innerHTML = '<p>Нет слотов. Добавьте первый слот!</p>';
+            adminSlotsDiv.innerHTML = '<p>Нет слотов</p>';
         }
     }
     
-    // Бронирования
-    const { data: bookings } = await sb
+    // Бронирования с отладкой
+    console.log('=== ЗАГРУЗКА АДМИН-ПАНЕЛИ ===');
+    
+    const { data: bookings, error } = await sb
         .from('bookings')
         .select(`
             id,
@@ -223,37 +225,39 @@ async function loadAdminData() {
             profiles (name, phone)
         `);
     
+    console.log('Bookings data:', bookings);
+    console.log('Bookings error:', error);
+    
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
-        adminBookingsDiv.innerHTML = '';
-        
-        const title = document.createElement('h3');
-        title.textContent = 'Все записи';
-        adminBookingsDiv.appendChild(title);
+        adminBookingsDiv.innerHTML = '<h3>Все записи (отладка):</h3>';
         
         if (bookings && bookings.length > 0) {
+            adminBookingsDiv.innerHTML += `<p>Найдено записей: ${bookings.length}</p>`;
+            
             for (let booking of bookings) {
+                console.log('Обработка брони:', booking);
+                console.log('  - slots:', booking.slots);
+                console.log('  - profiles:', booking.profiles);
+                
                 const slot = booking.slots;
                 const profile = booking.profiles;
                 
-                const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Неизвестно';
-                const clientName = profile?.name || 'Неизвестно';
+                const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Нет слота';
+                const clientName = profile?.name || 'Нет имени';
                 const clientPhone = profile?.phone || 'нет телефона';
                 
-                const card = document.createElement('div');
-                card.className = 'booking-card';
-                card.style.cssText = 'margin-bottom: 10px; padding: 10px; background: #f5f5f5; border-radius: 8px;';
-                card.innerHTML = `
-                    <strong>${clientName}</strong><br>
-                    📞 ${clientPhone}<br>
-                    🕐 ${startTime}
+                adminBookingsDiv.innerHTML += `
+                    <div style="border:1px solid #ccc; margin:10px; padding:10px;">
+                        <strong>${clientName}</strong> (${clientPhone})<br>
+                        Время: ${startTime}<br>
+                        <small>slot_id: ${booking.slot_id}, user_id: ${booking.user_id}</small>
+                    </div>
                 `;
-                adminBookingsDiv.appendChild(card);
             }
         } else {
-            const noBookings = document.createElement('p');
-            noBookings.textContent = 'Нет записей';
-            adminBookingsDiv.appendChild(noBookings);
+            adminBookingsDiv.innerHTML += '<p>Нет записей в таблице bookings</p>';
+            console.log('Нет записей, error:', error);
         }
     }
 }
