@@ -245,33 +245,41 @@ async function loadAdminData() {
                 `;
                 
                 const deleteBtn = div.querySelector('.delete-booking-btn');
-                deleteBtn.addEventListener('click', async () => {
-                    if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
-                        // Удаляем бронирование
-                        const { error: deleteError } = await sb
-                            .from('bookings')
-                            .delete()
-                            .eq('id', booking.id);
-                        
-                        if (deleteError) {
-                            alert('Ошибка удаления записи');
-                            return;
-                        }
-                        
-                        // Разблокируем слот
-                        const { error: updateError } = await sb
-                            .from('slots')
-                            .update({ is_available: true })
-                            .eq('id', booking.slot_id);
-                        
-                        if (updateError) {
-                            alert('Ошибка разблокировки слота');
-                        } else {
-                            alert('Запись удалена, слот свободен');
-                            loadAdminData(); // обновляем оба списка
-                        }
-                    }
-                });
+deleteBtn.addEventListener('click', async () => {
+    if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
+        console.log('Удаляю бронь ID:', booking.id, 'slot ID:', booking.slot_id);
+        
+        // 1. Удаляем бронирование
+        const { error: deleteError } = await sb
+            .from('bookings')
+            .delete()
+            .eq('id', booking.id);
+        
+        if (deleteError) {
+            console.error('Ошибка удаления:', deleteError);
+            alert('Ошибка удаления записи: ' + deleteError.message);
+            return;
+        }
+        
+        console.log('Бронь успешно удалена');
+        
+        // 2. Разблокируем слот
+        const { error: updateError } = await sb
+            .from('slots')
+            .update({ is_available: true })
+            .eq('id', booking.slot_id);
+        
+        if (updateError) {
+            console.error('Ошибка разблокировки:', updateError);
+            alert('Ошибка разблокировки слота: ' + updateError.message);
+        } else {
+            console.log('Слот разблокирован');
+            alert('Запись удалена, слот свободен');
+            // Обновляем админ-панель
+            await loadAdminData();
+        }
+    }
+});
                 
                 adminBookingsDiv.appendChild(div);
             }
