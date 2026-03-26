@@ -154,14 +154,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const nameSpan = document.getElementById('user-name');
             if (nameSpan) nameSpan.innerText = session.user.user_metadata.name || 'Друг';
             
-            // Проверяем админа по метаданным
-            const adminBtn = document.getElementById('admin-btn');
-            if (adminBtn && session.user.user_metadata?.is_admin === true) {
-                adminBtn.style.display = 'block';
-                console.log('Админ-панель доступна');
-            } else {
-                console.log('Не админ, метаданные:', session.user.user_metadata);
-            }
+          // Проверяем админа по метаданным
+const adminBtn = document.getElementById('admin-btn');
+console.log('1. adminBtn найден:', adminBtn);
+console.log('2. user_metadata:', session.user.user_metadata);
+console.log('3. is_admin значение:', session.user.user_metadata?.is_admin);
+
+if (adminBtn) {
+    // Проверяем разные варианты
+    const isAdmin = session.user.user_metadata?.is_admin === true;
+    
+    console.log('4. isAdmin результат:', isAdmin);
+    
+    if (isAdmin) {
+        adminBtn.style.display = 'block';
+        console.log('5. ✅ Админ-панель доступна');
+    } else {
+        console.log('5. ❌ Не админ, кнопка скрыта');
+        console.log('6. Метаданные полностью:', session.user.user_metadata);
+    }
+}
             
             showScreen('menu');
         } else {
