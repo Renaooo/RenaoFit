@@ -212,40 +212,50 @@ async function loadAdminData() {
         }
     }
     
-    // Получаем все бронирования простым запросом
+    // Получаем все бронирования
     const { data: bookings } = await sb
         .from('bookings')
         .select('*');
     
+    console.log('Все бронирования из БД:', bookings);
+    
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
+        // Очищаем и добавляем заголовок один раз
         adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
         
         if (bookings && bookings.length > 0) {
             for (let booking of bookings) {
-                // Получаем профиль пользователя отдельным запросом
-                const { data: profile } = await sb
+                console.log('Обрабатываю бронь:', booking);
+                
+                // Получаем профиль
+                const { data: profile, error: profileError } = await sb
                     .from('profiles')
                     .select('name, phone')
                     .eq('id', booking.user_id)
                     .single();
                 
-                // Получаем время слота отдельным запросом
-                const { data: slot } = await sb
+                console.log('Профиль для user_id', booking.user_id, ':', profile, profileError);
+                
+                // Получаем слот
+                const { data: slot, error: slotError } = await sb
                     .from('slots')
                     .select('start_time')
                     .eq('id', booking.slot_id)
                     .single();
                 
+                console.log('Слот для slot_id', booking.slot_id, ':', slot, slotError);
+                
                 const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Время не найдено';
-                const clientName = profile?.name || 'Имя не указано';
-                const clientPhone = profile?.phone || 'Телефон не указан';
+                const clientName = profile?.name || `ID: ${booking.user_id.substring(0,8)}`;
+                const clientPhone = profile?.phone || 'нет телефона';
                 
                 adminBookingsDiv.innerHTML += `
                     <div style="border:1px solid #ddd; margin:10px 0; padding:12px; border-radius:8px; background:#f9f9f9;">
-                        <strong style="font-size:16px;">${clientName}</strong><br>
+                        <strong>${clientName}</strong><br>
                         📞 ${clientPhone}<br>
-                        🕐 ${startTime}
+                        🕐 ${startTime}<br>
+                        <small>debug: user_id=${booking.user_id}, slot_id=${booking.slot_id}</small>
                     </div>
                 `;
             }
