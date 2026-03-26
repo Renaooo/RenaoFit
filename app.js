@@ -201,13 +201,12 @@ async function loadAdminData() {
     }
     
     // Получаем все бронирования с JOIN через SQL запрос
-    const { data: bookings, error } = await sb
+    const { data: bookings } = await sb
         .rpc('get_bookings_with_profiles');
-    
-    console.log('Bookings with profiles:', bookings, error);
     
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
+        // Очищаем и добавляем заголовок только один раз
         adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
         
         if (bookings && bookings.length > 0) {
@@ -225,7 +224,6 @@ async function loadAdminData() {
         }
     }
 }
-
 document.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await sb.auth.getSession();
     
