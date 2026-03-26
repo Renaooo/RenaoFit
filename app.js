@@ -178,52 +178,109 @@ async function loadMyBookings() {
 }
 
 async function loadAdminData() {
-    // Слоты
+    // Слоты — только свободные
     const { data: slots } = await sb
         .from('slots')
         .select('*')
+        .eq('is_available', true)
         .order('start_time');
     
     const adminSlotsDiv = document.getElementById('admin-slots');
     if (adminSlotsDiv) {
         adminSlotsDiv.innerHTML = '';
         if (slots && slots.length > 0) {
-            slots.forEach(slot => {
+            for (let slot of slots) {
                 const start = new Date(slot.start_time);
                 const div = document.createElement('div');
                 div.className = 'admin-slot';
-                div.innerHTML = `<span>${start.toLocaleString()}</span><button class="btn small">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>`;
+                div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f5f5f5; border-radius: 8px;';
+                div.innerHTML = `
+                    <span>${start.toLocaleString()}</span>
+                    <button class="delete-slot-btn" data-id="${slot.id}" style="background: #ff3b30; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
+                `;
+                
+                const deleteBtn = div.querySelector('.delete-slot-btn');
+                deleteBtn.addEventListener('click', async () => {
+                    if (confirm('Удалить этот слот?')) {
+                        const { error } = await sb
+                            .from('slots')
+                            .delete()
+                            .eq('id', slot.id);
+                        
+                        if (error) {
+                            alert('Ошибка удаления');
+                        } else {
+                            alert('Слот удален');
+                            loadAdminData(); // обновляем список
+                        }
+                    }
+                });
+                
                 adminSlotsDiv.appendChild(div);
-            });
+            }
         } else {
-            adminSlotsDiv.innerHTML = '<p>Нет слотов</p>';
+            adminSlotsDiv.innerHTML = '<p>Нет свободных слотов</p>';
         }
     }
     
-    // Получаем все бронирования с JOIN через SQL запрос
+    // Бронирования с кнопкой удаления
     const { data: bookings } = await sb
         .rpc('get_bookings_with_profiles');
     
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
-        // Очищаем и добавляем заголовок только один раз
         adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
         
         if (bookings && bookings.length > 0) {
             for (let booking of bookings) {
-                adminBookingsDiv.innerHTML += `
-                    <div style="border:1px solid #ddd; margin:10px 0; padding:12px; border-radius:8px; background:#f9f9f9;">
+                const div = document.createElement('div');
+                div.style.cssText = 'border:1px solid #ddd; margin:10px 0; padding:12px; border-radius:8px; background:#f9f9f9; display: flex; justify-content: space-between; align-items: center;';
+                div.innerHTML = `
+                    <div>
                         <strong>${booking.name || 'Неизвестно'}</strong><br>
                         📞 ${booking.phone || 'нет телефона'}<br>
                         🕐 ${new Date(booking.start_time).toLocaleString()}
                     </div>
+                    <button class="delete-booking-btn" data-id="${booking.id}" style="background: #ff3b30; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
                 `;
+                
+                const deleteBtn = div.querySelector('.delete-booking-btn');
+                deleteBtn.addEventListener('click', async () => {
+                    if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
+                        // Удаляем бронирование
+                        const { error: deleteError } = await sb
+                            .from('bookings')
+                            .delete()
+                            .eq('id', booking.id);
+                        
+                        if (deleteError) {
+                            alert('Ошибка удаления записи');
+                            return;
+                        }
+                        
+                        // Разблокируем слот
+                        const { error: updateError } = await sb
+                            .from('slots')
+                            .update({ is_available: true })
+                            .eq('id', booking.slot_id);
+                        
+                        if (updateError) {
+                            alert('Ошибка разблокировки слота');
+                        } else {
+                            alert('Запись удалена, слот свободен');
+                            loadAdminData(); // обновляем оба списка
+                        }
+                    }
+                });
+                
+                adminBookingsDiv.appendChild(div);
             }
         } else {
             adminBookingsDiv.innerHTML += '<p>Нет записей</p>';
         }
     }
 }
+
 document.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await sb.auth.getSession();
     
