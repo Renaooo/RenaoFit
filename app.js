@@ -250,9 +250,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nameSpan) nameSpan.innerText = session.user.user_metadata.name || 'Друг';
         
         const adminBtn = document.getElementById('admin-btn');
-        if (adminBtn) {
-            adminBtn.style.display = 'block';
-        }
+if (adminBtn) {
+    // Проверяем, админ ли пользователь (по is_admin в метаданных)
+    const isAdmin = session.user.user_metadata?.is_admin === true;
+    if (isAdmin) {
+        adminBtn.style.display = 'block';
+        console.log('Админ-панель доступна');
+    } else {
+        console.log('Обычный пользователь, админ-панель скрыта');
+    }
+}
         
         showScreen('menu');
     } else {
