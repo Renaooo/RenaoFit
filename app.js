@@ -153,10 +153,20 @@ document.addEventListener('DOMContentLoaded', () => {
             currentUser = session.user;
             const nameSpan = document.getElementById('user-name');
             if (nameSpan) nameSpan.innerText = session.user.user_metadata.name || 'Друг';
+            
+            // Проверяем админа по метаданным
             const adminBtn = document.getElementById('admin-btn');
-            if (adminBtn && session.user.email === 'renao.russia@gmail.com') adminBtn.style.display = 'block';
+            if (adminBtn && session.user.user_metadata?.is_admin === true) {
+                adminBtn.style.display = 'block';
+                console.log('Админ-панель доступна');
+            } else {
+                console.log('Не админ, метаданные:', session.user.user_metadata);
+            }
+            
             showScreen('menu');
-        } else showScreen('auth');
+        } else {
+            showScreen('auth');
+        }
     });
     
     document.getElementById('login-btn')?.addEventListener('click', async () => {
