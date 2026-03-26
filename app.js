@@ -52,7 +52,17 @@ async function loginWithPhone(phone, name) {
         throw error;
     }
     
-    await sb.from('profiles').upsert({ id: data.user.id, phone: phone, name: name });
+    // Сохраняем профиль с обработкой ошибки
+    const { error: profileError } = await sb
+        .from('profiles')
+        .upsert({ id: data.user.id, phone: phone, name: name });
+    
+    if (profileError) {
+        console.error('Ошибка сохранения профиля:', profileError);
+        // Не выбрасываем ошибку, чтобы пользователь всё равно мог войти
+        // Но в админке не будет телефона и имени
+    }
+    
     return data.user;
 }
 
