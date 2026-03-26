@@ -476,3 +476,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 });
+
+// Новая кнопка генерации недели
+    document.getElementById('generate-week-btn')?.addEventListener('click', async () => {
+        if (confirm('Сгенерировать слоты на следующую неделю по расписанию?\n\nПн: 8,9,10,11,18,19,20,21\nВт: 8,9,10,11\nСр: 8,9,10,11,18,19,20,21\nЧт: 18,19,20,21\nПт: 8,9,10,11,18,19,20,21\nСб: 10,11,12,13\nВс: выходной')) {
+            await generateNextWeekSlots();
+        }
+    });
+});
