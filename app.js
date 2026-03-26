@@ -293,6 +293,94 @@ async function loadAdminData() {
         }
     }
 }
+
+async function generateNextWeekSlots() {
+    // Расписание по дням недели (0 - воскресенье, 1 - понедельник, ...)
+    const schedule = {
+        1: ['08:00', '09:00', '10:00', '11:00', '18:00', '19:00', '20:00', '21:00'], // Пн
+        2: ['08:00', '09:00', '10:00', '11:00'], // Вт
+        3: ['08:00', '09:00', '10:00', '11:00', '18:00', '19:00', '20:00', '21:00'], // Ср
+        4: ['18:00', '19:00', '20:00', '21:00'], // Чт
+        5: ['08:00', '09:00', '10:00', '11:00', '18:00', '19:00', '20:00', '21:00'], // Пт
+        6: ['10:00', '11:00', '12:00', '13:00'], // Сб
+        0: [] // Вс - выходной
+    };
+    
+    // Получаем следующий понедельник
+    const today = new Date();
+    const nextMonday = new Date(today);
+    const daysUntilMonday = (1 - today.getDay() + 7) % 7;
+    nextMonday.setDate(today.getDate() + daysUntilMonday);
+    nextMonday.setHours(0, 0, 0, 0);
+    
+    // Если сегодня понедельник и еще не поздно, можно генерировать с сегодня
+    let startDate = new Date(nextMonday);
+    if (today.getDay() === 1 && today.getHours() < 12) {
+        startDate = new Date(today);
+        startDate.setHours(0, 0, 0, 0);
+    }
+    
+    let created = 0;
+    let skipped = 0;
+    
+    // Генерируем слоты на 7 дней
+    for (let day = 0; day < 7; day++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + day);
+        const dayOfWeek = currentDate.getDay(); // 0 - вс, 1 - пн, ...
+        
+        const daySlots = schedule[dayOfWeek];
+        
+        if (!daySlots || daySlots.length === 0) {
+            console.log(`${currentDate.toLocaleDateString()} - выходной, пропускаем`);
+            continue;
+        }
+        
+        for (let time of daySlots) {
+            const [hours, minutes] = time.split(':');
+            const startTime = new Date(currentDate);
+            startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            
+            const endTime = new Date(startTime);
+            endTime.setHours(startTime.getHours() + 1, startTime.getMinutes(), 0, 0);
+            
+            // Проверяем, не существует ли уже такой слот
+            const { data: existing } = await sb
+                .from('slots')
+                .select('id')
+                .eq('start_time', startTime.toISOString())
+                .maybeSingle();
+            
+            if (existing) {
+                console.log(`Слот ${startTime.toLocaleString()} уже существует, пропускаем`);
+                skipped++;
+                continue;
+            }
+            
+            // Создаем слот
+            const { error } = await sb
+                .from('slots')
+                .insert({
+                    start_time: startTime.toISOString(),
+                    end_time: endTime.toISOString(),
+                    is_available: true
+                });
+            
+            if (error) {
+                console.error('Ошибка создания слота:', error);
+            } else {
+                created++;
+                console.log(`Создан слот: ${startTime.toLocaleString()}`);
+            }
+        }
+    }
+    
+    alert(`Генерация завершена!\nСоздано: ${created} слотов\nПропущено (уже существуют): ${skipped}`);
+    
+    // Обновляем список слотов в админ-панели
+    await loadAdminData();
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await sb.auth.getSession();
     
