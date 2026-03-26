@@ -56,6 +56,21 @@
         
         <!-- Новая кнопка генерации недели -->
         <button id="generate-week-btn" class="btn primary" style="background: #34c759; margin-bottom: 20px;">📅 Сгенерировать следующую неделю</button>
+
+        <div id="admin-screen" class="screen">
+    <div class="container">
+        <button class="btn back-btn">← Назад</button>
+        <h2>Управление слотами</h2>
+        
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <button id="generate-week-btn" class="btn primary" style="background: #34c759; flex: 1;">📅 Сгенерировать неделю</button>
+            <button id="clear-all-slots-btn" class="btn primary" style="background: #ff3b30; flex: 1;">🗑️ Очистить все слоты</button>
+        </div>
+        
+        <div id="admin-slots"></div>
+        <!-- остальной код -->
+    </div>
+</div>
         
         <div id="admin-slots"></div>
         <div class="admin-form">
