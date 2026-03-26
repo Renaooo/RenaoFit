@@ -202,41 +202,52 @@ async function loadAdminData() {
         }
     }
     
-    // Бронирования
-    const { data: bookings } = await sb
+    // Бронирования - получаем все данные одним запросом
+    const { data: bookings, error } = await sb
         .from('bookings')
-        .select('*');
+        .select(`
+            id,
+            slot_id,
+            user_id,
+            slots (start_time, end_time),
+            profiles (name, phone)
+        `);
+    
+    console.log('Бронирования:', bookings);
     
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
-        adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
+        // Очищаем полностью
+        adminBookingsDiv.innerHTML = '';
+        
+        // Добавляем заголовок один раз
+        const title = document.createElement('h3');
+        title.textContent = 'Все записи';
+        adminBookingsDiv.appendChild(title);
         
         if (bookings && bookings.length > 0) {
             for (let booking of bookings) {
-                const { data: profile } = await sb
-                    .from('profiles')
-                    .select('name, phone')
-                    .eq('id', booking.user_id)
-                    .single();
-                
-                const { data: slot } = await sb
-                    .from('slots')
-                    .select('start_time')
-                    .eq('id', booking.slot_id)
-                    .single();
+                const slot = booking.slots;
+                const profile = booking.profiles;
                 
                 const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Неизвестно';
+                const clientName = profile?.name || 'Неизвестно';
+                const clientPhone = profile?.phone || 'нет телефона';
                 
-                adminBookingsDiv.innerHTML += `
-                    <div class="booking-card" style="margin-bottom: 10px; padding: 10px; background: #f5f5f5; border-radius: 8px;">
-                        <strong>${profile?.name || 'Неизвестно'}</strong><br>
-                        📞 ${profile?.phone || 'нет телефона'}<br>
-                        🕐 ${startTime}
-                    </div>
+                const card = document.createElement('div');
+                card.className = 'booking-card';
+                card.style.cssText = 'margin-bottom: 10px; padding: 10px; background: #f5f5f5; border-radius: 8px;';
+                card.innerHTML = `
+                    <strong>${clientName}</strong><br>
+                    📞 ${clientPhone}<br>
+                    🕐 ${startTime}
                 `;
+                adminBookingsDiv.appendChild(card);
             }
         } else {
-            adminBookingsDiv.innerHTML += '<p>Нет записей</p>';
+            const noBookings = document.createElement('p');
+            noBookings.textContent = 'Нет записей';
+            adminBookingsDiv.appendChild(noBookings);
         }
     }
 }
