@@ -313,12 +313,7 @@ async function generateNextWeekSlots() {
     nextMonday.setDate(today.getDate() + daysUntilMonday);
     nextMonday.setHours(0, 0, 0, 0);
     
-    // Если сегодня понедельник и еще не поздно, можно генерировать с сегодня
     let startDate = new Date(nextMonday);
-    if (today.getDay() === 1 && today.getHours() < 12) {
-        startDate = new Date(today);
-        startDate.setHours(0, 0, 0, 0);
-    }
     
     let created = 0;
     let skipped = 0;
@@ -327,7 +322,7 @@ async function generateNextWeekSlots() {
     for (let day = 0; day < 7; day++) {
         const currentDate = new Date(startDate);
         currentDate.setDate(startDate.getDate() + day);
-        const dayOfWeek = currentDate.getDay(); // 0 - вс, 1 - пн, ...
+        const dayOfWeek = currentDate.getDay();
         
         const daySlots = schedule[dayOfWeek];
         
@@ -336,10 +331,19 @@ async function generateNextWeekSlots() {
             continue;
         }
         
+        console.log(`Генерирую слоты на ${currentDate.toLocaleDateString()} (${getDayName(dayOfWeek)}):`);
+        
         for (let time of daySlots) {
             const [hours, minutes] = time.split(':');
             const startTime = new Date(currentDate);
             startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            
+            // Пропускаем если время уже прошло
+            if (startTime < new Date()) {
+                console.log(`  ${time} - уже прошло, пропускаем`);
+                skipped++;
+                continue;
+            }
             
             const endTime = new Date(startTime);
             endTime.setHours(startTime.getHours() + 1, startTime.getMinutes(), 0, 0);
@@ -352,7 +356,7 @@ async function generateNextWeekSlots() {
                 .maybeSingle();
             
             if (existing) {
-                console.log(`Слот ${startTime.toLocaleString()} уже существует, пропускаем`);
+                console.log(`  ${time} - уже существует`);
                 skipped++;
                 continue;
             }
@@ -367,18 +371,24 @@ async function generateNextWeekSlots() {
                 });
             
             if (error) {
-                console.error('Ошибка создания слота:', error);
+                console.error(`  ${time} - ошибка:`, error);
             } else {
                 created++;
-                console.log(`Создан слот: ${startTime.toLocaleString()}`);
+                console.log(`  ${time} - создан`);
             }
         }
     }
     
-    alert(`Генерация завершена!\nСоздано: ${created} слотов\nПропущено (уже существуют): ${skipped}`);
+    alert(`Генерация завершена!\n✅ Создано: ${created} слотов\n⏭️ Пропущено: ${skipped}`);
     
     // Обновляем список слотов в админ-панели
     await loadAdminData();
+}
+
+// Вспомогательная функция для названий дней
+function getDayName(day) {
+    const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    return days[day];
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
