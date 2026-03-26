@@ -200,10 +200,11 @@ async function loadAdminData() {
         }
     }
     
-    // Бронирования
-    const { data: bookings } = await sb
-        .from('bookings')
-        .select('*');
+    // Получаем все бронирования с JOIN через SQL запрос
+    const { data: bookings, error } = await sb
+        .rpc('get_bookings_with_profiles');
+    
+    console.log('Bookings with profiles:', bookings, error);
     
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
@@ -211,27 +212,11 @@ async function loadAdminData() {
         
         if (bookings && bookings.length > 0) {
             for (let booking of bookings) {
-                const { data: profile } = await sb
-                    .from('profiles')
-                    .select('name, phone')
-                    .eq('id', booking.user_id)
-                    .single();
-                
-                const { data: slot } = await sb
-                    .from('slots')
-                    .select('start_time')
-                    .eq('id', booking.slot_id)
-                    .single();
-                
-                const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Время не найдено';
-                const clientName = profile?.name || 'Имя не указано';
-                const clientPhone = profile?.phone || 'Телефон не указан';
-                
                 adminBookingsDiv.innerHTML += `
                     <div style="border:1px solid #ddd; margin:10px 0; padding:12px; border-radius:8px; background:#f9f9f9;">
-                        <strong>${clientName}</strong><br>
-                        📞 ${clientPhone}<br>
-                        🕐 ${startTime}
+                        <strong>${booking.name || 'Неизвестно'}</strong><br>
+                        📞 ${booking.phone || 'нет телефона'}<br>
+                        🕐 ${new Date(booking.start_time).toLocaleString()}
                     </div>
                 `;
             }
