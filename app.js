@@ -13,6 +13,7 @@ const screens = {
 
 let currentUser = null;
 let selectedSlotIds = new Set();
+let isLoggingIn = false;
 
 function showScreen(name) {
     Object.keys(screens).forEach(k => screens[k].classList.remove('active'));
@@ -25,36 +26,33 @@ function cleanPhone(phone) {
 
 async function loginWithPhone(phone, name) {
     const cleanPhoneNumber = cleanPhone(phone);
-    const email = `${cleanPhoneNumber}@trainer.com`;
+    const email = `${cleanPhoneNumber}@gmail.com`;
     const password = cleanPhoneNumber + 'simplepass';
     
     console.log('Попытка входа с email:', email);
     
-    let { data, error } = await sb.auth.signUp({
+    let { data, error } = await sb.auth.signInWithPassword({
         email: email,
-        password: password,
-        options: {
-            data: { name: name, phone: phone }
-        }
+        password: password
     });
     
-    if (error && error.message.includes('already registered')) {
-        const { data: signInData, error: signInError } = await sb.auth.signInWithPassword({
+    if (error && error.message.includes('Invalid login credentials')) {
+        console.log('Пользователь не найден, регистрируем...');
+        const { data: signUpData, error: signUpError } = await sb.auth.signUp({
             email: email,
-            password: password
+            password: password,
+            options: {
+                data: { name: name, phone: phone }
+            }
         });
-        if (signInError) throw signInError;
-        data = signInData;
-    } else if (error) {
+        
+        if (signUpError) throw signUpError;
+        data = signUpData;
+    } else if (error && !error.message.includes('Invalid login credentials')) {
         throw error;
     }
     
-    const { error: profileError } = await sb
-        .from('profiles')
-        .upsert({ id: data.user.id, phone: phone, name: name });
-    
-    if (profileError) console.error('Ошибка профиля:', profileError);
-    
+    await sb.from('profiles').upsert({ id: data.user.id, phone: phone, name: name });
     return data.user;
 }
 
@@ -62,7 +60,7 @@ async function loadSlots() {
     const { data, error } = await sb
         .from('slots')
         .select('*')
-        .eq('is_available', true)  // Добавляем эту строку — только свободные слоты
+        .eq('is_available', true)
         .gte('start_time', new Date().toISOString())
         .order('start_time');
     if (error) throw error;
@@ -100,7 +98,7 @@ async function confirmBooking() {
         return;
     }
     
-    // Сначала блокируем слоты
+    // Блокируем слоты
     for (let slotId of selectedSlotIds) {
         const { error: updateError } = await sb
             .from('slots')
@@ -108,65 +106,6 @@ async function confirmBooking() {
             .eq('id', slotId);
         
         if (updateError) {
-            console.error('Ошибка блокировки слота:', updateError);
-            alert('Ошибка при бронировании: ' + updateError.message);
-            return;
-        }
-    }
-    
-    // Потом создаем бронирования
-    const bookingsToInsert = Array.from(selectedSlotIds).map(slotId => ({
-        slot_id: slotId,
-        user_id: currentUser.id
-    }));
-    
-    const { error: insertError } = await sb
-        .from('bookings')
-        .insert(bookingsToInsert);
-    
-    if (insertError) {
-        // Если ошибка — разблокируем слоты
-        for (let slotId of selectedSlotIds) {
-            await sb
-                .from('slots')
-                .update({ is_available: true })
-                .eq('id', slotId);
-        }
-        alert('Ошибка записи: ' + insertError.message);
-    } else {
-        alert('Успешно записано!');
-        selectedSlotIds.clear();
-        showScreen('menu');
-    }
-}
-    
-    // Проверяем, что все слоты еще свободны
-    const { data: slots, error: checkError } = await sb
-        .from('slots')
-        .select('id, is_available')
-        .in('id', Array.from(selectedSlotIds));
-    
-    if (checkError) {
-        console.error('Ошибка проверки:', checkError);
-        alert('Ошибка проверки слотов');
-        return;
-    }
-    
-    const unavailableSlots = slots.filter(slot => !slot.is_available);
-    if (unavailableSlots.length > 0) {
-        alert('Некоторые слоты уже заняты. Обновите страницу.');
-        return;
-    }
-    
-    // Делаем слоты недоступными
-    for (let slotId of selectedSlotIds) {
-        const { error: updateError } = await sb
-            .from('slots')
-            .update({ is_available: false })
-            .eq('id', slotId);
-        
-        if (updateError) {
-            console.error('Ошибка обновления слота:', updateError);
             alert('Ошибка при бронировании');
             return;
         }
@@ -183,14 +122,14 @@ async function confirmBooking() {
         .insert(bookingsToInsert);
     
     if (insertError) {
-        // Возвращаем слоты обратно
+        // Разблокируем слоты
         for (let slotId of selectedSlotIds) {
             await sb
                 .from('slots')
                 .update({ is_available: true })
                 .eq('id', slotId);
         }
-        alert('Ошибка записи: ' + insertError.message);
+        alert('Ошибка записи');
     } else {
         alert('Успешно записано!');
         selectedSlotIds.clear();
@@ -203,28 +142,44 @@ async function loadMyBookings() {
         .from('bookings')
         .select('id, slot_id, slots(start_time, end_time)')
         .eq('user_id', currentUser.id);
+    
     if (error) throw error;
+    
     const container = document.getElementById('my-bookings-list');
     if (!container) return;
     container.innerHTML = '';
-    for (let b of bookings) {
-        const start = new Date(b.slots.start_time);
+    
+    for (let booking of bookings) {
+        const start = new Date(booking.slots.start_time);
         const formatted = `${start.toLocaleDateString()} ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+        
         const div = document.createElement('div');
         div.className = 'booking-card';
-        div.innerHTML = `<span>${formatted}</span><button class="cancel-btn" data-id="${b.id}">Отменить</button>`;
+        div.innerHTML = `<span>${formatted}</span><button class="cancel-btn" data-id="${booking.id}">Отменить</button>`;
+        
         div.querySelector('.cancel-btn').addEventListener('click', async () => {
-            const { error } = await sb.from('bookings').delete().eq('id', b.id);
-            if (!error) loadMyBookings();
-            else alert('Ошибка отмены');
+            const { error: cancelError } = await sb
+                .from('bookings')
+                .delete()
+                .eq('id', booking.id);
+            
+            if (!cancelError) {
+                // Разблокируем слот
+                await sb
+                    .from('slots')
+                    .update({ is_available: true })
+                    .eq('id', booking.slot_id);
+                loadMyBookings();
+            } else {
+                alert('Ошибка отмены');
+            }
         });
+        
         container.appendChild(div);
     }
 }
 
 async function loadAdminData() {
-    console.log('Загрузка админ-панели...');
-    
     // Слоты
     const { data: slots } = await sb
         .from('slots')
@@ -239,10 +194,7 @@ async function loadAdminData() {
                 const start = new Date(slot.start_time);
                 const div = document.createElement('div');
                 div.className = 'admin-slot';
-                div.innerHTML = `
-                    <span>${start.toLocaleString()} ${slot.is_available ? '✅' : '❌'}</span>
-                    <button class="btn small">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>
-                `;
+                div.innerHTML = `<span>${start.toLocaleString()} ${slot.is_available ? '✅' : '❌'}</span><button class="btn small">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>`;
                 adminSlotsDiv.appendChild(div);
             });
         } else {
@@ -250,7 +202,7 @@ async function loadAdminData() {
         }
     }
     
-    // Бронирования - самый простой способ
+    // Бронирования
     const { data: bookings } = await sb
         .from('bookings')
         .select('*');
@@ -261,17 +213,15 @@ async function loadAdminData() {
         
         if (bookings && bookings.length > 0) {
             for (let booking of bookings) {
-                // Получаем профиль
                 const { data: profile } = await sb
                     .from('profiles')
                     .select('name, phone')
                     .eq('id', booking.user_id)
                     .single();
                 
-                // Получаем слот
                 const { data: slot } = await sb
                     .from('slots')
-                    .select('start_time, is_available')
+                    .select('start_time')
                     .eq('id', booking.slot_id)
                     .single();
                 
@@ -290,107 +240,37 @@ async function loadAdminData() {
         }
     }
 }
-    
-    const adminSlotsDiv = document.getElementById('admin-slots');
-    if (adminSlotsDiv) {
-        adminSlotsDiv.innerHTML = '';
-        if (slots && slots.length > 0) {
-            slots.forEach(slot => {
-                const start = new Date(slot.start_time);
-                const div = document.createElement('div');
-                div.className = 'admin-slot';
-                div.innerHTML = `<span>${start.toLocaleString()}</span><button class="btn small" data-id="${slot.id}">${slot.is_available ? 'Закрыть' : 'Открыть'}</button>`;
-                adminSlotsDiv.appendChild(div);
-            });
-        } else {
-            adminSlotsDiv.innerHTML = '<p>Нет слотов. Добавьте первый слот!</p>';
-        }
-    }
-    
-    // Получаем бронирования (без связей)
-    const { data: bookings, error: bookingsError } = await sb
-        .from('bookings')
-        .select('*');
-    
-    if (bookingsError) {
-        console.error('Ошибка загрузки бронирований:', bookingsError);
-    }
-    
-    const adminBookingsDiv = document.getElementById('admin-bookings');
-    if (adminBookingsDiv) {
-        adminBookingsDiv.innerHTML = '';
-        if (bookings && bookings.length > 0) {
-            for (let booking of bookings) {
-                // Получаем информацию о пользователе
-                const { data: profile } = await sb
-                    .from('profiles')
-                    .select('name, phone')
-                    .eq('id', booking.user_id)
-                    .single();
-                
-                // Получаем информацию о слоте
-                const { data: slot } = await sb
-                    .from('slots')
-                    .select('start_time')
-                    .eq('id', booking.slot_id)
-                    .single();
-                
-                const start = slot ? new Date(slot.start_time) : new Date();
-                
-                adminBookingsDiv.innerHTML += `
-                    <div class="booking-card">
-                        <div>
-                            <strong>${profile?.name || 'Неизвестно'}</strong> (${profile?.phone || 'нет телефона'})<br>
-                            ${start.toLocaleString()}
-                        </div>
-                    </div>
-                `;
-            }
-        } else {
-            adminBookingsDiv.innerHTML = '<p>Нет записей</p>';
-        }
-    }
-}
 
-document.addEventListener('DOMContentLoaded', () => {
-    sb.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-            currentUser = session.user;
-            const nameSpan = document.getElementById('user-name');
-            if (nameSpan) nameSpan.innerText = session.user.user_metadata.name || 'Друг';
-            
-          // Проверяем админа по метаданным
-const adminBtn = document.getElementById('admin-btn');
-console.log('1. adminBtn найден:', adminBtn);
-console.log('2. user_metadata:', session.user.user_metadata);
-console.log('3. is_admin значение:', session.user.user_metadata?.is_admin);
-
-if (adminBtn) {
-    // Проверяем разные варианты
-    const isAdmin = session.user.user_metadata?.is_admin === true;
+document.addEventListener('DOMContentLoaded', async () => {
+    const { data: { session } } = await sb.auth.getSession();
     
-    console.log('4. isAdmin результат:', isAdmin);
-    
-    if (isAdmin) {
-        adminBtn.style.display = 'block';
-        console.log('5. ✅ Админ-панель доступна');
+    if (session) {
+        currentUser = session.user;
+        const nameSpan = document.getElementById('user-name');
+        if (nameSpan) nameSpan.innerText = session.user.user_metadata.name || 'Друг';
+        
+        const adminBtn = document.getElementById('admin-btn');
+        if (adminBtn) {
+            adminBtn.style.display = 'block';
+        }
+        
+        showScreen('menu');
     } else {
-        console.log('5. ❌ Не админ, кнопка скрыта');
-        console.log('6. Метаданные полностью:', session.user.user_metadata);
+        showScreen('auth');
     }
-}
-            
-            showScreen('menu');
-        } else {
-            showScreen('auth');
-        }
-    });
     
     document.getElementById('login-btn')?.addEventListener('click', async () => {
+        if (isLoggingIn) return;
+        isLoggingIn = true;
+        
         const phone = document.getElementById('phone-input').value;
         const name = document.getElementById('name-input').value;
-        if (!phone || !name) return alert('Введите телефон и имя');
-        if (cleanPhone(phone).length < 5) return alert('Введите корректный номер телефона');
+        
+        if (!phone || !name) {
+            alert('Введите телефон и имя');
+            isLoggingIn = false;
+            return;
+        }
         
         try {
             currentUser = await loginWithPhone(phone, name);
@@ -399,6 +279,8 @@ if (adminBtn) {
         } catch(e) {
             console.error('Ошибка:', e);
             alert('Ошибка входа: ' + e.message);
+        } finally {
+            isLoggingIn = false;
         }
     });
     
@@ -414,12 +296,15 @@ if (adminBtn) {
     });
     
     document.getElementById('confirm-booking-btn')?.addEventListener('click', confirmBooking);
+    
     document.getElementById('admin-btn')?.addEventListener('click', async () => {
         await loadAdminData();
         showScreen('admin');
     });
     
-    document.querySelectorAll('.back-btn').forEach(btn => btn.addEventListener('click', () => showScreen('menu')));
+    document.querySelectorAll('.back-btn').forEach(btn => {
+        btn.addEventListener('click', () => showScreen('menu'));
+    });
     
     document.getElementById('logout-btn')?.addEventListener('click', async () => {
         await sb.auth.signOut();
@@ -428,28 +313,25 @@ if (adminBtn) {
     });
     
     document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
-    const start = document.getElementById('admin-start').value;
-    if (!start) return alert('Выберите начало слота');
-    
-    // Автоматически добавляем 1 час к началу
-    const startDate = new Date(start);
-    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 час
-    const end = endDate.toISOString().slice(0, 16);
-    
-    const { error } = await sb.from('slots').insert({ 
-        start_time: start, 
-        end_time: end, 
-        is_available: true 
+        const start = document.getElementById('admin-start').value;
+        if (!start) return alert('Выберите начало слота');
+        
+        const startDate = new Date(start);
+        const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+        const end = endDate.toISOString().slice(0, 16);
+        
+        const { error } = await sb.from('slots').insert({ 
+            start_time: start, 
+            end_time: end, 
+            is_available: true 
+        });
+        
+        if (error) {
+            alert('Ошибка: ' + error.message);
+        } else { 
+            alert('Слот добавлен (1 час)'); 
+            loadAdminData();
+            document.getElementById('admin-start').value = '';
+        }
     });
-    
-    if (error) {
-        alert('Ошибка: ' + error.message);
-        console.error(error);
-    } else { 
-        alert('Слот добавлен (1 час)'); 
-        loadAdminData();
-        // Очищаем поле
-        document.getElementById('admin-start').value = '';
-    }
-});
 });
