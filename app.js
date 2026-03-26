@@ -212,52 +212,45 @@ async function loadAdminData() {
         }
     }
     
-    // Бронирования с отладкой
-    console.log('=== ЗАГРУЗКА АДМИН-ПАНЕЛИ ===');
-    
-    const { data: bookings, error } = await sb
+    // Получаем все бронирования простым запросом
+    const { data: bookings } = await sb
         .from('bookings')
-        .select(`
-            id,
-            slot_id,
-            user_id,
-            slots (start_time, end_time),
-            profiles (name, phone)
-        `);
-    
-    console.log('Bookings data:', bookings);
-    console.log('Bookings error:', error);
+        .select('*');
     
     const adminBookingsDiv = document.getElementById('admin-bookings');
     if (adminBookingsDiv) {
-        adminBookingsDiv.innerHTML = '<h3>Все записи (отладка):</h3>';
+        adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
         
         if (bookings && bookings.length > 0) {
-            adminBookingsDiv.innerHTML += `<p>Найдено записей: ${bookings.length}</p>`;
-            
             for (let booking of bookings) {
-                console.log('Обработка брони:', booking);
-                console.log('  - slots:', booking.slots);
-                console.log('  - profiles:', booking.profiles);
+                // Получаем профиль пользователя отдельным запросом
+                const { data: profile } = await sb
+                    .from('profiles')
+                    .select('name, phone')
+                    .eq('id', booking.user_id)
+                    .single();
                 
-                const slot = booking.slots;
-                const profile = booking.profiles;
+                // Получаем время слота отдельным запросом
+                const { data: slot } = await sb
+                    .from('slots')
+                    .select('start_time')
+                    .eq('id', booking.slot_id)
+                    .single();
                 
-                const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Нет слота';
-                const clientName = profile?.name || 'Нет имени';
-                const clientPhone = profile?.phone || 'нет телефона';
+                const startTime = slot ? new Date(slot.start_time).toLocaleString() : 'Время не найдено';
+                const clientName = profile?.name || 'Имя не указано';
+                const clientPhone = profile?.phone || 'Телефон не указан';
                 
                 adminBookingsDiv.innerHTML += `
-                    <div style="border:1px solid #ccc; margin:10px; padding:10px;">
-                        <strong>${clientName}</strong> (${clientPhone})<br>
-                        Время: ${startTime}<br>
-                        <small>slot_id: ${booking.slot_id}, user_id: ${booking.user_id}</small>
+                    <div style="border:1px solid #ddd; margin:10px 0; padding:12px; border-radius:8px; background:#f9f9f9;">
+                        <strong style="font-size:16px;">${clientName}</strong><br>
+                        📞 ${clientPhone}<br>
+                        🕐 ${startTime}
                     </div>
                 `;
             }
         } else {
-            adminBookingsDiv.innerHTML += '<p>Нет записей в таблице bookings</p>';
-            console.log('Нет записей, error:', error);
+            adminBookingsDiv.innerHTML += '<p>Нет записей</p>';
         }
     }
 }
