@@ -62,6 +62,7 @@ async function loadSlots() {
     const { data, error } = await sb
         .from('slots')
         .select('*')
+        .eq('is_available', true)  // Добавляем эту строку — только свободные слоты
         .gte('start_time', new Date().toISOString())
         .order('start_time');
     if (error) throw error;
@@ -93,10 +94,68 @@ function renderSlots(slots) {
 
 async function confirmBooking() {
     if (!currentUser) return;
-    const bookings = Array.from(selectedSlotIds).map(slotId => ({ slot_id: slotId, user_id: currentUser.id }));
-    const { error } = await sb.from('bookings').insert(bookings);
-    if (error) alert('Ошибка: слоты уже заняты');
-    else { alert('Успешно записано!'); selectedSlotIds.clear(); showScreen('menu'); }
+    
+    if (selectedSlotIds.size === 0) {
+        alert('Выберите слоты для записи');
+        return;
+    }
+    
+    // Проверяем, что все слоты еще свободны
+    const { data: slots, error: checkError } = await sb
+        .from('slots')
+        .select('id, is_available')
+        .in('id', Array.from(selectedSlotIds));
+    
+    if (checkError) {
+        console.error('Ошибка проверки:', checkError);
+        alert('Ошибка проверки слотов');
+        return;
+    }
+    
+    const unavailableSlots = slots.filter(slot => !slot.is_available);
+    if (unavailableSlots.length > 0) {
+        alert('Некоторые слоты уже заняты. Обновите страницу.');
+        return;
+    }
+    
+    // Делаем слоты недоступными
+    for (let slotId of selectedSlotIds) {
+        const { error: updateError } = await sb
+            .from('slots')
+            .update({ is_available: false })
+            .eq('id', slotId);
+        
+        if (updateError) {
+            console.error('Ошибка обновления слота:', updateError);
+            alert('Ошибка при бронировании');
+            return;
+        }
+    }
+    
+    // Создаем бронирования
+    const bookingsToInsert = Array.from(selectedSlotIds).map(slotId => ({
+        slot_id: slotId,
+        user_id: currentUser.id
+    }));
+    
+    const { error: insertError } = await sb
+        .from('bookings')
+        .insert(bookingsToInsert);
+    
+    if (insertError) {
+        // Возвращаем слоты обратно
+        for (let slotId of selectedSlotIds) {
+            await sb
+                .from('slots')
+                .update({ is_available: true })
+                .eq('id', slotId);
+        }
+        alert('Ошибка записи: ' + insertError.message);
+    } else {
+        alert('Успешно записано!');
+        selectedSlotIds.clear();
+        showScreen('menu');
+    }
 }
 
 async function loadMyBookings() {
