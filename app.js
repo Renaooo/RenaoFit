@@ -391,6 +391,41 @@ function getDayName(day) {
     return days[day];
 }
 
+async function clearAllSlots() {
+    if (confirm('⚠️ ВНИМАНИЕ! Это действие удалит ВСЕ слоты и ВСЕ записи!\n\nВы уверены, что хотите очистить всё?')) {
+        const doubleConfirm = confirm('Ещё раз подтвердите: удалить ВСЕ слоты и записи? Отменить будет нельзя!');
+        
+        if (doubleConfirm) {
+            try {
+                // Удаляем все бронирования
+                const { error: bookingsError } = await sb
+                    .from('bookings')
+                    .delete()
+                    .neq('id', 0); // удаляем все записи
+                
+                if (bookingsError) throw bookingsError;
+                
+                // Удаляем все слоты
+                const { error: slotsError } = await sb
+                    .from('slots')
+                    .delete()
+                    .neq('id', 0); // удаляем все слоты
+                
+                if (slotsError) throw slotsError;
+                
+                alert('✅ Все слоты и записи успешно удалены!');
+                
+                // Обновляем админ-панель
+                await loadAdminData();
+                
+            } catch (error) {
+                console.error('Ошибка очистки:', error);
+                alert('❌ Ошибка при очистке: ' + error.message);
+            }
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await sb.auth.getSession();
     
