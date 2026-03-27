@@ -24,6 +24,7 @@
                 <h2>Привет, <span id="user-name"></span></h2>
                 <button id="book-btn" class="btn primary">📅 Записаться</button>
                 <button id="my-bookings-btn" class="btn secondary">📋 Мои записи</button>
+                <button id="my-profile-btn" class="btn secondary">👤 Мой профиль</button>
                 <button id="admin-btn" class="btn admin" style="display: none;">⚙️ Админ-панель</button>
                 <button id="logout-btn" class="btn logout">Выйти</button>
             </div>
@@ -35,7 +36,7 @@
                 <button class="btn back-btn">← Назад</button>
                 <h2>Выбери время</h2>
                 <div id="slots-list" class="slots-grid"></div>
-                <button id="confirm-booking-btn" class="btn primary" style="display: none;">Подтвердить запись</button>
+                <button id="confirm-booking-btn" class="btn primary" style="display: none;">✅ Подтвердить запись</button>
             </div>
         </div>
 
@@ -48,41 +49,60 @@
             </div>
         </div>
 
-<!-- Админ панель -->
-<div id="admin-screen" class="screen">
-    <div class="container">
-        <button class="btn back-btn">← Назад</button>
-        <h2>Управление</h2>
-        
-        <!-- Вкладки -->
-        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-            <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #007aff;">📅 Слоты</button>
-            <button id="admin-clients-tab" class="btn secondary" style="flex: 1; background: #e9ecef; color: #1e1e1e;">👥 Клиенты</button>
-        </div>
-        
-        <!-- Панель слотов -->
-        <div id="admin-slots-panel" style="display: block;">
-            <div id="admin-slots"></div>
-        </div>
-        
-        <!-- Панель клиентов -->
-        <div id="admin-clients-panel" style="display: none;">
-            <div id="admin-clients-list"></div>
-        </div>
-        
-        <!-- Форма добавления слота -->
-        <div class="admin-form">
-            <h3>Добавить новый слот (1 час)</h3>
-            <input type="datetime-local" id="admin-start">
-            <button id="admin-add-slot" class="btn primary">➕ Добавить слот</button>
-            <p style="font-size: 12px; color: #666; margin-top: 8px;">* Конец слота автоматически ставится +1 час</p>
-        </div>
-        
-        <!-- Все записи (остается видимым всегда) -->
-        <div id="admin-bookings"></div>
-    </div>
-</div>
+        <!-- Экран профиля -->
+        <div id="profile-screen" class="screen">
+            <div class="container">
+                <button class="btn back-btn">← Назад</button>
+                <h2>👤 Мой профиль</h2>
                 
+                <div style="background: #f8f9fa; border-radius: 16px; padding: 20px; margin-top: 20px;">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">Абонемент</label>
+                        <div style="font-size: 18px; font-weight: 500;" id="profile-subscription">—</div>
+                    </div>
+                    <div>
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">Вес</label>
+                        <div style="font-size: 18px; font-weight: 500;" id="profile-weight">—</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px; font-size: 12px; color: #999; text-align: center;">
+                    Данные обновляются тренером
+                </div>
+            </div>
+        </div>
+
+        <!-- Админ панель -->
+        <div id="admin-screen" class="screen">
+            <div class="container">
+                <button class="btn back-btn">← Назад</button>
+                <h2>Управление</h2>
+                
+                <!-- Вкладки -->
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #007aff;">📅 Слоты</button>
+                    <button id="admin-clients-tab" class="btn secondary" style="flex: 1; background: #e9ecef; color: #1e1e1e;">👥 Клиенты</button>
+                </div>
+                
+                <!-- Панель слотов -->
+                <div id="admin-slots-panel" style="display: block;">
+                    <div id="admin-slots"></div>
+                </div>
+                
+                <!-- Панель клиентов -->
+                <div id="admin-clients-panel" style="display: none;">
+                    <div id="admin-clients-list"></div>
+                </div>
+                
+                <!-- Форма добавления слота -->
+                <div class="admin-form">
+                    <h3>Добавить новый слот (1 час)</h3>
+                    <input type="datetime-local" id="admin-start">
+                    <button id="admin-add-slot" class="btn primary">➕ Добавить слот</button>
+                    <p style="font-size: 12px; color: #666; margin-top: 8px;">* Конец слота автоматически ставится +1 час</p>
+                </div>
+                
+                <!-- Все записи -->
                 <div id="admin-bookings"></div>
             </div>
         </div>
