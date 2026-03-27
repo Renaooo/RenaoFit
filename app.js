@@ -697,24 +697,66 @@ async function renderClientsList() {
         
         clientCard.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
+                <div style="flex: 1;">
                     <strong style="font-size: 16px;">👤 ${client.name || 'Без имени'}</strong><br>
                     <span style="color: #666; font-size: 14px;">📞 ${client.phone || 'нет телефона'}</span>
+                    <span style="color: #999; font-size: 12px; margin-left: 10px;">🆔 ${client.id.substring(0, 8)}...</span>
                 </div>
-                <div style="text-align: right;">
+                <div style="display: flex; gap: 8px; align-items: center;">
                     <span style="background: #007aff; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px;">${count || 0} записей</span>
+                    <button class="delete-client-btn" data-id="${client.id}" data-name="${client.name || client.phone || 'клиента'}" style="background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 14px;">✖ Удалить</button>
                 </div>
             </div>
         `;
         
-        clientCard.addEventListener('click', () => {
+        // Клик по карточке (не по кнопке) открывает детали
+        const clientInfoDiv = clientCard.querySelector('div:first-child');
+        clientInfoDiv.addEventListener('click', (e) => {
+            e.stopPropagation();
             showClientDetails(client);
+        });
+        
+        // Кнопка удаления
+        const deleteBtn = clientCard.querySelector('.delete-client-btn');
+        deleteBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            
+            const clientName = client.name || client.phone || 'клиента';
+            
+            if (confirm(`⚠️ Удалить клиента "${clientName}"?\n\nЭто действие:\n- Удалит все записи клиента\n- Удалит профиль клиента\n- Клиент больше не сможет войти\n\nУчетная запись в системе останется (для безопасности).\n\nПродолжить?`)) {
+                try {
+                    // 1. Удаляем все бронирования клиента
+                    const { error: bookingsError } = await sb
+                        .from('bookings')
+                        .delete()
+                        .eq('user_id', client.id);
+                    
+                    if (bookingsError) throw bookingsError;
+                    
+                    // 2. Удаляем профиль клиента
+                    const { error: profileError } = await sb
+                        .from('profiles')
+                        .delete()
+                        .eq('id', client.id);
+                    
+                    if (profileError) throw profileError;
+                    
+                    alert(`✅ Клиент "${clientName}" удален.\n\nВсе записи удалены.\nУчетная запись сохранена (при необходимости можно восстановить через Supabase).`);
+                    
+                    // Обновляем список клиентов и админ-панель
+                    await renderClientsList();
+                    await loadAdminData();
+                    
+                } catch (error) {
+                    console.error('Ошибка удаления:', error);
+                    alert('❌ Ошибка при удалении клиента: ' + error.message);
+                }
+            }
         });
         
         container.appendChild(clientCard);
     }
 }
-
 
 
 
