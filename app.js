@@ -566,7 +566,7 @@ async function updateWeeklyMessage() {
         
         messageDiv.style.background = '#fff3e0';
         messageDiv.style.borderLeftColor = '#ff9800';
-        messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На следующей неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
+        messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
         messageDiv.style.display = 'block';
     } 
     else {
