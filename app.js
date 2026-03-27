@@ -618,13 +618,52 @@ async function openDailyReport() {
 // --- ПРОФИЛЬ И МОТИВАЦИОННОЕ СООБЩЕНИЕ ---
 async function updateWeeklyMessage() {
     const today = new Date();
+    const isMonday = today.getDay() === 1;
+    
+    // Получаем профиль пользователя (дата регистрации)
+    const { data: profile } = await sb
+        .from('profiles')
+        .select('created_at, target_steps_weekly, target_strength_weekly, target_cardio_weekly, min_steps, last_weekly_report_text, last_weekly_report_date')
+        .eq('id', currentUser.id)
+        .single();
+    
+    const createdAt = new Date(profile?.created_at);
+    const lastReportDate = profile?.last_weekly_report_date ? new Date(profile.last_weekly_report_date) : null;
+    
+    // Определяем, нужно ли показывать новое сообщение
+    const shouldShowNewMessage = isMonday && (!lastReportDate || lastReportDate < today);
+    
+    // Если не понедельник и есть сохраненное сообщение — показываем его
+    if (!shouldShowNewMessage && profile?.last_weekly_report_text) {
+        const messageDiv = document.getElementById('weekly-message');
+        const messageText = document.getElementById('weekly-message-text');
+        if (messageDiv && messageText) {
+            messageDiv.style.display = 'block';
+            messageDiv.style.background = profile.last_weekly_report_text.includes('Поздравляю') ? '#e8f5e9' : 
+                                          (profile.last_weekly_report_text.includes('⚠️') ? '#fff3e0' : '#e3f2fd');
+            messageDiv.style.borderLeftColor = profile.last_weekly_report_text.includes('Поздравляю') ? '#34c759' : 
+                                               (profile.last_weekly_report_text.includes('⚠️') ? '#ff9800' : '#007aff');
+            messageText.innerHTML = profile.last_weekly_report_text;
+        }
+        return;
+    }
+    
+    // Если не понедельник и нет сохраненного сообщения — ничего не показываем
+    if (!isMonday) {
+        document.getElementById('weekly-message').style.display = 'none';
+        return;
+    }
+    
+    // ===== ПОНЕДЕЛЬНИК: ГЕНЕРИРУЕМ НОВОЕ СООБЩЕНИЕ =====
+    
+    // Определяем начало периода для анализа (дата регистрации или последний понедельник)
     const lastMonday = new Date(today);
     lastMonday.setDate(today.getDate() - today.getDay() + 1);
     lastMonday.setHours(0, 0, 0, 0);
-    const prevMonday = new Date(lastMonday);
-    prevMonday.setDate(lastMonday.getDate() - 7);
     
-    // Получаем веса
+    const analysisStart = createdAt > lastMonday ? createdAt : lastMonday;
+    
+    // Получаем веса (только если есть взвешивание сегодня)
     const { data: weights } = await sb
         .from('weight_history')
         .select('weight, weigh_date')
@@ -632,34 +671,36 @@ async function updateWeeklyMessage() {
         .order('weigh_date', { ascending: false })
         .limit(2);
     
+    const hasWeightToday = weights && weights[0]?.weigh_date === today.toISOString().split('T')[0];
     let weightChange = null;
-    if (weights && weights.length >= 2) {
+    
+    if (hasWeightToday && weights.length >= 2) {
         weightChange = weights[1].weight - weights[0].weight;
     }
     
-    // Получаем данные за неделю
+    // Получаем отчеты с даты регистрации (или с начала недели)
     const { data: reports } = await sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', currentUser.id)
-        .gte('report_date', lastMonday.toISOString().split('T')[0])
-        .lte('report_date', new Date().toISOString().split('T')[0]);
-    
-    const { data: profile } = await sb
-        .from('profiles')
-        .select('target_steps_weekly, target_strength_weekly, target_cardio_weekly, min_steps')
-        .eq('id', currentUser.id)
-        .single();
+        .gte('report_date', analysisStart.toISOString().split('T')[0])
+        .lte('report_date', today.toISOString().split('T')[0])
+        .order('report_date');
     
     const targetSteps = profile?.target_steps_weekly || 70000;
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
     const dailyNorm = profile?.min_steps || 10000;
     
+    // Подсчитываем только дни, которые были в периоде
+    const daysInPeriod = Math.min(7, Math.ceil((today - analysisStart) / (1000 * 60 * 60 * 24)) + 1);
+    
     let actualSteps = 0, actualStrength = 0, actualCardio = 0, socialDays = 0;
     let lowStepsDays = 0;
+    let reportedDays = 0;
     
     reports?.forEach(r => {
+        reportedDays++;
         actualSteps += r.steps || 0;
         if (r.training_type === 'strength') actualStrength++;
         if (r.training_type === 'cardio') actualCardio++;
@@ -667,10 +708,15 @@ async function updateWeeklyMessage() {
         if ((r.steps || 0) < dailyNorm) lowStepsDays++;
     });
     
-    const stepsPercent = actualSteps / targetSteps;
-    const strengthOk = actualStrength >= targetStrength;
-    const cardioOk = actualCardio >= targetCardio;
-    const socialOk = socialDays <= 1;
+    // Корректируем цели пропорционально количеству дней в периоде
+    const adjustedTargetSteps = Math.round(targetSteps * (daysInPeriod / 7));
+    const adjustedTargetStrength = Math.max(1, Math.round(targetStrength * (daysInPeriod / 7)));
+    const adjustedTargetCardio = Math.max(1, Math.round(targetCardio * (daysInPeriod / 7)));
+    
+    const stepsPercent = actualSteps / adjustedTargetSteps;
+    const strengthOk = actualStrength >= adjustedTargetStrength;
+    const cardioOk = actualCardio >= adjustedTargetCardio;
+    const socialOk = socialDays <= Math.ceil(daysInPeriod / 7);
     const stepsOk = stepsPercent >= 0.9;
     const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
     
@@ -679,29 +725,33 @@ async function updateWeeklyMessage() {
     
     if (!messageDiv || !messageText) return;
     
-    // Сценарий 1: есть отвес (потеря веса >= 0.2 кг)
-    if (weightChange !== null && weightChange < -0.2) {
-        messageDiv.style.background = '#e8f5e9';
-        messageDiv.style.borderLeftColor = '#34c759';
-        messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел${weightChange > 0 ? 'а' : ''} на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
-        messageDiv.style.display = 'block';
+    let finalMessage = '';
+    let messageType = 'info';
+    
+    // Проверка на недостаточность данных
+    const missingDays = daysInPeriod - reportedDays;
+    const missingWarning = missingDays > 0 
+        ? `<br><br>⚠️ <strong>Важно:</strong> Заполнено ${reportedDays} из ${daysInPeriod} дней. Для точного анализа нужны данные за все дни.` 
+        : '';
+    
+    // Сценарий 1: есть отвес
+    if (hasWeightToday && weightChange !== null && weightChange < -0.2) {
+        finalMessage = `🎉 <strong>Поздравляю!</strong> Ты похудел${weightChange > 0 ? 'а' : ''} на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪${missingWarning}`;
+        messageType = 'success';
     } 
     // Сценарий 2: нет отвеса или привес, рекомендации НЕ соблюдены
-    else if (!allCompliant) {
+    else if (hasWeightToday && !allCompliant) {
         let failures = [];
-        if (!stepsOk) failures.push(`👣 Шаги: ${Math.round(actualSteps).toLocaleString()} из ${targetSteps.toLocaleString()} (в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()})`);
-        if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
-        if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${targetCardio}`);
+        if (!stepsOk) failures.push(`👣 Шаги: ${Math.round(actualSteps).toLocaleString()} из ${adjustedTargetSteps.toLocaleString()} (в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()})`);
+        if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${adjustedTargetStrength}`);
+        if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${adjustedTargetCardio}`);
         if (!socialOk) failures.push(`🎉 Социальные приемы: ${socialDays} дней`);
-        
-        messageDiv.style.background = '#fff3e0';
-        messageDiv.style.borderLeftColor = '#ff9800';
         
         let adjustmentText = '';
         let newTargetSteps = targetSteps;
         let newTargetCardio = targetCardio;
         
-        // Автоматическая корректировка норм при неудовлетворительном результате
+        // Автоматическая корректировка норм
         if (weightChange !== null && (weightChange >= -0.2 || weightChange > 0)) {
             newTargetSteps = Math.min(Math.round(targetSteps * 1.1), 105000);
             newTargetCardio = Math.min(targetCardio + 1, 4);
@@ -714,22 +764,16 @@ async function updateWeeklyMessage() {
                 })
                 .eq('id', currentUser.id);
             
-            adjustmentText = `<br><br>📈 <strong>Корректировка плана на следующую неделю:</strong><br>
-            • Шаги: +10% → ${newTargetSteps.toLocaleString()} в неделю<br>
-            • Кардио: +1 сессия → ${newTargetCardio} в неделю`;
+            adjustmentText = `<br><br>📈 <strong>Корректировка плана на следующую неделю:</strong><br>• Шаги: +10% → ${newTargetSteps.toLocaleString()} в неделю<br>• Кардио: +1 сессия → ${newTargetCardio} в неделю`;
         }
         
-        messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥${adjustmentText}`;
-        messageDiv.style.display = 'block';
+        finalMessage = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥${adjustmentText}${missingWarning}`;
+        messageType = 'warning';
     } 
     // Сценарий 3: нет отвеса, но все рекомендации соблюдены
-    else {
-        messageDiv.style.background = '#e3f2fd';
-        messageDiv.style.borderLeftColor = '#007aff';
-        
+    else if (hasWeightToday && allCompliant) {
         let adjustmentText = '';
         
-        // Если вес неудовлетворительный, но рекомендации соблюдены — мягкая корректировка
         if (weightChange !== null && (weightChange >= -0.2 || weightChange > 0)) {
             const newTargetSteps = Math.min(Math.round(targetSteps * 1.05), 100000);
             
@@ -743,9 +787,40 @@ async function updateWeeklyMessage() {
             adjustmentText = `<br><br>📈 <strong>Мягкая корректировка:</strong> шаги +5% → ${newTargetSteps.toLocaleString()} в неделю. Организм адаптируется, дадим ему время.`;
         }
         
-        messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌${adjustmentText}`;
-        messageDiv.style.display = 'block';
+        finalMessage = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌${adjustmentText}${missingWarning}`;
+        messageType = 'info';
+    } 
+    // Сценарий 4: нет взвешивания сегодня
+    else {
+        finalMessage = `📌 <strong>Не забудь взвеситься!</strong><br><br>Каждый понедельник утром, натощак, после водных процедур. Это поможет отслеживать прогресс и корректировать план.${missingWarning}`;
+        messageType = 'reminder';
     }
+    
+    // Сохраняем сообщение в профиль
+    if (hasWeightToday) {
+        await sb
+            .from('profiles')
+            .update({
+                last_weekly_report_text: finalMessage,
+                last_weekly_report_date: today.toISOString().split('T')[0],
+                last_weekly_weight_change: weightChange
+            })
+            .eq('id', currentUser.id);
+    }
+    
+    // Отображаем сообщение
+    messageDiv.style.display = 'block';
+    if (messageType === 'success') {
+        messageDiv.style.background = '#e8f5e9';
+        messageDiv.style.borderLeftColor = '#34c759';
+    } else if (messageType === 'warning') {
+        messageDiv.style.background = '#fff3e0';
+        messageDiv.style.borderLeftColor = '#ff9800';
+    } else {
+        messageDiv.style.background = '#e3f2fd';
+        messageDiv.style.borderLeftColor = '#007aff';
+    }
+    messageText.innerHTML = finalMessage;
 }
 
 
