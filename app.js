@@ -22,6 +22,7 @@ let selectedSlotIds = new Set();
 let isLoggingIn = false;
 
 // --- Загрузка профиля пользователя ---
+// --- Загрузка профиля пользователя ---
 async function loadMyProfile() {
     if (!currentUser) return;
     
@@ -86,6 +87,7 @@ async function loadMyProfile() {
 }
 
 // --- Открытие модального окна для взвешивания ---
+// --- Открытие модального окна для взвешивания ---
 async function openWeightModal() {
     const history = await loadWeightHistory();
     const canAdd = canAddWeight(history);
@@ -118,7 +120,14 @@ async function openWeightModal() {
     
     modal.style.display = 'flex';
     
-    // Обработчики
+    // Функция очистки обработчиков
+    const cleanup = () => {
+        saveBtn.removeEventListener('click', handleSave);
+        cancelBtn.removeEventListener('click', handleCancel);
+        modal.removeEventListener('click', handleClickOutside);
+    };
+    
+    // Обработчик сохранения
     const handleSave = async () => {
         const weight = weightInput.value;
         if (!weight || weight <= 0) {
@@ -138,11 +147,13 @@ async function openWeightModal() {
         cleanup();
     };
     
+    // Обработчик отмены
     const handleCancel = () => {
         modal.style.display = 'none';
         cleanup();
     };
     
+    // Обработчик клика вне модального окна
     const handleClickOutside = (e) => {
         if (e.target === modal) {
             modal.style.display = 'none';
@@ -150,51 +161,9 @@ async function openWeightModal() {
         }
     };
     
-    const cleanup = () => {
-        saveBtn.removeEventListener('click', handleSave);
-        cancelBtn.removeEventListener('click', handleCancel);
-        modal.removeEventListener('click', handleClickOutside);
-    };
-    
     saveBtn.addEventListener('click', handleSave);
     cancelBtn.addEventListener('click', handleCancel);
     modal.addEventListener('click', handleClickOutside);
-}
-    
-    // Отображаем абонемент
-    const subscriptionEl = document.getElementById('profile-subscription');
-    if (subscriptionEl) {
-        if (profile?.subscription_until) {
-            const untilDate = new Date(profile.subscription_until);
-            const daysLeft = Math.ceil((untilDate - new Date()) / (1000 * 60 * 60 * 24));
-            
-            if (daysLeft < 0) {
-                subscriptionEl.innerHTML = '❌ Истек';
-                subscriptionEl.style.color = '#ff3b30';
-            } else if (daysLeft <= 7) {
-                subscriptionEl.innerHTML = `⚠️ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
-                subscriptionEl.style.color = '#ff9500';
-            } else {
-                subscriptionEl.innerHTML = `✅ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
-                subscriptionEl.style.color = '#34c759';
-            }
-        } else {
-            subscriptionEl.innerHTML = '—';
-            subscriptionEl.style.color = '#666';
-        }
-    }
-    
-    // Отображаем вес
-    const weightEl = document.getElementById('profile-weight');
-    if (weightEl) {
-        if (profile?.weight) {
-            weightEl.innerHTML = `${profile.weight} кг`;
-            weightEl.style.color = '#1e1e1e';
-        } else {
-            weightEl.innerHTML = '—';
-            weightEl.style.color = '#666';
-        }
-    }
 }
 
 
