@@ -1339,9 +1339,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         showScreen('profile');
     });
     
-    document.getElementById('steps-report-btn')?.addEventListener('click', async () => {
-        await openStepsReport();
-    });
     
     document.getElementById('admin-btn')?.addEventListener('click', async () => {
         await loadAdminData();
