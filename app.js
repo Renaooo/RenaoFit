@@ -601,6 +601,251 @@ async function loadAdminData() {
 
 
 
+// --- Загрузка списка клиентов (все пользователи, кроме админа) ---
+async function loadClientsList() {
+    const adminId = 'edafd00c-3f7d-47aa-8d69-9efbe95de98e';
+    
+    // Получаем всех пользователей из таблицы profiles, кроме админа
+    const { data: profiles, error } = await sb
+        .from('profiles')
+        .select('*')
+        .neq('id', adminId)
+        .order('name');
+    
+    if (error) {
+        console.error('Ошибка загрузки клиентов:', error);
+        return [];
+    }
+    
+    return profiles || [];
+}
+
+
+
+
+// --- Отображение списка клиентов ---
+async function renderClientsList() {
+    const container = document.getElementById('admin-clients-list');
+    if (!container) return;
+    
+    container.innerHTML = '<div style="text-align: center; padding: 20px;">Загрузка клиентов...</div>';
+    
+    const clients = await loadClientsList();
+    
+    if (!clients || clients.length === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет зарегистрированных клиентов</p>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    for (let client of clients) {
+        // Получаем количество записей клиента
+        const { count } = await sb
+            .from('bookings')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', client.id);
+        
+        const clientCard = document.createElement('div');
+        clientCard.style.cssText = 'border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: #fff; cursor: pointer; transition: all 0.2s;';
+        clientCard.onmouseover = () => clientCard.style.backgroundColor = '#f8f9fa';
+        clientCard.onmouseout = () => clientCard.style.backgroundColor = '#fff';
+        
+        clientCard.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="font-size: 16px;">👤 ${client.name || 'Без имени'}</strong><br>
+                    <span style="color: #666; font-size: 14px;">📞 ${client.phone || 'нет телефона'}</span>
+                </div>
+                <div style="text-align: right;">
+                    <span style="background: #007aff; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px;">${count || 0} записей</span>
+                </div>
+            </div>
+        `;
+        
+        clientCard.addEventListener('click', () => {
+            showClientDetails(client);
+        });
+        
+        container.appendChild(clientCard);
+    }
+}
+
+
+
+
+// --- Отображение карточки клиента с его записями ---
+async function showClientDetails(client) {
+    // Получаем все записи клиента
+    const { data: bookings, error } = await sb
+        .from('bookings')
+        .select(`
+            id,
+            slot_id,
+            slots (start_time, end_time)
+        `)
+        .eq('user_id', client.id)
+        .order('slot_id');
+    
+    if (error) {
+        console.error('Ошибка загрузки записей клиента:', error);
+        alert('Ошибка загрузки записей');
+        return;
+    }
+    
+    // Создаем модальное окно
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    `;
+    
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+        background: white;
+        border-radius: 16px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        padding: 20px;
+    `;
+    
+    let bookingsHtml = '';
+    if (bookings && bookings.length > 0) {
+        // Группируем по дням
+        const groupedByDay = {};
+        bookings.forEach(booking => {
+            const date = new Date(booking.slots.start_time);
+            const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+            if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+            groupedByDay[dayKey].push(booking);
+        });
+        
+        for (let [day, dayBookings] of Object.entries(groupedByDay)) {
+            bookingsHtml += `<h4 style="margin: 15px 0 8px 0; color: #007aff;">📅 ${day}</h4>`;
+            
+            dayBookings.forEach(booking => {
+                const start = new Date(booking.slots.start_time);
+                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                
+                bookingsHtml += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; margin-bottom: 8px; background: #f8f9fa; border-radius: 8px;">
+                        <span style="font-weight: 500;">🕐 ${timeStr}</span>
+                        <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer;">✖ Удалить</button>
+                    </div>
+                `;
+            });
+        }
+    } else {
+        bookingsHtml = '<p style="text-align: center; padding: 20px;">Нет записей</p>';
+    }
+    
+    modalContent.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0;">👤 ${client.name || 'Без имени'}</h2>
+            <button id="close-client-modal" style="background: none; border: none; font-size: 24px; cursor: pointer;">✖</button>
+        </div>
+        <div style="margin-bottom: 20px;">
+            <p><strong>📞 Телефон:</strong> ${client.phone || 'не указан'}</p>
+            <p><strong>🆔 ID:</strong> ${client.id.substring(0, 8)}...</p>
+        </div>
+        <h3 style="margin: 20px 0 10px 0;">📋 Записи клиента</h3>
+        <div id="client-bookings-list">
+            ${bookingsHtml}
+        </div>
+    `;
+    
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+    
+    // Закрытие модального окна
+    const closeBtn = modalContent.querySelector('#close-client-modal');
+    closeBtn.addEventListener('click', () => {
+        modal.remove();
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+    
+    // Обработчики для кнопок удаления записей
+    const deleteButtons = modalContent.querySelectorAll('.delete-booking-from-client');
+    deleteButtons.forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const bookingId = btn.dataset.id;
+            const slotId = btn.dataset.slot;
+            
+            if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
+                const { error: deleteError } = await sb
+                    .from('bookings')
+                    .delete()
+                    .eq('id', bookingId);
+                
+                if (deleteError) {
+                    alert('Ошибка удаления записи');
+                    return;
+                }
+                
+                await sb
+                    .from('slots')
+                    .update({ is_available: true })
+                    .eq('id', slotId);
+                
+                alert('Запись удалена, слот свободен');
+                modal.remove();
+                await renderClientsList();
+                await loadAdminData();
+            }
+        });
+    });
+}
+
+
+
+
+// --- Переключение между вкладками в админ-панели ---
+function setupAdminTabs() {
+    const slotsTab = document.getElementById('admin-slots-tab');
+    const clientsTab = document.getElementById('admin-clients-tab');
+    const slotsPanel = document.getElementById('admin-slots-panel');
+    const clientsPanel = document.getElementById('admin-clients-panel');
+    const adminBookingsDiv = document.getElementById('admin-bookings');
+    
+    if (!slotsTab || !clientsTab) return;
+    
+    slotsTab.addEventListener('click', () => {
+        slotsTab.style.background = '#007aff';
+        slotsTab.style.color = 'white';
+        clientsTab.style.background = '#e9ecef';
+        clientsTab.style.color = '#1e1e1e';
+        slotsPanel.style.display = 'block';
+        clientsPanel.style.display = 'none';
+        if (adminBookingsDiv) adminBookingsDiv.style.display = 'block';
+    });
+    
+    clientsTab.addEventListener('click', async () => {
+        clientsTab.style.background = '#007aff';
+        clientsTab.style.color = 'white';
+        slotsTab.style.background = '#e9ecef';
+        slotsTab.style.color = '#1e1e1e';
+        slotsPanel.style.display = 'none';
+        clientsPanel.style.display = 'block';
+        if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
+        
+        await renderClientsList();
+    });
+}
+
+
 
 // --- Инициализация при загрузке страницы ---
 document.addEventListener('DOMContentLoaded', async () => {
