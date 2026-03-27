@@ -498,6 +498,48 @@ function addSlotElement(container, slot) {
 
 
 
+// --- Переключение между вкладками в админ-панели ---
+function setupAdminTabs() {
+    const slotsTab = document.getElementById('admin-slots-tab');
+    const clientsTab = document.getElementById('admin-clients-tab');
+    const slotsPanel = document.getElementById('admin-slots-panel');
+    const clientsPanel = document.getElementById('admin-clients-panel');
+    const adminBookingsDiv = document.getElementById('admin-bookings');
+    
+    if (!slotsTab || !clientsTab) return;
+    
+    // Убираем старые обработчики, если были
+    const newSlotsTab = slotsTab.cloneNode(true);
+    const newClientsTab = clientsTab.cloneNode(true);
+    slotsTab.parentNode.replaceChild(newSlotsTab, slotsTab);
+    clientsTab.parentNode.replaceChild(newClientsTab, clientsTab);
+    
+    newSlotsTab.addEventListener('click', () => {
+        newSlotsTab.style.background = '#007aff';
+        newSlotsTab.style.color = 'white';
+        newClientsTab.style.background = '#e9ecef';
+        newClientsTab.style.color = '#1e1e1e';
+        slotsPanel.style.display = 'block';
+        clientsPanel.style.display = 'none';
+        if (adminBookingsDiv) adminBookingsDiv.style.display = 'block';
+    });
+    
+    newClientsTab.addEventListener('click', async () => {
+        newClientsTab.style.background = '#007aff';
+        newClientsTab.style.color = 'white';
+        newSlotsTab.style.background = '#e9ecef';
+        newSlotsTab.style.color = '#1e1e1e';
+        slotsPanel.style.display = 'none';
+        clientsPanel.style.display = 'block';
+        if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
+        
+        // Загружаем список клиентов
+        if (typeof renderClientsList === 'function') {
+            await renderClientsList();
+        }
+    });
+}
+
 
 // --- Админ-панель ---
 async function loadAdminData() {
@@ -597,8 +639,10 @@ async function loadAdminData() {
             adminBookingsDiv.appendChild(noBookings);
         }
     }
+    
+    // Настраиваем вкладки (добавляем эту строку)
+    setupAdminTabs();
 }
-
 
 
 // --- Загрузка списка клиентов (все пользователи, кроме админа) ---
