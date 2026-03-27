@@ -13,6 +13,7 @@ const screens = {
     menu: document.getElementById('menu-screen'),
     booking: document.getElementById('booking-screen'),
     myBookings: document.getElementById('my-bookings-screen'),
+    profile: document.getElementById('profile-screen'),
     admin: document.getElementById('admin-screen')
 };
 
@@ -20,7 +21,56 @@ let currentUser = null;
 let selectedSlotIds = new Set();
 let isLoggingIn = false;
 
-
+// --- Загрузка профиля пользователя ---
+async function loadMyProfile() {
+    if (!currentUser) return;
+    
+    const { data: profile, error } = await sb
+        .from('profiles')
+        .select('weight, subscription_until')
+        .eq('id', currentUser.id)
+        .single();
+    
+    if (error) {
+        console.error('Ошибка загрузки профиля:', error);
+        return;
+    }
+    
+    // Отображаем абонемент
+    const subscriptionEl = document.getElementById('profile-subscription');
+    if (subscriptionEl) {
+        if (profile?.subscription_until) {
+            const untilDate = new Date(profile.subscription_until);
+            const daysLeft = Math.ceil((untilDate - new Date()) / (1000 * 60 * 60 * 24));
+            
+            if (daysLeft < 0) {
+                subscriptionEl.innerHTML = '❌ Истек';
+                subscriptionEl.style.color = '#ff3b30';
+            } else if (daysLeft <= 7) {
+                subscriptionEl.innerHTML = `⚠️ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
+                subscriptionEl.style.color = '#ff9500';
+            } else {
+                subscriptionEl.innerHTML = `✅ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
+                subscriptionEl.style.color = '#34c759';
+            }
+        } else {
+            subscriptionEl.innerHTML = '—';
+            subscriptionEl.style.color = '#666';
+        }
+    }
+    
+    // Отображаем вес
+    const weightEl = document.getElementById('profile-weight');
+    if (weightEl) {
+        if (profile?.weight) {
+            weightEl.innerHTML = `${profile.weight} кг`;
+            weightEl.style.color = '#1e1e1e';
+        } else {
+            weightEl.innerHTML = '—';
+            weightEl.style.color = '#666';
+        }
+    }
+}
 
 
 // --- Функция переключения экранов ---
@@ -760,10 +810,10 @@ async function renderClientsList() {
 
 
 
-// --- Отображение карточки клиента с его записями ---
+// --- Отображение карточки клиента с его записями и редактированием ---
 async function showClientDetails(client) {
     // Получаем все записи клиента
-    const { data: bookings, error } = await sb
+    const { data: bookings, error: bookingsError } = await sb
         .from('bookings')
         .select(`
             id,
@@ -773,8 +823,8 @@ async function showClientDetails(client) {
         .eq('user_id', client.id)
         .order('slot_id');
     
-    if (error) {
-        console.error('Ошибка загрузки записей клиента:', error);
+    if (bookingsError) {
+        console.error('Ошибка загрузки записей клиента:', bookingsError);
         alert('Ошибка загрузки записей');
         return;
     }
@@ -807,7 +857,6 @@ async function showClientDetails(client) {
     
     let bookingsHtml = '';
     if (bookings && bookings.length > 0) {
-        // Группируем по дням
         const groupedByDay = {};
         bookings.forEach(booking => {
             const date = new Date(booking.slots.start_time);
@@ -840,10 +889,28 @@ async function showClientDetails(client) {
             <h2 style="margin: 0;">👤 ${client.name || 'Без имени'}</h2>
             <button id="close-client-modal" style="background: none; border: none; font-size: 24px; cursor: pointer;">✖</button>
         </div>
+        
         <div style="margin-bottom: 20px;">
             <p><strong>📞 Телефон:</strong> ${client.phone || 'не указан'}</p>
             <p><strong>🆔 ID:</strong> ${client.id.substring(0, 8)}...</p>
         </div>
+        
+        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 15px 0; font-size: 16px;">✏️ Редактировать профиль</h3>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Вес (кг)</label>
+                <input type="number" id="edit-weight" step="0.1" value="${client.weight || ''}" placeholder="например: 75.5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Абонемент до</label>
+                <input type="date" id="edit-subscription" value="${client.subscription_until || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <button id="save-profile-btn" style="background: #007aff; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%;">💾 Сохранить</button>
+        </div>
+        
         <h3 style="margin: 20px 0 10px 0;">📋 Записи клиента</h3>
         <div id="client-bookings-list">
             ${bookingsHtml}
@@ -861,6 +928,30 @@ async function showClientDetails(client) {
     
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.remove();
+    });
+    
+    // Сохранение профиля
+    const saveBtn = modalContent.querySelector('#save-profile-btn');
+    saveBtn.addEventListener('click', async () => {
+        const weight = modalContent.querySelector('#edit-weight').value;
+        const subscriptionUntil = modalContent.querySelector('#edit-subscription').value;
+        
+        const updateData = {};
+        if (weight) updateData.weight = parseFloat(weight);
+        if (subscriptionUntil) updateData.subscription_until = subscriptionUntil;
+        
+        const { error: updateError } = await sb
+            .from('profiles')
+            .update(updateData)
+            .eq('id', client.id);
+        
+        if (updateError) {
+            alert('Ошибка сохранения: ' + updateError.message);
+        } else {
+            alert('✅ Профиль обновлен!');
+            modal.remove();
+            await renderClientsList();
+        }
     });
     
     // Обработчики для кнопок удаления записей
@@ -1004,6 +1095,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentUser = null;
         showScreen('auth');
     });
+
+    // Кнопка "Мой профиль"
+document.getElementById('my-profile-btn')?.addEventListener('click', async () => {
+    await loadMyProfile();
+    showScreen('profile');
+});
+
+    
     
     document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
         const start = document.getElementById('admin-start').value;
