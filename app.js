@@ -14,6 +14,7 @@ const screens = {
     booking: document.getElementById('booking-screen'),
     myBookings: document.getElementById('my-bookings-screen'),
     profile: document.getElementById('profile-screen'),
+    steps: document.getElementById('steps-screen'),
     admin: document.getElementById('admin-screen')
 };
 
@@ -166,6 +167,186 @@ async function openWeightModal() {
     modal.addEventListener('click', handleClickOutside);
 }
 
+// --- Загрузка минимальной нормы шагов пользователя ---
+async function loadMinSteps() {
+    if (!currentUser) return null;
+    
+    const { data, error } = await sb
+        .from('profiles')
+        .select('min_steps')
+        .eq('id', currentUser.id)
+        .single();
+    
+    if (error) {
+        console.error('Ошибка загрузки нормы шагов:', error);
+        return null;
+    }
+    
+    return data?.min_steps || 10000;
+}
+
+// --- Проверка, можно ли добавить шаги (только с 19:00 до 00:00) ---
+function canAddSteps() {
+    const now = new Date();
+    const hours = now.getHours();
+    const mskHours = (hours + 3) % 24; // Приводим к МСК
+    
+    return mskHours >= 19; // с 19:00 до 00:00
+}
+
+// --- Сохранение шагов ---
+async function saveSteps(steps) {
+    if (!currentUser) return false;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const stepsDate = today.toISOString().split('T')[0];
+    
+    // Проверяем, не добавляли ли уже шаги сегодня
+    const { data: existing } = await sb
+        .from('steps_history')
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .eq('steps_date', stepsDate)
+        .single();
+    
+    if (existing) {
+        // Обновляем существующую запись
+        const { error } = await sb
+            .from('steps_history')
+            .update({ steps: parseInt(steps) })
+            .eq('id', existing.id);
+        
+        if (error) {
+            console.error('Ошибка обновления шагов:', error);
+            return false;
+        }
+    } else {
+        // Создаем новую запись
+        const { error } = await sb
+            .from('steps_history')
+            .insert({
+                user_id: currentUser.id,
+                steps: parseInt(steps),
+                steps_date: stepsDate
+            });
+        
+        if (error) {
+            console.error('Ошибка сохранения шагов:', error);
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// --- Загрузка истории шагов ---
+async function loadStepsHistory() {
+    if (!currentUser) return [];
+    
+    const { data, error } = await sb
+        .from('steps_history')
+        .select('steps, steps_date')
+        .eq('user_id', currentUser.id)
+        .order('steps_date', { ascending: false })
+        .limit(30);
+    
+    if (error) {
+        console.error('Ошибка загрузки истории шагов:', error);
+        return [];
+    }
+    
+    return data || [];
+}
+
+// --- Отображение истории шагов ---
+async function renderStepsHistory() {
+    const history = await loadStepsHistory();
+    const minSteps = await loadMinSteps();
+    const container = document.getElementById('steps-history-list');
+    
+    if (!container) return;
+    
+    if (!history || history.length === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных о шагах</p>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    // Создаем таблицу
+    const table = document.createElement('div');
+    table.style.cssText = 'width: 100%; border-collapse: collapse;';
+    
+    for (let record of history) {
+        const date = new Date(record.steps_date);
+        const formattedDate = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
+        const steps = record.steps;
+        const isOk = steps >= minSteps;
+        
+        const row = document.createElement('div');
+        row.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: ${isOk ? '#e8f5e9' : '#ffebee'};
+            border-radius: 12px;
+            border-left: 4px solid ${isOk ? '#34c759' : '#ff3b30'};
+        `;
+        
+        row.innerHTML = `
+            <div style="flex: 1;">
+                <div style="font-weight: 500;">${formattedDate}</div>
+                <div style="font-size: 12px; color: #666;">${isOk ? '✅ Норма выполнена' : '⚠️ Ниже нормы'}</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 20px; font-weight: 600; color: ${isOk ? '#34c759' : '#ff3b30'};">${steps.toLocaleString()}</div>
+                <div style="font-size: 12px; color: #666;">/ ${minSteps.toLocaleString()}</div>
+            </div>
+        `;
+        
+        table.appendChild(row);
+    }
+    
+    container.appendChild(table);
+}
+
+// --- Открытие экрана отчетов ---
+async function openStepsReport() {
+    // Проверяем, можно ли добавлять шаги
+    const canAdd = canAddSteps();
+    const stepsInput = document.getElementById('steps-input');
+    const addBtn = document.getElementById('add-steps-btn');
+    const errorDiv = document.getElementById('steps-error');
+    
+    if (!canAdd) {
+        errorDiv.textContent = '⚠️ Добавление шагов возможно только с 19:00 до 00:00 по Московскому времени.';
+        errorDiv.style.display = 'block';
+        stepsInput.disabled = true;
+        addBtn.disabled = true;
+        addBtn.style.opacity = '0.5';
+    } else {
+        errorDiv.style.display = 'none';
+        stepsInput.disabled = false;
+        addBtn.disabled = false;
+        addBtn.style.opacity = '1';
+    }
+    
+    // Загружаем норму шагов
+    const minSteps = await loadMinSteps();
+    const minStepsEl = document.getElementById('user-min-steps');
+    if (minStepsEl) {
+        minStepsEl.innerHTML = `${minSteps?.toLocaleString() || '10000'} шагов`;
+    }
+    
+    // Загружаем историю
+    await renderStepsHistory();
+    
+    // Показываем экран
+    showScreen('steps');
+}
 
 // --- Функция переключения экранов ---
 function showScreen(name) {
@@ -1169,6 +1350,11 @@ async function showClientDetails(client) {
                 <input type="date" id="edit-subscription" value="${client.subscription_until || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
             
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Минимальное количество шагов в день</label>
+                <input type="number" id="edit-min-steps" value="${client.min_steps || 10000}" placeholder="например: 10000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
             <button id="save-profile-btn" style="background: #007aff; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%;">💾 Сохранить</button>
         </div>
         
@@ -1196,15 +1382,22 @@ async function showClientDetails(client) {
     saveBtn.addEventListener('click', async () => {
         const weight = modalContent.querySelector('#edit-weight').value;
         const subscriptionUntil = modalContent.querySelector('#edit-subscription').value;
+        const minSteps = modalContent.querySelector('#edit-min-steps').value;
         
         const updateData = {};
         if (weight) updateData.weight = parseFloat(weight);
         if (subscriptionUntil) updateData.subscription_until = subscriptionUntil;
+        if (minSteps) updateData.min_steps = parseInt(minSteps);
         
-        const { error: updateError } = await sb
+        console.log('Обновляем профиль:', client.id, updateData);
+        
+        const { data, error: updateError } = await sb
             .from('profiles')
             .update(updateData)
-            .eq('id', client.id);
+            .eq('id', client.id)
+            .select();
+        
+        console.log('Результат обновления:', { data, updateError });
         
         if (updateError) {
             alert('Ошибка сохранения: ' + updateError.message);
@@ -1387,4 +1580,32 @@ document.getElementById('my-profile-btn')?.addEventListener('click', async () =>
             document.getElementById('admin-start').value = '';
         }
     });
+
+    // Кнопка "Отчеты"
+document.getElementById('steps-report-btn')?.addEventListener('click', async () => {
+    await openStepsReport();
+});
+
+// Кнопка "Добавить шаги"
+document.getElementById('add-steps-btn')?.addEventListener('click', async () => {
+    const stepsInput = document.getElementById('steps-input');
+    const steps = stepsInput.value;
+    
+    if (!steps || steps <= 0) {
+        alert('Введите количество шагов');
+        return;
+    }
+    
+    const minSteps = await loadMinSteps();
+    const stepsNum = parseInt(steps);
+    
+    const success = await saveSteps(stepsNum);
+    if (success) {
+        alert(`✅ Шаги сохранены!\n\nВаши шаги: ${stepsNum.toLocaleString()}\nНорма: ${minSteps?.toLocaleString() || '10000'}`);
+        stepsInput.value = '';
+        await renderStepsHistory();
+    } else {
+        alert('❌ Ошибка сохранения шагов');
+    }
+});
 });
