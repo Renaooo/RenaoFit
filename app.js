@@ -94,7 +94,7 @@ async function loadSlots() {
 
 
 // --- Отображение слотов для клиента с подсветкой рекомендуемых ---
-function renderSlots(slots) {
+async function renderSlots(slots) {
     const container = document.getElementById('slots-list');
     if (!container) return;
     container.innerHTML = '';
@@ -121,6 +121,145 @@ function renderSlots(slots) {
             bookedTimesByDay[dayKey].push(timeStr);
         }
     });
+    
+    // Функция проверки соседней записи
+    function hasAdjacentBooking(dayKey, timeStr) {
+        const [hours] = timeStr.split(':').map(Number);
+        const prevHour = `${(hours - 1).toString().padStart(2,'0')}:00`;
+        const nextHour = `${(hours + 1).toString().padStart(2,'0')}:00`;
+        const bookedTimes = bookedTimesByDay[dayKey] || [];
+        return bookedTimes.includes(prevHour) || bookedTimes.includes(nextHour);
+    }
+    
+    // Группируем слоты по дням
+    const groupedByDay = {};
+    slots.forEach(slot => {
+        const date = new Date(slot.start_time);
+        const dayKey = date.toLocaleDateString('ru-RU');
+        const displayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+        if (!groupedByDay[displayKey]) {
+            groupedByDay[displayKey] = { slots: [], dayKey: dayKey };
+        }
+        groupedByDay[displayKey].slots.push(slot);
+    });
+    
+    const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
+        const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
+        const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
+        return dateA - dateB;
+    });
+    
+    for (let displayDay of sortedDays) {
+        const dayData = groupedByDay[displayDay];
+        const daySlots = dayData.slots;
+        const dayKey = dayData.dayKey;
+        
+        daySlots.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        
+        const morning = daySlots.filter(s => new Date(s.start_time).getHours() < 15);
+        const evening = daySlots.filter(s => new Date(s.start_time).getHours() >= 15);
+        
+        const dayDiv = document.createElement('div');
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
+        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${displayDay}</h3>`;
+        
+        // Утро
+        if (morning.length > 0) {
+            const morningDiv = document.createElement('div');
+            morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
+            
+            morning.forEach(slot => {
+                const start = new Date(slot.start_time);
+                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                const hasAdjacent = hasAdjacentBooking(dayKey, timeStr);
+                
+                const slotDiv = document.createElement('div');
+                slotDiv.className = 'slot-item';
+                if (selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
+                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#fff9e6' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#ffc107' : '#e9ecef'};`;
+                
+                let badgeHtml = '';
+                if (hasAdjacent) {
+                    badgeHtml = '<span style="background: #ffc107; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
+                }
+                
+                slotDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 500;">${timeStr}</span>
+                        ${badgeHtml}
+                    </div>
+                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width: 22px; height: 22px;">
+                `;
+                
+                const checkbox = slotDiv.querySelector('.slot-select');
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        selectedSlotIds.add(slot.id);
+                    } else {
+                        selectedSlotIds.delete(slot.id);
+                    }
+                    const confirmBtn = document.getElementById('confirm-booking-btn');
+                    if (confirmBtn) {
+                        confirmBtn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
+                        confirmBtn.textContent = `✅ Подтвердить запись (${selectedSlotIds.size})`;
+                    }
+                });
+                
+                morningDiv.appendChild(slotDiv);
+            });
+            dayDiv.appendChild(morningDiv);
+        }
+        
+        // Вечер
+        if (evening.length > 0) {
+            const eveningDiv = document.createElement('div');
+            eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
+            
+            evening.forEach(slot => {
+                const start = new Date(slot.start_time);
+                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                const hasAdjacent = hasAdjacentBooking(dayKey, timeStr);
+                
+                const slotDiv = document.createElement('div');
+                slotDiv.className = 'slot-item';
+                if (selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
+                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#fff9e6' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#ffc107' : '#e9ecef'};`;
+                
+                let badgeHtml = '';
+                if (hasAdjacent) {
+                    badgeHtml = '<span style="background: #ffc107; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
+                }
+                
+                slotDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 500;">${timeStr}</span>
+                        ${badgeHtml}
+                    </div>
+                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width: 22px; height: 22px;">
+                `;
+                
+                const checkbox = slotDiv.querySelector('.slot-select');
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        selectedSlotIds.add(slot.id);
+                    } else {
+                        selectedSlotIds.delete(slot.id);
+                    }
+                    const confirmBtn = document.getElementById('confirm-booking-btn');
+                    if (confirmBtn) {
+                        confirmBtn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
+                        confirmBtn.textContent = `✅ Подтвердить запись (${selectedSlotIds.size})`;
+                    }
+                });
+                
+                eveningDiv.appendChild(slotDiv);
+            });
+            dayDiv.appendChild(eveningDiv);
+        }
+        
+        container.appendChild(dayDiv);
+    }
+}
     
     // Функция проверки соседней записи
     function hasAdjacentBooking(dayKey, timeStr) {
@@ -647,10 +786,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     
     document.getElementById('book-btn')?.addEventListener('click', async () => {
-        const slots = await loadSlots();
-        renderSlots(slots);
-        showScreen('booking');
-    });
+    const slots = await loadSlots();
+    renderSlots(slots);
+    showScreen('booking');
+});
     
     document.getElementById('my-bookings-btn')?.addEventListener('click', async () => {
         await loadMyBookings();
