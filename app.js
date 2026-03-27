@@ -99,24 +99,120 @@ function renderSlots(slots) {
     if (!container) return;
     container.innerHTML = '';
     
+    if (!slots || slots.length === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет свободных слотов на ближайшую неделю</p>';
+        return;
+    }
+    
+    // Группируем слоты по дням
+    const groupedByDay = {};
     slots.forEach(slot => {
-        const start = new Date(slot.start_time);
-        const formatted = `${start.toLocaleDateString()} ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
-        const div = document.createElement('div');
-        div.className = 'slot-item';
-        if (selectedSlotIds.has(slot.id)) div.classList.add('selected');
-        div.innerHTML = `<span class="slot-time">${formatted}</span><input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''}>`;
-        const cb = div.querySelector('.slot-select');
-        cb.addEventListener('change', (e) => {
-            if (e.target.checked) selectedSlotIds.add(slot.id);
-            else selectedSlotIds.delete(slot.id);
-            const btn = document.getElementById('confirm-booking-btn');
-            if (btn) btn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
-        });
-        container.appendChild(div);
+        const date = new Date(slot.start_time);
+        const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+        if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+        groupedByDay[dayKey].push(slot);
     });
+    
+    // Сортируем дни по дате
+    const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
+        const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
+        const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
+        return dateA - dateB;
+    });
+    
+    for (let day of sortedDays) {
+        const daySlots = groupedByDay[day];
+        
+        // Сортируем слоты по времени
+        daySlots.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        
+        // Группируем по утро/вечер
+        const morning = daySlots.filter(s => new Date(s.start_time).getHours() < 15);
+        const evening = daySlots.filter(s => new Date(s.start_time).getHours() >= 15);
+        
+        const dayDiv = document.createElement('div');
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
+        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
+        
+        // Утро
+        if (morning.length > 0) {
+            const morningDiv = document.createElement('div');
+            morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
+            
+            morning.forEach(slot => {
+                const start = new Date(slot.start_time);
+                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                
+                const slotDiv = document.createElement('div');
+                slotDiv.className = 'slot-item';
+                if (selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
+                slotDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
+                slotDiv.innerHTML = `
+                    <span class="slot-time" style="font-weight: 500;">${timeStr}</span>
+                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width: 22px; height: 22px;">
+                `;
+                
+                const checkbox = slotDiv.querySelector('.slot-select');
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        selectedSlotIds.add(slot.id);
+                    } else {
+                        selectedSlotIds.delete(slot.id);
+                    }
+                    const confirmBtn = document.getElementById('confirm-booking-btn');
+                    if (confirmBtn) {
+                        confirmBtn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
+                        confirmBtn.textContent = `✅ Подтвердить запись (${selectedSlotIds.size})`;
+                    }
+                });
+                
+                morningDiv.appendChild(slotDiv);
+            });
+            
+            dayDiv.appendChild(morningDiv);
+        }
+        
+        // Вечер
+        if (evening.length > 0) {
+            const eveningDiv = document.createElement('div');
+            eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
+            
+            evening.forEach(slot => {
+                const start = new Date(slot.start_time);
+                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                
+                const slotDiv = document.createElement('div');
+                slotDiv.className = 'slot-item';
+                if (selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
+                slotDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
+                slotDiv.innerHTML = `
+                    <span class="slot-time" style="font-weight: 500;">${timeStr}</span>
+                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width: 22px; height: 22px;">
+                `;
+                
+                const checkbox = slotDiv.querySelector('.slot-select');
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        selectedSlotIds.add(slot.id);
+                    } else {
+                        selectedSlotIds.delete(slot.id);
+                    }
+                    const confirmBtn = document.getElementById('confirm-booking-btn');
+                    if (confirmBtn) {
+                        confirmBtn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
+                        confirmBtn.textContent = `✅ Подтвердить запись (${selectedSlotIds.size})`;
+                    }
+                });
+                
+                eveningDiv.appendChild(slotDiv);
+            });
+            
+            dayDiv.appendChild(eveningDiv);
+        }
+        
+        container.appendChild(dayDiv);
+    }
 }
-
 
 
 
