@@ -24,6 +24,7 @@
                 <h2>Привет, <span id="user-name"></span></h2>
                 <button id="book-btn" class="btn primary">📅 Записаться</button>
                 <button id="my-bookings-btn" class="btn secondary">📋 Мои записи</button>
+                <button id="daily-report-btn" class="btn secondary">📝 Ежедневный отчет</button>
                 <button id="my-profile-btn" class="btn secondary">👤 Мой профиль</button>
                 <button id="steps-report-btn" class="btn secondary">📊 Отчеты</button>
                 <button id="admin-btn" class="btn admin" style="display: none;">⚙️ Админ-панель</button>
@@ -50,13 +51,104 @@
             </div>
         </div>
 
+        <!-- Экран ежедневного отчета -->
+        <div id="daily-report-screen" class="screen">
+            <div class="container">
+                <button class="btn back-btn">← Назад</button>
+                <h2>📝 Ежедневный отчет</h2>
+                
+                <div id="daily-report-date" style="text-align: center; color: #666; margin-bottom: 15px;"></div>
+                
+                <div style="background: #f8f9fa; border-radius: 16px; padding: 20px;">
+                    <!-- Шаги -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">👣 Шаги за сегодня</label>
+                        <input type="number" id="daily-steps" placeholder="например: 10000" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px;">
+                    </div>
+                    
+                    <!-- Тип тренировки -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">🏋️ Тренировка</label>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="training-strength" class="btn secondary" style="flex: 1;">💪 Силовая</button>
+                            <button id="training-cardio" class="btn secondary" style="flex: 1;">🏃 Кардио</button>
+                            <button id="training-rest" class="btn secondary" style="flex: 1;">😴 Отдых</button>
+                        </div>
+                        <input type="hidden" id="training-type" value="">
+                    </div>
+                    
+                    <!-- Время тренировки (показывается только если выбрана тренировка) -->
+                    <div id="training-time-container" style="margin-bottom: 20px; display: none;">
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">🕐 Время тренировки</label>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="time-morning" class="btn secondary" style="flex: 1;">🌅 Утро</button>
+                            <button id="time-day" class="btn secondary" style="flex: 1;">☀️ День</button>
+                            <button id="time-evening" class="btn secondary" style="flex: 1;">🌙 Вечер</button>
+                        </div>
+                        <input type="hidden" id="training-time" value="">
+                    </div>
+                    
+                    <!-- Социальный прием пищи -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">🎉 Социально значимый прием пищи</label>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="social-no" class="btn secondary" style="flex: 1;">✅ Нет</button>
+                            <button id="social-yes" class="btn secondary" style="flex: 1;">⚠️ Да</button>
+                        </div>
+                        <input type="hidden" id="social-event" value="false">
+                    </div>
+                    
+                    <!-- Питание до тренировки -->
+                    <div id="pre-meal-container" style="margin-bottom: 20px; display: none;">
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">🍽️ Питание до тренировки (5-6 часов голода)</label>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="pre-yes" class="btn secondary" style="flex: 1;">✅ Соблюдено</button>
+                            <button id="pre-no" class="btn secondary" style="flex: 1;">❌ Не соблюдено</button>
+                            <button id="pre-na" class="btn secondary" style="flex: 1;">➖ Не применимо</button>
+                        </div>
+                        <input type="hidden" id="pre-meal" value="">
+                    </div>
+                    
+                    <!-- Питание после тренировки -->
+                    <div id="post-meal-container" style="margin-bottom: 20px; display: none;">
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">🍽️ Питание после тренировки (кефир/протеин через 40-60 мин)</label>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="post-yes" class="btn secondary" style="flex: 1;">✅ Соблюдено</button>
+                            <button id="post-no" class="btn secondary" style="flex: 1;">❌ Не соблюдено</button>
+                            <button id="post-na" class="btn secondary" style="flex: 1;">➖ Не применимо</button>
+                        </div>
+                        <input type="hidden" id="post-meal" value="">
+                    </div>
+                    
+                    <!-- Комментарий -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">💬 Комментарий (необязательно)</label>
+                        <textarea id="daily-notes" rows="2" placeholder="Что-то важное?" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;"></textarea>
+                    </div>
+                    
+                    <button id="save-daily-report-btn" class="btn primary" style="background: #34c759;">💾 Сохранить отчет</button>
+                </div>
+                
+                <!-- История за неделю -->
+                <div style="margin-top: 20px;">
+                    <h3>📊 Прогресс за неделю</h3>
+                    <div id="weekly-progress" style="margin-top: 10px;"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Экран профиля -->
         <div id="profile-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
                 <h2>👤 Мой профиль</h2>
                 
-                <div style="background: #f8f9fa; border-radius: 16px; padding: 20px; margin-top: 20px;">
+                <!-- Сообщение недели -->
+                <div id="weekly-message" style="background: #e8f5e9; border-radius: 12px; padding: 15px; margin-bottom: 20px; border-left: 4px solid #34c759; display: none;">
+                    <div id="weekly-message-text" style="font-size: 14px; line-height: 1.4;"></div>
+                </div>
+                
+                <div style="background: #f8f9fa; border-radius: 16px; padding: 20px;">
                     <div style="margin-bottom: 20px;">
                         <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">Абонемент</label>
                         <div style="font-size: 18px; font-weight: 500;" id="profile-subscription">—</div>
@@ -111,23 +203,19 @@
                 <button class="btn back-btn">← Назад</button>
                 <h2>Управление</h2>
                 
-                <!-- Вкладки -->
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                     <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #007aff;">📅 Слоты</button>
                     <button id="admin-clients-tab" class="btn secondary" style="flex: 1; background: #e9ecef; color: #1e1e1e;">👥 Клиенты</button>
                 </div>
                 
-                <!-- Панель слотов -->
                 <div id="admin-slots-panel" style="display: block;">
                     <div id="admin-slots"></div>
                 </div>
                 
-                <!-- Панель клиентов -->
                 <div id="admin-clients-panel" style="display: none;">
                     <div id="admin-clients-list"></div>
                 </div>
                 
-                <!-- Форма добавления слота -->
                 <div class="admin-form">
                     <h3>Добавить новый слот (1 час)</h3>
                     <input type="datetime-local" id="admin-start">
@@ -135,7 +223,6 @@
                     <p style="font-size: 12px; color: #666; margin-top: 8px;">* Конец слота автоматически ставится +1 час</p>
                 </div>
                 
-                <!-- Все записи -->
                 <div id="admin-bookings"></div>
             </div>
         </div>
@@ -162,6 +249,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
