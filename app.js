@@ -13,6 +13,7 @@ const screens = {
     menu: document.getElementById('menu-screen'),
     booking: document.getElementById('booking-screen'),
     myBookings: document.getElementById('my-bookings-screen'),
+    dailyReport: document.getElementById('daily-report-screen'),
     profile: document.getElementById('profile-screen'),
     steps: document.getElementById('steps-screen'),
     admin: document.getElementById('admin-screen')
@@ -22,342 +23,21 @@ let currentUser = null;
 let selectedSlotIds = new Set();
 let isLoggingIn = false;
 
-// --- Загрузка профиля пользователя ---
-// --- Загрузка профиля пользователя ---
-async function loadMyProfile() {
-    if (!currentUser) return;
-    
-    const { data: profile, error } = await sb
-        .from('profiles')
-        .select('weight, subscription_until')
-        .eq('id', currentUser.id)
-        .single();
-    
-    if (error) {
-        console.error('Ошибка загрузки профиля:', error);
-        return;
-    }
-    
-    // Отображаем абонемент
-    const subscriptionEl = document.getElementById('profile-subscription');
-    if (subscriptionEl) {
-        if (profile?.subscription_until) {
-            const untilDate = new Date(profile.subscription_until);
-            const daysLeft = Math.ceil((untilDate - new Date()) / (1000 * 60 * 60 * 24));
-            
-            if (daysLeft < 0) {
-                subscriptionEl.innerHTML = '❌ Истек';
-                subscriptionEl.style.color = '#ff3b30';
-            } else if (daysLeft <= 7) {
-                subscriptionEl.innerHTML = `⚠️ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
-                subscriptionEl.style.color = '#ff9500';
-            } else {
-                subscriptionEl.innerHTML = `✅ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
-                subscriptionEl.style.color = '#34c759';
-            }
-        } else {
-            subscriptionEl.innerHTML = '—';
-            subscriptionEl.style.color = '#666';
-        }
-    }
-    
-    // Отображаем последний вес из истории
-    const weightHistory = await loadWeightHistory();
-    const weightEl = document.getElementById('profile-weight');
-    const weightContainer = document.getElementById('profile-weight-container');
-    
-    if (weightEl) {
-        if (weightHistory && weightHistory.length > 0) {
-            const lastWeight = weightHistory[weightHistory.length - 1].weight;
-            weightEl.innerHTML = `${lastWeight} кг`;
-            weightEl.style.color = '#1e1e1e';
-        } else {
-            weightEl.innerHTML = '—';
-            weightEl.style.color = '#666';
-        }
-    }
-    
-    // Делаем вес кликабельным
-    if (weightContainer) {
-        weightContainer.style.cursor = 'pointer';
-        weightContainer.onclick = () => openWeightModal();
-    }
-    
-    // Отрисовываем график
-    await renderWeightChart();
-}
 
-// --- Открытие модального окна для взвешивания ---
-// --- Открытие модального окна для взвешивания ---
-async function openWeightModal() {
-    const history = await loadWeightHistory();
-    const canAdd = canAddWeight(history);
-    const modal = document.getElementById('weight-modal');
-    const weightInput = document.getElementById('weight-input');
-    const errorDiv = document.getElementById('weight-error');
-    const saveBtn = document.getElementById('weight-save-btn');
-    const cancelBtn = document.getElementById('weight-cancel-btn');
-    
-    if (!canAdd) {
-        const today = new Date();
-        const isMonday = today.getDay() === 1;
-        
-        if (!isMonday) {
-            errorDiv.textContent = '⚠️ Взвешивание возможно только по понедельникам.';
-        } else {
-            errorDiv.textContent = '⚠️ Взвешивание возможно не чаще 1 раза в неделю.';
-        }
-        errorDiv.style.display = 'block';
-        weightInput.disabled = true;
-        saveBtn.disabled = true;
-        saveBtn.style.opacity = '0.5';
-    } else {
-        errorDiv.style.display = 'none';
-        weightInput.disabled = false;
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        weightInput.value = '';
-    }
-    
-    modal.style.display = 'flex';
-    
-    // Функция очистки обработчиков
-    const cleanup = () => {
-        saveBtn.removeEventListener('click', handleSave);
-        cancelBtn.removeEventListener('click', handleCancel);
-        modal.removeEventListener('click', handleClickOutside);
-    };
-    
-    // Обработчик сохранения
-    const handleSave = async () => {
-        const weight = weightInput.value;
-        if (!weight || weight <= 0) {
-            alert('Введите корректный вес');
-            return;
-        }
-        
-        const success = await saveWeight(weight);
-        if (success) {
-            alert('✅ Вес сохранен!');
-            modal.style.display = 'none';
-            await loadMyProfile();
-        } else {
-            alert('❌ Ошибка сохранения. Возможно, вы уже взвешивались на этой неделе.');
-        }
-        
-        cleanup();
-    };
-    
-    // Обработчик отмены
-    const handleCancel = () => {
-        modal.style.display = 'none';
-        cleanup();
-    };
-    
-    // Обработчик клика вне модального окна
-    const handleClickOutside = (e) => {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-            cleanup();
-        }
-    };
-    
-    saveBtn.addEventListener('click', handleSave);
-    cancelBtn.addEventListener('click', handleCancel);
-    modal.addEventListener('click', handleClickOutside);
-}
 
-// --- Загрузка минимальной нормы шагов пользователя ---
-async function loadMinSteps() {
-    if (!currentUser) return null;
-    
-    const { data, error } = await sb
-        .from('profiles')
-        .select('min_steps')
-        .eq('id', currentUser.id)
-        .single();
-    
-    if (error) {
-        console.error('Ошибка загрузки нормы шагов:', error);
-        return null;
-    }
-    
-    return data?.min_steps || 10000;
-}
-
-// --- Проверка, можно ли добавить шаги (только с 19:00 до 00:00) ---
-function canAddSteps() {
-    const now = new Date();
-    const hours = now.getHours();
-    const mskHours = (hours + 3) % 24; // Приводим к МСК
-    
-    return mskHours >= 19; // с 19:00 до 00:00
-}
-
-// --- Сохранение шагов ---
-async function saveSteps(steps) {
-    if (!currentUser) return false;
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const stepsDate = today.toISOString().split('T')[0];
-    
-    // Проверяем, не добавляли ли уже шаги сегодня
-    const { data: existing } = await sb
-        .from('steps_history')
-        .select('id')
-        .eq('user_id', currentUser.id)
-        .eq('steps_date', stepsDate)
-        .single();
-    
-    if (existing) {
-        // Обновляем существующую запись
-        const { error } = await sb
-            .from('steps_history')
-            .update({ steps: parseInt(steps) })
-            .eq('id', existing.id);
-        
-        if (error) {
-            console.error('Ошибка обновления шагов:', error);
-            return false;
-        }
-    } else {
-        // Создаем новую запись
-        const { error } = await sb
-            .from('steps_history')
-            .insert({
-                user_id: currentUser.id,
-                steps: parseInt(steps),
-                steps_date: stepsDate
-            });
-        
-        if (error) {
-            console.error('Ошибка сохранения шагов:', error);
-            return false;
-        }
-    }
-    
-    return true;
-}
-
-// --- Загрузка истории шагов ---
-async function loadStepsHistory() {
-    if (!currentUser) return [];
-    
-    const { data, error } = await sb
-        .from('steps_history')
-        .select('steps, steps_date')
-        .eq('user_id', currentUser.id)
-        .order('steps_date', { ascending: false })
-        .limit(30);
-    
-    if (error) {
-        console.error('Ошибка загрузки истории шагов:', error);
-        return [];
-    }
-    
-    return data || [];
-}
-
-// --- Отображение истории шагов ---
-async function renderStepsHistory() {
-    const history = await loadStepsHistory();
-    const minSteps = await loadMinSteps();
-    const container = document.getElementById('steps-history-list');
-    
-    if (!container) return;
-    
-    if (!history || history.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных о шагах</p>';
-        return;
-    }
-    
-    container.innerHTML = '';
-    
-    // Создаем таблицу
-    const table = document.createElement('div');
-    table.style.cssText = 'width: 100%; border-collapse: collapse;';
-    
-    for (let record of history) {
-        const date = new Date(record.steps_date);
-        const formattedDate = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
-        const steps = record.steps;
-        const isOk = steps >= minSteps;
-        
-        const row = document.createElement('div');
-        row.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            margin-bottom: 8px;
-            background: ${isOk ? '#e8f5e9' : '#ffebee'};
-            border-radius: 12px;
-            border-left: 4px solid ${isOk ? '#34c759' : '#ff3b30'};
-        `;
-        
-        row.innerHTML = `
-            <div style="flex: 1;">
-                <div style="font-weight: 500;">${formattedDate}</div>
-                <div style="font-size: 12px; color: #666;">${isOk ? '✅ Норма выполнена' : '⚠️ Ниже нормы'}</div>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-size: 20px; font-weight: 600; color: ${isOk ? '#34c759' : '#ff3b30'};">${steps.toLocaleString()}</div>
-                <div style="font-size: 12px; color: #666;">/ ${minSteps.toLocaleString()}</div>
-            </div>
-        `;
-        
-        table.appendChild(row);
-    }
-    
-    container.appendChild(table);
-}
-
-// --- Открытие экрана отчетов ---
-async function openStepsReport() {
-    // Проверяем, можно ли добавлять шаги
-    const canAdd = canAddSteps();
-    const stepsInput = document.getElementById('steps-input');
-    const addBtn = document.getElementById('add-steps-btn');
-    const errorDiv = document.getElementById('steps-error');
-    
-    if (!canAdd) {
-        errorDiv.textContent = '⚠️ Добавление шагов возможно только с 19:00 до 00:00 по Московскому времени.';
-        errorDiv.style.display = 'block';
-        stepsInput.disabled = true;
-        addBtn.disabled = true;
-        addBtn.style.opacity = '0.5';
-    } else {
-        errorDiv.style.display = 'none';
-        stepsInput.disabled = false;
-        addBtn.disabled = false;
-        addBtn.style.opacity = '1';
-    }
-    
-    // Загружаем норму шагов
-    const minSteps = await loadMinSteps();
-    const minStepsEl = document.getElementById('user-min-steps');
-    if (minStepsEl) {
-        minStepsEl.innerHTML = `${minSteps?.toLocaleString() || '10000'} шагов`;
-    }
-    
-    // Загружаем историю
-    await renderStepsHistory();
-    
-    // Показываем экран
-    showScreen('steps');
-}
 
 // --- Функция переключения экранов ---
 function showScreen(name) {
-    Object.keys(screens).forEach(k => screens[k].classList.remove('active'));
-    screens[name].classList.add('active');
+    Object.keys(screens).forEach(k => {
+        if (screens[k]) screens[k].classList.remove('active');
+    });
+    if (screens[name]) screens[name].classList.add('active');
 }
 
 
 
 
-// --- Очистка телефона от лишних символов ---
+// --- Очистка телефона ---
 function cleanPhone(phone) {
     return phone.replace(/[^0-9]/g, '');
 }
@@ -384,193 +64,20 @@ async function loginWithPhone(phone, name) {
                 data: { name: name, phone: phone }
             }
         });
-        
         if (signUpError) throw signUpError;
         data = signUpData;
     } else if (error && !error.message.includes('Invalid login credentials')) {
         throw error;
     }
     
-    const { error: profileError } = await sb
-        .from('profiles')
-        .upsert({ id: data.user.id, phone: phone, name: name });
-    
-    if (profileError) console.error('Ошибка сохранения профиля:', profileError);
-    
+    await sb.from('profiles').upsert({ id: data.user.id, phone: phone, name: name });
     return data.user;
 }
 
-// --- Загрузка истории веса пользователя ---
-async function loadWeightHistory() {
-    if (!currentUser) return [];
-    
-    const { data, error } = await sb
-        .from('weight_history')
-        .select('weight, weigh_date')
-        .eq('user_id', currentUser.id)
-        .order('weigh_date', { ascending: true });
-    
-    if (error) {
-        console.error('Ошибка загрузки истории веса:', error);
-        return [];
-    }
-    
-    return data || [];
-}
-
-// --- Проверка, можно ли добавить новый вес ---
-function canAddWeight(history) {
-    if (!history || history.length === 0) return true;
-    
-    const lastWeighDate = new Date(history[history.length - 1].weigh_date);
-    const today = new Date();
-    
-    // Проверяем, что сегодня понедельник
-    const isMonday = today.getDay() === 1;
-    if (!isMonday) return false;
-    
-    // Проверяем, что прошла неделя с последнего взвешивания
-    const daysSinceLast = Math.floor((today - lastWeighDate) / (1000 * 60 * 60 * 24));
-    return daysSinceLast >= 7;
-}
-
-// --- Сохранение нового веса ---
-async function saveWeight(weight) {
-    if (!currentUser) return false;
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const weighDate = today.toISOString().split('T')[0];
-    
-    const { error } = await sb
-        .from('weight_history')
-        .insert({
-            user_id: currentUser.id,
-            weight: parseFloat(weight),
-            weigh_date: weighDate
-        });
-    
-    if (error) {
-        console.error('Ошибка сохранения веса:', error);
-        return false;
-    }
-    
-    return true;
-}
-
-// --- Отрисовка графика веса ---
-async function renderWeightChart() {
-    const history = await loadWeightHistory();
-    const container = document.getElementById('weight-chart-container');
-    const totalLossEl = document.getElementById('total-loss');
-    
-    if (!history || history.length < 2) {
-        container.style.display = 'none';
-        return;
-    }
-    
-    container.style.display = 'block';
-    
-    // Загружаем Chart.js
-    if (typeof Chart === 'undefined') {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-        script.onload = () => drawChart(history, totalLossEl);
-        document.head.appendChild(script);
-    } else {
-        drawChart(history, totalLossEl);
-    }
-}
-
-function drawChart(history, totalLossEl) {
-    const ctx = document.getElementById('weight-chart').getContext('2d');
-    
-    const labels = history.map(h => {
-        const date = new Date(h.weigh_date);
-        return `${date.getDate()}.${date.getMonth() + 1}`;
-    });
-    
-    const weights = history.map(h => h.weight);
-    
-    // Уничтожаем старый график, если есть
-    if (window.weightChart) {
-        window.weightChart.destroy();
-    }
-    
-    window.weightChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Вес (кг)',
-                data: weights,
-                borderColor: '#007aff',
-                backgroundColor: 'rgba(0, 122, 255, 0.1)',
-                tension: 0.3,
-                fill: true,
-                pointBackgroundColor: '#007aff',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return `${context.raw} кг`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    title: {
-                        display: true,
-                        text: 'кг',
-                        font: { size: 12 }
-                    },
-                    min: Math.floor(Math.min(...weights) - 2),
-                    max: Math.ceil(Math.max(...weights) + 2)
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Дата',
-                        font: { size: 12 }
-                    }
-                }
-            }
-        }
-    });
-    
-    // Вычисляем общую потерю веса
-    const firstWeight = history[0].weight;
-    const lastWeight = history[history.length - 1].weight;
-    const loss = (firstWeight - lastWeight).toFixed(1);
-    
-    if (loss > 0) {
-        totalLossEl.innerHTML = `📉 Общая потеря: ${loss} кг`;
-        totalLossEl.style.color = '#34c759';
-    } else if (loss < 0) {
-        totalLossEl.innerHTML = `📈 Общий набор: ${Math.abs(loss)} кг`;
-        totalLossEl.style.color = '#ff3b30';
-    } else {
-        totalLossEl.innerHTML = `⚖️ Вес стабилен: ${loss} кг`;
-        totalLossEl.style.color = '#666';
-    }
-}
 
 
-// --- Загрузка свободных слотов для клиента ---
+
+// --- Загрузка свободных слотов ---
 async function loadSlots() {
     const { data, error } = await sb
         .from('slots')
@@ -585,165 +92,74 @@ async function loadSlots() {
 
 
 
-// --- Отображение слотов для клиента с подсветкой рекомендуемых ---
+// --- Отображение слотов (сокращенно, как было ранее) ---
 async function renderSlots(slots) {
     const container = document.getElementById('slots-list');
     if (!container) return;
     container.innerHTML = '';
     
     if (!slots || slots.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет свободных слотов на ближайшую неделю</p>';
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет свободных слотов</p>';
         return;
     }
     
-    // Создаем список занятых слотов для каждого дня
-    const { data: allSlots } = await sb
-        .from('slots')
-        .select('start_time, is_available')
-        .gte('start_time', new Date().toISOString())
-        .lte('start_time', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString());
-    
-    const bookedTimesByDay = {};
-    (allSlots || []).forEach(slot => {
-        if (!slot.is_available) {
-            const date = new Date(slot.start_time);
-            const dayKey = date.toLocaleDateString('ru-RU');
-            const timeStr = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            if (!bookedTimesByDay[dayKey]) bookedTimesByDay[dayKey] = [];
-            bookedTimesByDay[dayKey].push(timeStr);
-        }
-    });
-    
-    // Функция проверки соседней записи
-    function hasAdjacentBooking(dayKey, timeStr) {
-        const [hours] = timeStr.split(':').map(Number);
-        const prevHour = `${(hours - 1).toString().padStart(2,'0')}:00`;
-        const nextHour = `${(hours + 1).toString().padStart(2,'0')}:00`;
-        const bookedTimes = bookedTimesByDay[dayKey] || [];
-        return bookedTimes.includes(prevHour) || bookedTimes.includes(nextHour);
-    }
-    
-    // Группируем слоты по дням
     const groupedByDay = {};
     slots.forEach(slot => {
         const date = new Date(slot.start_time);
-        const dayKey = date.toLocaleDateString('ru-RU');
-        const displayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
-        if (!groupedByDay[displayKey]) {
-            groupedByDay[displayKey] = { slots: [], dayKey: dayKey };
-        }
-        groupedByDay[displayKey].slots.push(slot);
+        const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+        if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+        groupedByDay[dayKey].push(slot);
     });
     
-    const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
-        const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
-        const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
-        return dateA - dateB;
-    });
-    
-    for (let displayDay of sortedDays) {
-        const dayData = groupedByDay[displayDay];
-        const daySlots = dayData.slots;
-        const dayKey = dayData.dayKey;
-        
-        daySlots.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+    for (let [day, daySlots] of Object.entries(groupedByDay)) {
+        const dayDiv = document.createElement('div');
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
+        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px;">📅 ${day}</h3>`;
         
         const morning = daySlots.filter(s => new Date(s.start_time).getHours() < 15);
         const evening = daySlots.filter(s => new Date(s.start_time).getHours() >= 15);
         
-        const dayDiv = document.createElement('div');
-        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
-        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${displayDay}</h3>`;
-        
-        // Утро
         if (morning.length > 0) {
             const morningDiv = document.createElement('div');
             morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
-            
             morning.forEach(slot => {
                 const start = new Date(slot.start_time);
-                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-                const hasAdjacent = hasAdjacentBooking(dayKey, timeStr);
-                
                 const slotDiv = document.createElement('div');
-                slotDiv.className = 'slot-item';
-                if (selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
-                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#fff9e6' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#ffc107' : '#e9ecef'};`;
-                
-                let badgeHtml = '';
-                if (hasAdjacent) {
-                    badgeHtml = '<span style="background: #ffc107; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
-                }
-                
+                slotDiv.style.cssText = 'display: flex; justify-content: space-between; padding: 10px; margin-bottom: 6px; background: #f8f9fa; border-radius: 8px;';
                 slotDiv.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-weight: 500;">${timeStr}</span>
-                        ${badgeHtml}
-                    </div>
-                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width: 22px; height: 22px;">
+                    <span>${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''}>
                 `;
-                
-                const checkbox = slotDiv.querySelector('.slot-select');
-                checkbox.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        selectedSlotIds.add(slot.id);
-                    } else {
-                        selectedSlotIds.delete(slot.id);
-                    }
-                    const confirmBtn = document.getElementById('confirm-booking-btn');
-                    if (confirmBtn) {
-                        confirmBtn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
-                        confirmBtn.textContent = `✅ Подтвердить запись (${selectedSlotIds.size})`;
-                    }
+                const cb = slotDiv.querySelector('.slot-select');
+                cb.addEventListener('change', () => {
+                    if (cb.checked) selectedSlotIds.add(slot.id);
+                    else selectedSlotIds.delete(slot.id);
+                    const btn = document.getElementById('confirm-booking-btn');
+                    if (btn) btn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
                 });
-                
                 morningDiv.appendChild(slotDiv);
             });
             dayDiv.appendChild(morningDiv);
         }
         
-        // Вечер
         if (evening.length > 0) {
             const eveningDiv = document.createElement('div');
             eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
-            
             evening.forEach(slot => {
                 const start = new Date(slot.start_time);
-                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-                const hasAdjacent = hasAdjacentBooking(dayKey, timeStr);
-                
                 const slotDiv = document.createElement('div');
-                slotDiv.className = 'slot-item';
-                if (selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
-                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#fff9e6' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#ffc107' : '#e9ecef'};`;
-                
-                let badgeHtml = '';
-                if (hasAdjacent) {
-                    badgeHtml = '<span style="background: #ffc107; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
-                }
-                
+                slotDiv.style.cssText = 'display: flex; justify-content: space-between; padding: 10px; margin-bottom: 6px; background: #f8f9fa; border-radius: 8px;';
                 slotDiv.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-weight: 500;">${timeStr}</span>
-                        ${badgeHtml}
-                    </div>
-                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width: 22px; height: 22px;">
+                    <span>${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''}>
                 `;
-                
-                const checkbox = slotDiv.querySelector('.slot-select');
-                checkbox.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        selectedSlotIds.add(slot.id);
-                    } else {
-                        selectedSlotIds.delete(slot.id);
-                    }
-                    const confirmBtn = document.getElementById('confirm-booking-btn');
-                    if (confirmBtn) {
-                        confirmBtn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
-                        confirmBtn.textContent = `✅ Подтвердить запись (${selectedSlotIds.size})`;
-                    }
+                const cb = slotDiv.querySelector('.slot-select');
+                cb.addEventListener('change', () => {
+                    if (cb.checked) selectedSlotIds.add(slot.id);
+                    else selectedSlotIds.delete(slot.id);
+                    const btn = document.getElementById('confirm-booking-btn');
+                    if (btn) btn.style.display = selectedSlotIds.size > 0 ? 'block' : 'none';
                 });
-                
                 eveningDiv.appendChild(slotDiv);
             });
             dayDiv.appendChild(eveningDiv);
@@ -756,42 +172,21 @@ async function renderSlots(slots) {
 
 
 
-// --- Подтверждение записи клиентом ---
+// --- Подтверждение записи ---
 async function confirmBooking() {
     if (!currentUser) return;
-    
-    if (selectedSlotIds.size === 0) {
-        alert('Выберите слоты для записи');
-        return;
-    }
+    if (selectedSlotIds.size === 0) return alert('Выберите слоты');
     
     for (let slotId of selectedSlotIds) {
-        const { error: updateError } = await sb
-            .from('slots')
-            .update({ is_available: false })
-            .eq('id', slotId);
-        
-        if (updateError) {
-            alert('Ошибка при бронировании');
-            return;
-        }
+        await sb.from('slots').update({ is_available: false }).eq('id', slotId);
     }
     
-    const bookingsToInsert = Array.from(selectedSlotIds).map(slotId => ({
-        slot_id: slotId,
-        user_id: currentUser.id
-    }));
+    const bookings = Array.from(selectedSlotIds).map(slotId => ({ slot_id: slotId, user_id: currentUser.id }));
+    const { error } = await sb.from('bookings').insert(bookings);
     
-    const { error: insertError } = await sb
-        .from('bookings')
-        .insert(bookingsToInsert);
-    
-    if (insertError) {
+    if (error) {
         for (let slotId of selectedSlotIds) {
-            await sb
-                .from('slots')
-                .update({ is_available: true })
-                .eq('id', slotId);
+            await sb.from('slots').update({ is_available: true }).eq('id', slotId);
         }
         alert('Ошибка записи');
     } else {
@@ -804,80 +199,53 @@ async function confirmBooking() {
 
 
 
-// --- Загрузка и отображение записей клиента ---
+// --- Загрузка моих записей ---
 async function loadMyBookings() {
-    const { data: bookings, error } = await sb
+    const { data: bookings } = await sb
         .from('bookings')
         .select('id, slot_id, slots(start_time, end_time)')
         .eq('user_id', currentUser.id);
-    
-    if (error) throw error;
     
     const container = document.getElementById('my-bookings-list');
     if (!container) return;
     container.innerHTML = '';
     
     if (!bookings || bookings.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">У вас нет записей</p>';
+        container.innerHTML = '<p style="text-align: center;">Нет записей</p>';
         return;
     }
     
     const groupedByDay = {};
-    bookings.forEach(booking => {
-        const date = new Date(booking.slots.start_time);
+    bookings.forEach(b => {
+        const date = new Date(b.slots.start_time);
         const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
         if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
-        groupedByDay[dayKey].push(booking);
+        groupedByDay[dayKey].push(b);
     });
     
-    const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
-        const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
-        const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
-        return dateA - dateB;
-    });
-    
-    for (let day of sortedDays) {
-        const dayBookings = groupedByDay[day];
+    for (let [day, dayBookings] of Object.entries(groupedByDay)) {
         const dayDiv = document.createElement('div');
-        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
-        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
+        dayDiv.style.cssText = 'margin-bottom: 15px;';
+        dayDiv.innerHTML = `<h3 style="font-size: 16px;">📅 ${day}</h3>`;
         
-        for (let booking of dayBookings) {
-            const start = new Date(booking.slots.start_time);
-            const formatted = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            
+        dayBookings.forEach(b => {
+            const start = new Date(b.slots.start_time);
             const div = document.createElement('div');
-            div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
+            div.style.cssText = 'display: flex; justify-content: space-between; padding: 10px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px;';
             div.innerHTML = `
-                <span style="font-weight: 500;">${formatted}</span>
-                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
+                <span>${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                <button class="cancel-btn" data-id="${b.id}" data-slot="${b.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 5px 12px; border-radius: 6px;">Отменить</button>
             `;
-            
             const cancelBtn = div.querySelector('.cancel-btn');
             cancelBtn.addEventListener('click', async () => {
                 if (confirm('Отменить запись?')) {
-                    const { error: deleteError } = await sb
-                        .from('bookings')
-                        .delete()
-                        .eq('id', booking.id);
-                    
-                    if (deleteError) {
-                        alert('Ошибка отмены');
-                        return;
-                    }
-                    
-                    await sb
-                        .from('slots')
-                        .update({ is_available: true })
-                        .eq('id', booking.slot_id);
-                    
-                    alert('Запись отменена');
+                    await sb.from('bookings').delete().eq('id', b.id);
+                    await sb.from('slots').update({ is_available: true }).eq('id', b.slot_id);
                     await loadMyBookings();
                 }
             });
-            
             dayDiv.appendChild(div);
-        }
+        });
         container.appendChild(dayDiv);
     }
 }
@@ -885,7 +253,338 @@ async function loadMyBookings() {
 
 
 
-// --- Функция автоматического обновления расписания ---
+// --- ЕЖЕДНЕВНЫЙ ОТЧЕТ ---
+let currentTrainingType = '';
+let currentTrainingTime = '';
+let currentSocialEvent = false;
+let currentPreMeal = '';
+let currentPostMeal = '';
+
+function initDailyReportUI() {
+    // Тип тренировки
+    document.getElementById('training-strength')?.addEventListener('click', () => setTrainingType('strength'));
+    document.getElementById('training-cardio')?.addEventListener('click', () => setTrainingType('cardio'));
+    document.getElementById('training-rest')?.addEventListener('click', () => setTrainingType('rest'));
+    
+    // Время тренировки
+    document.getElementById('time-morning')?.addEventListener('click', () => setTrainingTime('morning'));
+    document.getElementById('time-day')?.addEventListener('click', () => setTrainingTime('day'));
+    document.getElementById('time-evening')?.addEventListener('click', () => setTrainingTime('evening'));
+    
+    // Социальный прием
+    document.getElementById('social-no')?.addEventListener('click', () => setSocialEvent(false));
+    document.getElementById('social-yes')?.addEventListener('click', () => setSocialEvent(true));
+    
+    // Питание до
+    document.getElementById('pre-yes')?.addEventListener('click', () => setPreMeal('yes'));
+    document.getElementById('pre-no')?.addEventListener('click', () => setPreMeal('no'));
+    document.getElementById('pre-na')?.addEventListener('click', () => setPreMeal('na'));
+    
+    // Питание после
+    document.getElementById('post-yes')?.addEventListener('click', () => setPostMeal('yes'));
+    document.getElementById('post-no')?.addEventListener('click', () => setPostMeal('no'));
+    document.getElementById('post-na')?.addEventListener('click', () => setPostMeal('na'));
+    
+    // Сохранение
+    document.getElementById('save-daily-report-btn')?.addEventListener('click', saveDailyReport);
+}
+
+function setTrainingType(type) {
+    currentTrainingType = type;
+    document.getElementById('training-strength').style.background = type === 'strength' ? '#007aff' : '#e9ecef';
+    document.getElementById('training-strength').style.color = type === 'strength' ? 'white' : '#1e1e1e';
+    document.getElementById('training-cardio').style.background = type === 'cardio' ? '#007aff' : '#e9ecef';
+    document.getElementById('training-cardio').style.color = type === 'cardio' ? 'white' : '#1e1e1e';
+    document.getElementById('training-rest').style.background = type === 'rest' ? '#007aff' : '#e9ecef';
+    document.getElementById('training-rest').style.color = type === 'rest' ? 'white' : '#1e1e1e';
+    document.getElementById('training-type').value = type;
+    
+    const timeContainer = document.getElementById('training-time-container');
+    const preMealContainer = document.getElementById('pre-meal-container');
+    const postMealContainer = document.getElementById('post-meal-container');
+    
+    if (type === 'rest') {
+        timeContainer.style.display = 'none';
+        preMealContainer.style.display = 'none';
+        postMealContainer.style.display = 'none';
+        currentTrainingTime = '';
+        currentPreMeal = '';
+        currentPostMeal = '';
+    } else {
+        timeContainer.style.display = 'block';
+        preMealContainer.style.display = 'block';
+        postMealContainer.style.display = 'block';
+    }
+}
+
+function setTrainingTime(time) {
+    currentTrainingTime = time;
+    document.getElementById('time-morning').style.background = time === 'morning' ? '#007aff' : '#e9ecef';
+    document.getElementById('time-morning').style.color = time === 'morning' ? 'white' : '#1e1e1e';
+    document.getElementById('time-day').style.background = time === 'day' ? '#007aff' : '#e9ecef';
+    document.getElementById('time-day').style.color = time === 'day' ? 'white' : '#1e1e1e';
+    document.getElementById('time-evening').style.background = time === 'evening' ? '#007aff' : '#e9ecef';
+    document.getElementById('time-evening').style.color = time === 'evening' ? 'white' : '#1e1e1e';
+    document.getElementById('training-time').value = time;
+}
+
+function setSocialEvent(value) {
+    currentSocialEvent = value;
+    document.getElementById('social-no').style.background = !value ? '#007aff' : '#e9ecef';
+    document.getElementById('social-no').style.color = !value ? 'white' : '#1e1e1e';
+    document.getElementById('social-yes').style.background = value ? '#007aff' : '#e9ecef';
+    document.getElementById('social-yes').style.color = value ? 'white' : '#1e1e1e';
+    document.getElementById('social-event').value = value;
+}
+
+function setPreMeal(value) {
+    currentPreMeal = value;
+    document.getElementById('pre-yes').style.background = value === 'yes' ? '#34c759' : '#e9ecef';
+    document.getElementById('pre-yes').style.color = value === 'yes' ? 'white' : '#1e1e1e';
+    document.getElementById('pre-no').style.background = value === 'no' ? '#ff3b30' : '#e9ecef';
+    document.getElementById('pre-no').style.color = value === 'no' ? 'white' : '#1e1e1e';
+    document.getElementById('pre-na').style.background = value === 'na' ? '#999' : '#e9ecef';
+    document.getElementById('pre-na').style.color = value === 'na' ? 'white' : '#1e1e1e';
+    document.getElementById('pre-meal').value = value;
+}
+
+function setPostMeal(value) {
+    currentPostMeal = value;
+    document.getElementById('post-yes').style.background = value === 'yes' ? '#34c759' : '#e9ecef';
+    document.getElementById('post-yes').style.color = value === 'yes' ? 'white' : '#1e1e1e';
+    document.getElementById('post-no').style.background = value === 'no' ? '#ff3b30' : '#e9ecef';
+    document.getElementById('post-no').style.color = value === 'no' ? 'white' : '#1e1e1e';
+    document.getElementById('post-na').style.background = value === 'na' ? '#999' : '#e9ecef';
+    document.getElementById('post-na').style.color = value === 'na' ? 'white' : '#1e1e1e';
+    document.getElementById('post-meal').value = value;
+}
+
+async function saveDailyReport() {
+    const steps = parseInt(document.getElementById('daily-steps').value);
+    const trainingType = currentTrainingType;
+    const trainingTime = currentTrainingTime;
+    const socialEvent = currentSocialEvent;
+    const preMeal = currentPreMeal === 'yes' ? true : (currentPreMeal === 'no' ? false : null);
+    const postMeal = currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null);
+    const notes = document.getElementById('daily-notes').value;
+    
+    if (!steps || steps <= 0) {
+        alert('Введите количество шагов');
+        return;
+    }
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { error } = await sb
+        .from('daily_reports')
+        .upsert({
+            user_id: currentUser.id,
+            report_date: today,
+            steps: steps,
+            training_type: trainingType === 'rest' ? 'rest' : trainingType,
+            training_time: trainingTime || null,
+            social_event: socialEvent,
+            pre_meal_compliant: preMeal,
+            post_meal_compliant: postMeal,
+            notes: notes
+        }, { onConflict: 'user_id,report_date' });
+    
+    if (error) {
+        alert('Ошибка сохранения: ' + error.message);
+    } else {
+        alert('✅ Отчет сохранен!');
+        await loadWeeklyProgress();
+        await updateWeeklyMessage();
+    }
+}
+
+async function loadWeeklyProgress() {
+    const today = new Date();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+    startOfWeek.setHours(0,0,0,0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    
+    const { data: reports } = await sb
+        .from('daily_reports')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .gte('report_date', startOfWeek.toISOString().split('T')[0])
+        .lte('report_date', endOfWeek.toISOString().split('T')[0])
+        .order('report_date');
+    
+    const container = document.getElementById('weekly-progress');
+    if (!container) return;
+    
+    if (!reports || reports.length === 0) {
+        container.innerHTML = '<p style="text-align: center;">Нет данных за эту неделю</p>';
+        return;
+    }
+    
+    let totalSteps = 0;
+    let strengthCount = 0;
+    let cardioCount = 0;
+    let socialDays = 0;
+    
+    reports.forEach(r => {
+        totalSteps += r.steps || 0;
+        if (r.training_type === 'strength') strengthCount++;
+        if (r.training_type === 'cardio') cardioCount++;
+        if (r.social_event) socialDays++;
+    });
+    
+    container.innerHTML = `
+        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <span>👣 Шаги:</span>
+                <span><strong>${totalSteps.toLocaleString()}</strong></span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <span>💪 Силовые:</span>
+                <span><strong>${strengthCount}</strong></span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <span>🏃 Кардио:</span>
+                <span><strong>${cardioCount}</strong></span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span>🎉 Нарушения:</span>
+                <span><strong>${socialDays} дней</strong></span>
+            </div>
+        </div>
+    `;
+}
+
+async function openDailyReport() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('daily-report-date').innerHTML = `📅 ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
+    
+    const { data: existing } = await sb
+        .from('daily_reports')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .eq('report_date', today)
+        .single();
+    
+    if (existing) {
+        document.getElementById('daily-steps').value = existing.steps || '';
+        setTrainingType(existing.training_type || '');
+        setTrainingTime(existing.training_time || '');
+        setSocialEvent(existing.social_event || false);
+        setPreMeal(existing.pre_meal_compliant === true ? 'yes' : (existing.pre_meal_compliant === false ? 'no' : 'na'));
+        setPostMeal(existing.post_meal_compliant === true ? 'yes' : (existing.post_meal_compliant === false ? 'no' : 'na'));
+        document.getElementById('daily-notes').value = existing.notes || '';
+    } else {
+        document.getElementById('daily-steps').value = '';
+        setTrainingType('');
+        setTrainingTime('');
+        setSocialEvent(false);
+        setPreMeal('');
+        setPostMeal('');
+        document.getElementById('daily-notes').value = '';
+    }
+    
+    await loadWeeklyProgress();
+    showScreen('dailyReport');
+}
+
+
+
+
+// --- ПРОФИЛЬ И МОТИВАЦИОННОЕ СООБЩЕНИЕ ---
+async function updateWeeklyMessage() {
+    const today = new Date();
+    const lastMonday = new Date(today);
+    lastMonday.setDate(today.getDate() - today.getDay() + 1);
+    lastMonday.setHours(0,0,0,0);
+    const prevMonday = new Date(lastMonday);
+    prevMonday.setDate(lastMonday.getDate() - 7);
+    
+    // Получаем веса
+    const { data: weights } = await sb
+        .from('weight_history')
+        .select('weight, weigh_date')
+        .eq('user_id', currentUser.id)
+        .order('weigh_date', { ascending: false })
+        .limit(2);
+    
+    let weightChange = null;
+    if (weights && weights.length >= 2) {
+        weightChange = weights[1].weight - weights[0].weight;
+    }
+    
+    // Получаем данные за неделю
+    const { data: reports } = await sb
+        .from('daily_reports')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .gte('report_date', lastMonday.toISOString().split('T')[0])
+        .lte('report_date', new Date().toISOString().split('T')[0]);
+    
+    const { data: profile } = await sb
+        .from('profiles')
+        .select('target_steps_weekly, target_strength_weekly, target_cardio_weekly')
+        .eq('id', currentUser.id)
+        .single();
+    
+    const targetSteps = profile?.target_steps_weekly || 70000;
+    const targetStrength = profile?.target_strength_weekly || 3;
+    const targetCardio = profile?.target_cardio_weekly || 1;
+    
+    let actualSteps = 0, actualStrength = 0, actualCardio = 0, socialDays = 0;
+    reports?.forEach(r => {
+        actualSteps += r.steps || 0;
+        if (r.training_type === 'strength') actualStrength++;
+        if (r.training_type === 'cardio') actualCardio++;
+        if (r.social_event) socialDays++;
+    });
+    
+    const stepsPercent = actualSteps / targetSteps;
+    const strengthOk = actualStrength >= targetStrength;
+    const cardioOk = actualCardio >= targetCardio;
+    const socialOk = socialDays <= 1;
+    const allCompliant = stepsPercent >= 0.9 && strengthOk && cardioOk && socialOk;
+    
+    const messageDiv = document.getElementById('weekly-message');
+    const messageText = document.getElementById('weekly-message-text');
+    
+    if (!messageDiv || !messageText) return;
+    
+    if (weightChange !== null && weightChange < -0.2) {
+        messageDiv.style.background = '#e8f5e9';
+        messageDiv.style.borderLeftColor = '#34c759';
+        messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел${weightChange > 0 ? 'а' : ''} на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
+        messageDiv.style.display = 'block';
+    } 
+    else if (!allCompliant) {
+        let failures = [];
+        if (stepsPercent < 0.9) failures.push(`👣 Шаги: ${Math.round(actualSteps).toLocaleString()} из ${targetSteps.toLocaleString()}`);
+        if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
+        if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${targetCardio}`);
+        if (!socialOk) failures.push(`🎉 Социальные приемы: ${socialDays} дней`);
+        
+        messageDiv.style.background = '#fff3e0';
+        messageDiv.style.borderLeftColor = '#ff9800';
+        messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На следующей неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
+        messageDiv.style.display = 'block';
+    } 
+    else {
+        messageDiv.style.background = '#e3f2fd';
+        messageDiv.style.borderLeftColor = '#007aff';
+        messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌`;
+        messageDiv.style.display = 'block';
+    }
+}
+
+
+
+
+// ============================================
+// АДМИН-ПАНЕЛЬ, КЛИЕНТЫ, СЛОТЫ, ШАГИ, ВЕС
+// ============================================
+
+// --- Автоматическое расписание ---
 async function ensureWeeklySchedule() {
     const schedule = {
         1: { morning: ['08:00', '09:00', '10:00', '11:00'], evening: ['18:00', '19:00', '20:00', '21:00'] },
@@ -956,9 +655,6 @@ async function ensureWeeklySchedule() {
     }
 }
 
-
-
-
 // --- Вспомогательная функция для отображения слота в админке ---
 function addSlotElement(container, slot) {
     const start = new Date(slot.start_time);
@@ -987,51 +683,6 @@ function addSlotElement(container, slot) {
     
     container.appendChild(div);
 }
-
-
-
-// --- Переключение между вкладками в админ-панели ---
-function setupAdminTabs() {
-    const slotsTab = document.getElementById('admin-slots-tab');
-    const clientsTab = document.getElementById('admin-clients-tab');
-    const slotsPanel = document.getElementById('admin-slots-panel');
-    const clientsPanel = document.getElementById('admin-clients-panel');
-    const adminBookingsDiv = document.getElementById('admin-bookings');
-    
-    if (!slotsTab || !clientsTab) return;
-    
-    // Убираем старые обработчики, если были
-    const newSlotsTab = slotsTab.cloneNode(true);
-    const newClientsTab = clientsTab.cloneNode(true);
-    slotsTab.parentNode.replaceChild(newSlotsTab, slotsTab);
-    clientsTab.parentNode.replaceChild(newClientsTab, clientsTab);
-    
-    newSlotsTab.addEventListener('click', () => {
-        newSlotsTab.style.background = '#007aff';
-        newSlotsTab.style.color = 'white';
-        newClientsTab.style.background = '#e9ecef';
-        newClientsTab.style.color = '#1e1e1e';
-        slotsPanel.style.display = 'block';
-        clientsPanel.style.display = 'none';
-        if (adminBookingsDiv) adminBookingsDiv.style.display = 'block';
-    });
-    
-    newClientsTab.addEventListener('click', async () => {
-        newClientsTab.style.background = '#007aff';
-        newClientsTab.style.color = 'white';
-        newSlotsTab.style.background = '#e9ecef';
-        newSlotsTab.style.color = '#1e1e1e';
-        slotsPanel.style.display = 'none';
-        clientsPanel.style.display = 'block';
-        if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
-        
-        // Загружаем список клиентов
-        if (typeof renderClientsList === 'function') {
-            await renderClientsList();
-        }
-    });
-}
-
 
 // --- Админ-панель ---
 async function loadAdminData() {
@@ -1132,16 +783,53 @@ async function loadAdminData() {
         }
     }
     
-    // Настраиваем вкладки (добавляем эту строку)
     setupAdminTabs();
 }
 
+// --- Переключение между вкладками в админ-панели ---
+function setupAdminTabs() {
+    const slotsTab = document.getElementById('admin-slots-tab');
+    const clientsTab = document.getElementById('admin-clients-tab');
+    const slotsPanel = document.getElementById('admin-slots-panel');
+    const clientsPanel = document.getElementById('admin-clients-panel');
+    const adminBookingsDiv = document.getElementById('admin-bookings');
+    
+    if (!slotsTab || !clientsTab) return;
+    
+    const newSlotsTab = slotsTab.cloneNode(true);
+    const newClientsTab = clientsTab.cloneNode(true);
+    slotsTab.parentNode.replaceChild(newSlotsTab, slotsTab);
+    clientsTab.parentNode.replaceChild(newClientsTab, clientsTab);
+    
+    newSlotsTab.addEventListener('click', () => {
+        newSlotsTab.style.background = '#007aff';
+        newSlotsTab.style.color = 'white';
+        newClientsTab.style.background = '#e9ecef';
+        newClientsTab.style.color = '#1e1e1e';
+        slotsPanel.style.display = 'block';
+        clientsPanel.style.display = 'none';
+        if (adminBookingsDiv) adminBookingsDiv.style.display = 'block';
+    });
+    
+    newClientsTab.addEventListener('click', async () => {
+        newClientsTab.style.background = '#007aff';
+        newClientsTab.style.color = 'white';
+        newSlotsTab.style.background = '#e9ecef';
+        newSlotsTab.style.color = '#1e1e1e';
+        slotsPanel.style.display = 'none';
+        clientsPanel.style.display = 'block';
+        if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
+        
+        if (typeof renderClientsList === 'function') {
+            await renderClientsList();
+        }
+    });
+}
 
-// --- Загрузка списка клиентов (все пользователи, кроме админа) ---
+// --- Загрузка списка клиентов ---
 async function loadClientsList() {
     const adminId = 'edafd00c-3f7d-47aa-8d69-9efbe95de98e';
     
-    // Получаем всех пользователей из таблицы profiles, кроме админа
     const { data: profiles, error } = await sb
         .from('profiles')
         .select('*')
@@ -1155,9 +843,6 @@ async function loadClientsList() {
     
     return profiles || [];
 }
-
-
-
 
 // --- Отображение списка клиентов ---
 async function renderClientsList() {
@@ -1176,7 +861,6 @@ async function renderClientsList() {
     container.innerHTML = '';
     
     for (let client of clients) {
-        // Получаем количество записей клиента
         const { count } = await sb
             .from('bookings')
             .select('*', { count: 'exact', head: true })
@@ -1192,57 +876,30 @@ async function renderClientsList() {
                 <div style="flex: 1;">
                     <strong style="font-size: 16px;">👤 ${client.name || 'Без имени'}</strong><br>
                     <span style="color: #666; font-size: 14px;">📞 ${client.phone || 'нет телефона'}</span>
-                    <span style="color: #999; font-size: 12px; margin-left: 10px;">🆔 ${client.id.substring(0, 8)}...</span>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <span style="background: #007aff; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px;">${count || 0} записей</span>
-                    <button class="delete-client-btn" data-id="${client.id}" data-name="${client.name || client.phone || 'клиента'}" style="background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 14px;">✖ Удалить</button>
+                    <button class="delete-client-btn" data-id="${client.id}" data-name="${client.name || client.phone || 'клиента'}" style="background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
                 </div>
             </div>
         `;
         
-        // Клик по карточке (не по кнопке) открывает детали
         const clientInfoDiv = clientCard.querySelector('div:first-child');
         clientInfoDiv.addEventListener('click', (e) => {
             e.stopPropagation();
             showClientDetails(client);
         });
         
-        // Кнопка удаления
         const deleteBtn = clientCard.querySelector('.delete-client-btn');
         deleteBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            
             const clientName = client.name || client.phone || 'клиента';
-            
-            if (confirm(`⚠️ Удалить клиента "${clientName}"?\n\nЭто действие:\n- Удалит все записи клиента\n- Удалит профиль клиента\n- Клиент больше не сможет войти\n\nУчетная запись в системе останется (для безопасности).\n\nПродолжить?`)) {
-                try {
-                    // 1. Удаляем все бронирования клиента
-                    const { error: bookingsError } = await sb
-                        .from('bookings')
-                        .delete()
-                        .eq('user_id', client.id);
-                    
-                    if (bookingsError) throw bookingsError;
-                    
-                    // 2. Удаляем профиль клиента
-                    const { error: profileError } = await sb
-                        .from('profiles')
-                        .delete()
-                        .eq('id', client.id);
-                    
-                    if (profileError) throw profileError;
-                    
-                    alert(`✅ Клиент "${clientName}" удален.\n\nВсе записи удалены.\nУчетная запись сохранена (при необходимости можно восстановить через Supabase).`);
-                    
-                    // Обновляем список клиентов и админ-панель
-                    await renderClientsList();
-                    await loadAdminData();
-                    
-                } catch (error) {
-                    console.error('Ошибка удаления:', error);
-                    alert('❌ Ошибка при удалении клиента: ' + error.message);
-                }
+            if (confirm(`Удалить клиента "${clientName}"?`)) {
+                await sb.from('bookings').delete().eq('user_id', client.id);
+                await sb.from('profiles').delete().eq('id', client.id);
+                alert(`✅ Клиент "${clientName}" удален`);
+                await renderClientsList();
+                await loadAdminData();
             }
         });
         
@@ -1250,303 +907,384 @@ async function renderClientsList() {
     }
 }
 
-
-
-// --- Отображение карточки клиента с записями, профилем и отчетами ---
+// --- Отображение карточки клиента ---
 async function showClientDetails(client) {
-    // Получаем записи клиента
-    const { data: bookings, error: bookingsError } = await sb
+    const { data: bookings } = await sb
         .from('bookings')
-        .select(`
-            id,
-            slot_id,
-            slots (start_time, end_time)
-        `)
-        .eq('user_id', client.id)
-        .order('slot_id');
+        .select('id, slot_id, slots(start_time, end_time)')
+        .eq('user_id', client.id);
     
-    if (bookingsError) {
-        console.error('Ошибка загрузки записей клиента:', bookingsError);
-        alert('Ошибка загрузки записей');
-        return;
-    }
-    
-    // Получаем историю шагов за последние 7 дней
-    const { data: stepsHistory, error: stepsError } = await sb
-        .from('steps_history')
-        .select('steps, steps_date')
-        .eq('user_id', client.id)
-        .order('steps_date', { ascending: false })
-        .limit(7);
-    
-    if (stepsError) console.error('Ошибка загрузки шагов:', stepsError);
-    
-    // Получаем историю веса за последние 7 дней
-    const { data: weightHistory, error: weightError } = await sb
-        .from('weight_history')
-        .select('weight, weigh_date')
-        .eq('user_id', client.id)
-        .order('weigh_date', { ascending: false })
-        .limit(7);
-    
-    if (weightError) console.error('Ошибка загрузки веса:', weightError);
-    
-    const minSteps = client.min_steps || 10000;
-    
-    // Создаем модальное окно
     const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0,0,0,0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    `;
+    modal.style.cssText = `position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;`;
     
     const modalContent = document.createElement('div');
-    modalContent.style.cssText = `
-        background: white;
-        border-radius: 16px;
-        max-width: 550px;
-        width: 90%;
-        max-height: 85vh;
-        overflow-y: auto;
-        padding: 20px;
-    `;
+    modalContent.style.cssText = `background: white; border-radius: 16px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; padding: 20px;`;
     
-    // Формируем HTML для шагов
-    let stepsHtml = '';
-    if (stepsHistory && stepsHistory.length > 0) {
-        stepsHtml = '<div style="margin-bottom: 15px;">';
-        for (let record of stepsHistory) {
-            const date = new Date(record.steps_date);
-            const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
-            const isOk = record.steps >= minSteps;
-            stepsHtml += `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f0f0;">
-                    <span style="font-size: 13px; color: #666;">${dayName}</span>
-                    <span style="font-weight: 500; color: ${isOk ? '#34c759' : '#ff3b30'};">${record.steps.toLocaleString()}</span>
-                    <span style="font-size: 11px; color: ${isOk ? '#34c759' : '#ff3b30'};">${isOk ? '✅' : '⚠️'}</span>
-                </div>
-            `;
-        }
-        stepsHtml += '</div>';
-    } else {
-        stepsHtml = '<p style="font-size: 13px; color: #999; text-align: center;">Нет данных за последние 7 дней</p>';
-    }
-    
-    // Формируем HTML для веса
-    let weightHtml = '';
-    if (weightHistory && weightHistory.length > 0) {
-        weightHtml = '<div style="margin-bottom: 15px;">';
-        for (let record of weightHistory) {
-            const date = new Date(record.weigh_date);
-            const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
-            weightHtml += `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f0f0;">
-                    <span style="font-size: 13px; color: #666;">${dayName}</span>
-                    <span style="font-weight: 500;">${record.weight} кг</span>
-                </div>
-            `;
-        }
-        weightHtml += '</div>';
-    } else {
-        weightHtml = '<p style="font-size: 13px; color: #999; text-align: center;">Нет данных о весе</p>';
-    }
-    
-    // Записи клиента
     let bookingsHtml = '';
     if (bookings && bookings.length > 0) {
-        const groupedByDay = {};
         bookings.forEach(booking => {
-            const date = new Date(booking.slots.start_time);
-            const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
-            if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
-            groupedByDay[dayKey].push(booking);
+            const start = new Date(booking.slots.start_time);
+            bookingsHtml += `
+                <div style="display: flex; justify-content: space-between; padding: 10px; margin-bottom: 8px; background: #f8f9fa; border-radius: 8px;">
+                    <span>${start.toLocaleString()}</span>
+                    <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px;">✖</button>
+                </div>
+            `;
         });
-        
-        for (let [day, dayBookings] of Object.entries(groupedByDay)) {
-            bookingsHtml += `<div style="margin-top: 10px;"><strong style="font-size: 13px; color: #007aff;">📅 ${day}</strong></div>`;
-            dayBookings.forEach(booking => {
-                const start = new Date(booking.slots.start_time);
-                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-                bookingsHtml += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                        <span>🕐 ${timeStr}</span>
-                        <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">✖</button>
-                    </div>
-                `;
-            });
-        }
     } else {
-        bookingsHtml = '<p style="text-align: center; padding: 20px;">Нет записей</p>';
+        bookingsHtml = '<p>Нет записей</p>';
     }
     
     modalContent.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin: 0;">👤 ${client.name || 'Без имени'}</h2>
-            <button id="close-client-modal" style="background: none; border: none; font-size: 24px; cursor: pointer;">✖</button>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+            <h2>👤 ${client.name || 'Без имени'}</h2>
+            <button id="close-client-modal" style="background: none; border: none; font-size: 24px;">✖</button>
         </div>
-        
-        <div style="margin-bottom: 20px;">
-            <p><strong>📞 Телефон:</strong> ${client.phone || 'не указан'}</p>
-            <p><strong>🎯 Норма шагов:</strong> ${minSteps.toLocaleString()} шагов/день</p>
+        <p><strong>📞 Телефон:</strong> ${client.phone || 'не указан'}</p>
+        <div style="margin: 15px 0;">
+            <label>Вес (кг):</label>
+            <input type="number" id="edit-weight" step="0.1" value="${client.weight || ''}" style="width: 100%; padding: 8px; margin-top: 5px;">
         </div>
-        
-        <!-- Дашборд отчетов -->
-        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-            <h3 style="margin: 0 0 12px 0; font-size: 16px;">📊 Отчеты за последние 7 дней</h3>
-            
-            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                <!-- Шаги -->
-                <div style="flex: 1; min-width: 120px;">
-                    <div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги</div>
-                    ${stepsHtml}
-                </div>
-                
-                <!-- Вес -->
-                <div style="flex: 1; min-width: 120px;">
-                    <div style="font-size: 12px; color: #666; margin-bottom: 8px;">⚖️ Вес</div>
-                    ${weightHtml}
-                </div>
-            </div>
+        <div style="margin: 15px 0;">
+            <label>Абонемент до:</label>
+            <input type="date" id="edit-subscription" value="${client.subscription_until || ''}" style="width: 100%; padding: 8px; margin-top: 5px;">
         </div>
-        
-        <!-- Редактирование профиля -->
-        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-            <h3 style="margin: 0 0 12px 0; font-size: 16px;">✏️ Редактировать профиль</h3>
-            
-            <div style="margin-bottom: 10px;">
-                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Вес (кг)</label>
-                <input type="number" id="edit-weight" step="0.1" value="${client.weight || ''}" placeholder="например: 75.5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
-            </div>
-            
-            <div style="margin-bottom: 10px;">
-                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Абонемент до</label>
-                <input type="date" id="edit-subscription" value="${client.subscription_until || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
-            </div>
-            
-            <div style="margin-bottom: 10px;">
-                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Минимальное количество шагов в день</label>
-                <input type="number" id="edit-min-steps" value="${client.min_steps || 10000}" placeholder="например: 10000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
-            </div>
-            
-            <button id="save-profile-btn" style="background: #007aff; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 5px;">💾 Сохранить</button>
+        <div style="margin: 15px 0;">
+            <label>Норма шагов в день:</label>
+            <input type="number" id="edit-min-steps" value="${client.min_steps || 10000}" style="width: 100%; padding: 8px; margin-top: 5px;">
         </div>
-        
-        <!-- Записи клиента -->
-        <div>
-            <h3 style="margin: 0 0 10px 0; font-size: 16px;">📋 Записи клиента</h3>
-            <div id="client-bookings-list" style="max-height: 200px; overflow-y: auto;">
-                ${bookingsHtml}
-            </div>
-        </div>
+        <button id="save-profile-btn" style="background: #007aff; color: white; padding: 10px; border: none; border-radius: 8px; width: 100%; margin: 10px 0;">💾 Сохранить</button>
+        <h3>Записи клиента</h3>
+        <div id="client-bookings-list">${bookingsHtml}</div>
     `;
     
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
     
-    // Закрытие модального окна
-    const closeBtn = modalContent.querySelector('#close-client-modal');
-    closeBtn.addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.getElementById('close-client-modal').onclick = () => modal.remove();
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
     
-    // Сохранение профиля
-    const saveBtn = modalContent.querySelector('#save-profile-btn');
-    saveBtn.addEventListener('click', async () => {
-        const weight = modalContent.querySelector('#edit-weight').value;
-        const subscriptionUntil = modalContent.querySelector('#edit-subscription').value;
-        const minSteps = modalContent.querySelector('#edit-min-steps').value;
+    document.getElementById('save-profile-btn').onclick = async () => {
+        const weight = document.getElementById('edit-weight').value;
+        const subscriptionUntil = document.getElementById('edit-subscription').value;
+        const minSteps = document.getElementById('edit-min-steps').value;
         
         const updateData = {};
         if (weight) updateData.weight = parseFloat(weight);
         if (subscriptionUntil) updateData.subscription_until = subscriptionUntil;
         if (minSteps) updateData.min_steps = parseInt(minSteps);
         
-        const { error: updateError } = await sb
-            .from('profiles')
-            .update(updateData)
-            .eq('id', client.id);
-        
-        if (updateError) {
-            alert('Ошибка сохранения: ' + updateError.message);
-        } else {
-            alert('✅ Профиль обновлен!');
-            modal.remove();
-            await renderClientsList();
-        }
-    });
+        await sb.from('profiles').update(updateData).eq('id', client.id);
+        alert('✅ Профиль обновлен');
+        modal.remove();
+        await renderClientsList();
+    };
     
-    // Обработчики удаления записей
-    const deleteButtons = modalContent.querySelectorAll('.delete-booking-from-client');
-    deleteButtons.forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const bookingId = btn.dataset.id;
-            const slotId = btn.dataset.slot;
-            
-            if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
-                await sb.from('bookings').delete().eq('id', bookingId);
-                await sb.from('slots').update({ is_available: true }).eq('id', slotId);
-                alert('Запись удалена, слот свободен');
+    document.querySelectorAll('.delete-booking-from-client').forEach(btn => {
+        btn.onclick = async () => {
+            if (confirm('Удалить запись?')) {
+                await sb.from('bookings').delete().eq('id', btn.dataset.id);
+                await sb.from('slots').update({ is_available: true }).eq('id', btn.dataset.slot);
                 modal.remove();
                 await renderClientsList();
                 await loadAdminData();
             }
-        });
+        };
     });
+}
+
+// --- Загрузка профиля пользователя ---
+async function loadMyProfile() {
+    if (!currentUser) return;
+    
+    const { data: profile } = await sb
+        .from('profiles')
+        .select('weight, subscription_until')
+        .eq('id', currentUser.id)
+        .single();
+    
+    const subscriptionEl = document.getElementById('profile-subscription');
+    if (subscriptionEl && profile?.subscription_until) {
+        const untilDate = new Date(profile.subscription_until);
+        const daysLeft = Math.ceil((untilDate - new Date()) / (1000 * 60 * 60 * 24));
+        if (daysLeft < 0) subscriptionEl.innerHTML = '❌ Истек';
+        else if (daysLeft <= 7) subscriptionEl.innerHTML = `⚠️ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
+        else subscriptionEl.innerHTML = `✅ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
+    } else if (subscriptionEl) {
+        subscriptionEl.innerHTML = '—';
+    }
+    
+    const weightHistory = await loadWeightHistory();
+    const weightEl = document.getElementById('profile-weight');
+    if (weightEl) {
+        if (weightHistory && weightHistory.length > 0) {
+            weightEl.innerHTML = `${weightHistory[weightHistory.length - 1].weight} кг`;
+        } else {
+            weightEl.innerHTML = '—';
+        }
+    }
+    
+    const weightContainer = document.getElementById('profile-weight-container');
+    if (weightContainer) {
+        weightContainer.style.cursor = 'pointer';
+        weightContainer.onclick = () => openWeightModal();
+    }
+    
+    await renderWeightChart();
+}
+
+// --- Загрузка истории веса ---
+async function loadWeightHistory() {
+    if (!currentUser) return [];
+    const { data } = await sb
+        .from('weight_history')
+        .select('weight, weigh_date')
+        .eq('user_id', currentUser.id)
+        .order('weigh_date', { ascending: true });
+    return data || [];
+}
+
+// --- Сохранение веса ---
+async function saveWeight(weight) {
+    if (!currentUser) return false;
+    const today = new Date().toISOString().split('T')[0];
+    const { error } = await sb.from('weight_history').insert({
+        user_id: currentUser.id,
+        weight: parseFloat(weight),
+        weigh_date: today
+    });
+    return !error;
+}
+
+// --- Проверка возможности добавления веса ---
+function canAddWeight(history) {
+    if (!history || history.length === 0) return true;
+    const lastDate = new Date(history[history.length - 1].weigh_date);
+    const today = new Date();
+    const isMonday = today.getDay() === 1;
+    const daysSinceLast = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+    return isMonday && daysSinceLast >= 7;
+}
+
+// --- Открытие модалки веса ---
+async function openWeightModal() {
+    const history = await loadWeightHistory();
+    const canAdd = canAddWeight(history);
+    const modal = document.getElementById('weight-modal');
+    const weightInput = document.getElementById('weight-input');
+    const errorDiv = document.getElementById('weight-error');
+    const saveBtn = document.getElementById('weight-save-btn');
+    const cancelBtn = document.getElementById('weight-cancel-btn');
+    
+    if (!canAdd) {
+        errorDiv.textContent = '⚠️ Взвешивание возможно только по понедельникам, 1 раз в неделю.';
+        errorDiv.style.display = 'block';
+        weightInput.disabled = true;
+        saveBtn.disabled = true;
+    } else {
+        errorDiv.style.display = 'none';
+        weightInput.disabled = false;
+        saveBtn.disabled = false;
+        weightInput.value = '';
+    }
+    
+    modal.style.display = 'flex';
+    
+    const handleSave = async () => {
+        const weight = weightInput.value;
+        if (!weight || weight <= 0) return alert('Введите корректный вес');
+        const success = await saveWeight(weight);
+        if (success) {
+            alert('✅ Вес сохранен');
+            modal.style.display = 'none';
+            await loadMyProfile();
+        } else {
+            alert('❌ Ошибка сохранения');
+        }
+        cleanup();
+    };
+    
+    const handleCancel = () => {
+        modal.style.display = 'none';
+        cleanup();
+    };
+    
+    const handleClickOutside = (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+            cleanup();
+        }
+    };
+    
+    const cleanup = () => {
+        saveBtn.removeEventListener('click', handleSave);
+        cancelBtn.removeEventListener('click', handleCancel);
+        modal.removeEventListener('click', handleClickOutside);
+    };
+    
+    saveBtn.addEventListener('click', handleSave);
+    cancelBtn.addEventListener('click', handleCancel);
+    modal.addEventListener('click', handleClickOutside);
+}
+
+// --- Отрисовка графика веса ---
+async function renderWeightChart() {
+    const history = await loadWeightHistory();
+    const container = document.getElementById('weight-chart-container');
+    const totalLossEl = document.getElementById('total-loss');
+    
+    if (!history || history.length < 2) {
+        if (container) container.style.display = 'none';
+        return;
+    }
+    
+    if (container) container.style.display = 'block';
+    
+    const ctx = document.getElementById('weight-chart')?.getContext('2d');
+    if (!ctx) return;
+    
+    const labels = history.map(h => new Date(h.weigh_date).toLocaleDateString());
+    const weights = history.map(h => h.weight);
+    
+    if (window.weightChart) window.weightChart.destroy();
+    
+    window.weightChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Вес (кг)',
+                data: weights,
+                borderColor: '#007aff',
+                backgroundColor: 'rgba(0,122,255,0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: true }
+    });
+    
+    const loss = (history[0].weight - history[history.length - 1].weight).toFixed(1);
+    if (totalLossEl) {
+        if (loss > 0) totalLossEl.innerHTML = `📉 Общая потеря: ${loss} кг`;
+        else if (loss < 0) totalLossEl.innerHTML = `📈 Общий набор: ${Math.abs(loss)} кг`;
+        else totalLossEl.innerHTML = `⚖️ Вес стабилен`;
+    }
+}
+
+// --- Загрузка нормы шагов ---
+async function loadMinSteps() {
+    if (!currentUser) return 10000;
+    const { data } = await sb.from('profiles').select('min_steps').eq('id', currentUser.id).single();
+    return data?.min_steps || 10000;
+}
+
+// --- Проверка времени для добавления шагов ---
+function canAddSteps() {
+    const hours = new Date().getHours();
+    return hours >= 19;
+}
+
+// --- Сохранение шагов ---
+async function saveSteps(steps) {
+    if (!currentUser) return false;
+    const today = new Date().toISOString().split('T')[0];
+    const { error } = await sb.from('steps_history').upsert({
+        user_id: currentUser.id,
+        steps: parseInt(steps),
+        steps_date: today
+    }, { onConflict: 'user_id,steps_date' });
+    return !error;
+}
+
+// --- Загрузка истории шагов ---
+async function loadStepsHistory() {
+    if (!currentUser) return [];
+    const { data } = await sb
+        .from('steps_history')
+        .select('steps, steps_date')
+        .eq('user_id', currentUser.id)
+        .order('steps_date', { ascending: false })
+        .limit(30);
+    return data || [];
+}
+
+// --- Отображение истории шагов ---
+async function renderStepsHistory() {
+    const history = await loadStepsHistory();
+    const minSteps = await loadMinSteps();
+    const container = document.getElementById('steps-history-list');
+    if (!container) return;
+    
+    if (!history || history.length === 0) {
+        container.innerHTML = '<p>Нет данных</p>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    for (let record of history) {
+        const date = new Date(record.steps_date).toLocaleDateString();
+        const isOk = record.steps >= minSteps;
+        container.innerHTML += `
+            <div style="display: flex; justify-content: space-between; padding: 10px; margin-bottom: 8px; background: ${isOk ? '#e8f5e9' : '#ffebee'}; border-radius: 8px;">
+                <span>${date}</span>
+                <span style="font-weight: bold;">${record.steps.toLocaleString()}</span>
+                <span>${isOk ? '✅' : '⚠️'}</span>
+            </div>
+        `;
+    }
+}
+
+// --- Открытие экрана отчетов ---
+async function openStepsReport() {
+    const canAdd = canAddSteps();
+    const stepsInput = document.getElementById('steps-input');
+    const addBtn = document.getElementById('add-steps-btn');
+    const errorDiv = document.getElementById('steps-error');
+    
+    if (!canAdd) {
+        errorDiv.textContent = '⚠️ Добавление шагов возможно только с 19:00';
+        errorDiv.style.display = 'block';
+        stepsInput.disabled = true;
+        addBtn.disabled = true;
+    } else {
+        errorDiv.style.display = 'none';
+        stepsInput.disabled = false;
+        addBtn.disabled = false;
+    }
+    
+    const minSteps = await loadMinSteps();
+    document.getElementById('user-min-steps').innerHTML = `${minSteps.toLocaleString()} шагов`;
+    await renderStepsHistory();
+    showScreen('steps');
+}
+
+// --- Обработчик добавления шагов ---
+async function handleAddSteps() {
+    const steps = document.getElementById('steps-input').value;
+    if (!steps || steps <= 0) return alert('Введите шаги');
+    const minSteps = await loadMinSteps();
+    const success = await saveSteps(steps);
+    if (success) {
+        alert(`✅ Шаги сохранены!\nНорма: ${minSteps.toLocaleString()}`);
+        document.getElementById('steps-input').value = '';
+        await renderStepsHistory();
+    } else {
+        alert('❌ Ошибка сохранения');
+    }
 }
 
 
 
-
-// --- Переключение между вкладками в админ-панели ---
-function setupAdminTabs() {
-    const slotsTab = document.getElementById('admin-slots-tab');
-    const clientsTab = document.getElementById('admin-clients-tab');
-    const slotsPanel = document.getElementById('admin-slots-panel');
-    const clientsPanel = document.getElementById('admin-clients-panel');
-    const adminBookingsDiv = document.getElementById('admin-bookings');
-    
-    if (!slotsTab || !clientsTab) return;
-    
-    slotsTab.addEventListener('click', () => {
-        slotsTab.style.background = '#007aff';
-        slotsTab.style.color = 'white';
-        clientsTab.style.background = '#e9ecef';
-        clientsTab.style.color = '#1e1e1e';
-        slotsPanel.style.display = 'block';
-        clientsPanel.style.display = 'none';
-        if (adminBookingsDiv) adminBookingsDiv.style.display = 'block';
-    });
-    
-    clientsTab.addEventListener('click', async () => {
-        clientsTab.style.background = '#007aff';
-        clientsTab.style.color = 'white';
-        slotsTab.style.background = '#e9ecef';
-        slotsTab.style.color = '#1e1e1e';
-        slotsPanel.style.display = 'none';
-        clientsPanel.style.display = 'block';
-        if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
-        
-        await renderClientsList();
-    });
-}
-
-
-
-// --- Инициализация при загрузке страницы ---
+// --- ИНИЦИАЛИЗАЦИЯ ---
 document.addEventListener('DOMContentLoaded', async () => {
+    initDailyReportUI();
+    
     const { data: { session } } = await sb.auth.getSession();
     
     if (session) {
         currentUser = session.user;
-        const nameSpan = document.getElementById('user-name');
-        if (nameSpan) nameSpan.innerText = session.user.user_metadata.name || 'Друг';
+        document.getElementById('user-name').innerText = session.user.user_metadata.name || 'Друг';
         
         const adminBtn = document.getElementById('admin-btn');
         if (adminBtn && session.user.user_metadata?.is_admin === true) {
@@ -1558,25 +1296,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         showScreen('auth');
     }
     
+    // Обработчики кнопок
     document.getElementById('login-btn')?.addEventListener('click', async () => {
         if (isLoggingIn) return;
         isLoggingIn = true;
-        
         const phone = document.getElementById('phone-input').value;
         const name = document.getElementById('name-input').value;
-        
         if (!phone || !name) {
             alert('Введите телефон и имя');
             isLoggingIn = false;
             return;
         }
-        
         try {
             currentUser = await loginWithPhone(phone, name);
             document.getElementById('user-name').innerText = name;
             showScreen('menu');
         } catch(e) {
-            console.error('Ошибка:', e);
             alert('Ошибка входа: ' + e.message);
         } finally {
             isLoggingIn = false;
@@ -1594,12 +1329,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         showScreen('myBookings');
     });
     
-    document.getElementById('confirm-booking-btn')?.addEventListener('click', confirmBooking);
+    document.getElementById('daily-report-btn')?.addEventListener('click', async () => {
+        await openDailyReport();
+    });
+    
+    document.getElementById('my-profile-btn')?.addEventListener('click', async () => {
+        await loadMyProfile();
+        await updateWeeklyMessage();
+        showScreen('profile');
+    });
+    
+    document.getElementById('steps-report-btn')?.addEventListener('click', async () => {
+        await openStepsReport();
+    });
     
     document.getElementById('admin-btn')?.addEventListener('click', async () => {
         await loadAdminData();
         showScreen('admin');
     });
+    
+    document.getElementById('confirm-booking-btn')?.addEventListener('click', confirmBooking);
     
     document.querySelectorAll('.back-btn').forEach(btn => {
         btn.addEventListener('click', () => showScreen('menu'));
@@ -1610,63 +1359,4 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentUser = null;
         showScreen('auth');
     });
-
-    // Кнопка "Мой профиль"
-document.getElementById('my-profile-btn')?.addEventListener('click', async () => {
-    await loadMyProfile();
-    showScreen('profile');
-});
-
-    
-    
-    document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
-        const start = document.getElementById('admin-start').value;
-        if (!start) return alert('Выберите начало слота');
-        
-        const startDate = new Date(start);
-        const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-        const end = endDate.toISOString().slice(0, 16);
-        
-        const { error } = await sb.from('slots').insert({ 
-            start_time: start, 
-            end_time: end, 
-            is_available: true 
-        });
-        
-        if (error) {
-            alert('Ошибка: ' + error.message);
-        } else { 
-            alert('Слот добавлен (1 час)'); 
-            loadAdminData();
-            document.getElementById('admin-start').value = '';
-        }
-    });
-
-    // Кнопка "Отчеты"
-document.getElementById('steps-report-btn')?.addEventListener('click', async () => {
-    await openStepsReport();
-});
-
-// Кнопка "Добавить шаги"
-document.getElementById('add-steps-btn')?.addEventListener('click', async () => {
-    const stepsInput = document.getElementById('steps-input');
-    const steps = stepsInput.value;
-    
-    if (!steps || steps <= 0) {
-        alert('Введите количество шагов');
-        return;
-    }
-    
-    const minSteps = await loadMinSteps();
-    const stepsNum = parseInt(steps);
-    
-    const success = await saveSteps(stepsNum);
-    if (success) {
-        alert(`✅ Шаги сохранены!\n\nВаши шаги: ${stepsNum.toLocaleString()}\nНорма: ${minSteps?.toLocaleString() || '10000'}`);
-        stepsInput.value = '';
-        await renderStepsHistory();
-    } else {
-        alert('❌ Ошибка сохранения шагов');
-    }
-});
 });
