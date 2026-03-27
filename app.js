@@ -59,6 +59,131 @@ async function loadMyProfile() {
         }
     }
     
+    // Отображаем последний вес из истории
+    const weightHistory = await loadWeightHistory();
+    const weightEl = document.getElementById('profile-weight');
+    const weightContainer = document.getElementById('profile-weight-container');
+    
+    if (weightEl) {
+        if (weightHistory && weightHistory.length > 0) {
+            const lastWeight = weightHistory[weightHistory.length - 1].weight;
+            weightEl.innerHTML = `${lastWeight} кг`;
+            weightEl.style.color = '#1e1e1e';
+        } else {
+            weightEl.innerHTML = '—';
+            weightEl.style.color = '#666';
+        }
+    }
+    
+    // Делаем вес кликабельным
+    if (weightContainer) {
+        weightContainer.style.cursor = 'pointer';
+        weightContainer.onclick = () => openWeightModal();
+    }
+    
+    // Отрисовываем график
+    await renderWeightChart();
+}
+
+// --- Открытие модального окна для взвешивания ---
+async function openWeightModal() {
+    const history = await loadWeightHistory();
+    const canAdd = canAddWeight(history);
+    const modal = document.getElementById('weight-modal');
+    const weightInput = document.getElementById('weight-input');
+    const errorDiv = document.getElementById('weight-error');
+    const saveBtn = document.getElementById('weight-save-btn');
+    const cancelBtn = document.getElementById('weight-cancel-btn');
+    
+    if (!canAdd) {
+        const today = new Date();
+        const isMonday = today.getDay() === 1;
+        
+        if (!isMonday) {
+            errorDiv.textContent = '⚠️ Взвешивание возможно только по понедельникам.';
+        } else {
+            errorDiv.textContent = '⚠️ Взвешивание возможно не чаще 1 раза в неделю.';
+        }
+        errorDiv.style.display = 'block';
+        weightInput.disabled = true;
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+    } else {
+        errorDiv.style.display = 'none';
+        weightInput.disabled = false;
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        weightInput.value = '';
+    }
+    
+    modal.style.display = 'flex';
+    
+    // Обработчики
+    const handleSave = async () => {
+        const weight = weightInput.value;
+        if (!weight || weight <= 0) {
+            alert('Введите корректный вес');
+            return;
+        }
+        
+        const success = await saveWeight(weight);
+        if (success) {
+            alert('✅ Вес сохранен!');
+            modal.style.display = 'none';
+            await loadMyProfile();
+        } else {
+            alert('❌ Ошибка сохранения. Возможно, вы уже взвешивались на этой неделе.');
+        }
+        
+        cleanup();
+    };
+    
+    const handleCancel = () => {
+        modal.style.display = 'none';
+        cleanup();
+    };
+    
+    const handleClickOutside = (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+            cleanup();
+        }
+    };
+    
+    const cleanup = () => {
+        saveBtn.removeEventListener('click', handleSave);
+        cancelBtn.removeEventListener('click', handleCancel);
+        modal.removeEventListener('click', handleClickOutside);
+    };
+    
+    saveBtn.addEventListener('click', handleSave);
+    cancelBtn.addEventListener('click', handleCancel);
+    modal.addEventListener('click', handleClickOutside);
+}
+    
+    // Отображаем абонемент
+    const subscriptionEl = document.getElementById('profile-subscription');
+    if (subscriptionEl) {
+        if (profile?.subscription_until) {
+            const untilDate = new Date(profile.subscription_until);
+            const daysLeft = Math.ceil((untilDate - new Date()) / (1000 * 60 * 60 * 24));
+            
+            if (daysLeft < 0) {
+                subscriptionEl.innerHTML = '❌ Истек';
+                subscriptionEl.style.color = '#ff3b30';
+            } else if (daysLeft <= 7) {
+                subscriptionEl.innerHTML = `⚠️ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
+                subscriptionEl.style.color = '#ff9500';
+            } else {
+                subscriptionEl.innerHTML = `✅ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
+                subscriptionEl.style.color = '#34c759';
+            }
+        } else {
+            subscriptionEl.innerHTML = '—';
+            subscriptionEl.style.color = '#666';
+        }
+    }
+    
     // Отображаем вес
     const weightEl = document.getElementById('profile-weight');
     if (weightEl) {
@@ -125,7 +250,174 @@ async function loginWithPhone(phone, name) {
     return data.user;
 }
 
+// --- Загрузка истории веса пользователя ---
+async function loadWeightHistory() {
+    if (!currentUser) return [];
+    
+    const { data, error } = await sb
+        .from('weight_history')
+        .select('weight, weigh_date')
+        .eq('user_id', currentUser.id)
+        .order('weigh_date', { ascending: true });
+    
+    if (error) {
+        console.error('Ошибка загрузки истории веса:', error);
+        return [];
+    }
+    
+    return data || [];
+}
 
+// --- Проверка, можно ли добавить новый вес ---
+function canAddWeight(history) {
+    if (!history || history.length === 0) return true;
+    
+    const lastWeighDate = new Date(history[history.length - 1].weigh_date);
+    const today = new Date();
+    
+    // Проверяем, что сегодня понедельник
+    const isMonday = today.getDay() === 1;
+    if (!isMonday) return false;
+    
+    // Проверяем, что прошла неделя с последнего взвешивания
+    const daysSinceLast = Math.floor((today - lastWeighDate) / (1000 * 60 * 60 * 24));
+    return daysSinceLast >= 7;
+}
+
+// --- Сохранение нового веса ---
+async function saveWeight(weight) {
+    if (!currentUser) return false;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const weighDate = today.toISOString().split('T')[0];
+    
+    const { error } = await sb
+        .from('weight_history')
+        .insert({
+            user_id: currentUser.id,
+            weight: parseFloat(weight),
+            weigh_date: weighDate
+        });
+    
+    if (error) {
+        console.error('Ошибка сохранения веса:', error);
+        return false;
+    }
+    
+    return true;
+}
+
+// --- Отрисовка графика веса ---
+async function renderWeightChart() {
+    const history = await loadWeightHistory();
+    const container = document.getElementById('weight-chart-container');
+    const totalLossEl = document.getElementById('total-loss');
+    
+    if (!history || history.length < 2) {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'block';
+    
+    // Загружаем Chart.js
+    if (typeof Chart === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+        script.onload = () => drawChart(history, totalLossEl);
+        document.head.appendChild(script);
+    } else {
+        drawChart(history, totalLossEl);
+    }
+}
+
+function drawChart(history, totalLossEl) {
+    const ctx = document.getElementById('weight-chart').getContext('2d');
+    
+    const labels = history.map(h => {
+        const date = new Date(h.weigh_date);
+        return `${date.getDate()}.${date.getMonth() + 1}`;
+    });
+    
+    const weights = history.map(h => h.weight);
+    
+    // Уничтожаем старый график, если есть
+    if (window.weightChart) {
+        window.weightChart.destroy();
+    }
+    
+    window.weightChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Вес (кг)',
+                data: weights,
+                borderColor: '#007aff',
+                backgroundColor: 'rgba(0, 122, 255, 0.1)',
+                tension: 0.3,
+                fill: true,
+                pointBackgroundColor: '#007aff',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.raw} кг`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    title: {
+                        display: true,
+                        text: 'кг',
+                        font: { size: 12 }
+                    },
+                    min: Math.floor(Math.min(...weights) - 2),
+                    max: Math.ceil(Math.max(...weights) + 2)
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Дата',
+                        font: { size: 12 }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Вычисляем общую потерю веса
+    const firstWeight = history[0].weight;
+    const lastWeight = history[history.length - 1].weight;
+    const loss = (firstWeight - lastWeight).toFixed(1);
+    
+    if (loss > 0) {
+        totalLossEl.innerHTML = `📉 Общая потеря: ${loss} кг`;
+        totalLossEl.style.color = '#34c759';
+    } else if (loss < 0) {
+        totalLossEl.innerHTML = `📈 Общий набор: ${Math.abs(loss)} кг`;
+        totalLossEl.style.color = '#ff3b30';
+    } else {
+        totalLossEl.innerHTML = `⚖️ Вес стабилен: ${loss} кг`;
+        totalLossEl.style.color = '#666';
+    }
+}
 
 
 // --- Загрузка свободных слотов для клиента ---
