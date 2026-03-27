@@ -277,35 +277,75 @@ async function loadMyBookings() {
     if (!container) return;
     container.innerHTML = '';
     
-    for (let booking of bookings) {
-        const start = new Date(booking.slots.start_time);
-        const formatted = `${start.toLocaleDateString()} ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+    if (bookings.length === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">У вас нет записей</p>';
+        return;
+    }
+    
+    // Группируем по дням для красоты
+    const groupedByDay = {};
+    bookings.forEach(booking => {
+        const date = new Date(booking.slots.start_time);
+        const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+        if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+        groupedByDay[dayKey].push(booking);
+    });
+    
+    const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
+        const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
+        const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
+        return dateA - dateB;
+    });
+    
+    for (let day of sortedDays) {
+        const dayBookings = groupedByDay[day];
+        const dayDiv = document.createElement('div');
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
+        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
         
-        const div = document.createElement('div');
-        div.className = 'booking-card';
-        div.innerHTML = `<span>${formatted}</span><button class="cancel-btn" data-id="${booking.id}">Отменить</button>`;
-        
-        div.querySelector('.cancel-btn').addEventListener('click', async () => {
-            const { error: cancelError } = await sb
-                .from('bookings')
-                .delete()
-                .eq('id', booking.id);
+        dayBookings.forEach(booking => {
+            const start = new Date(booking.slots.start_time);
+            const formatted = `${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
             
-            if (!cancelError) {
-                await sb
-                    .from('slots')
-                    .update({ is_available: true })
-                    .eq('id', booking.slot_id);
-                loadMyBookings();
-            } else {
-                alert('Ошибка отмены');
-            }
+            const div = document.createElement('div');
+            div.className = 'booking-card';
+            div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
+            div.innerHTML = `
+                <span style="font-weight: 500;">${formatted}</span>
+                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
+            `;
+            
+            const cancelBtn = div.querySelector('.cancel-btn');
+            cancelBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (confirm('Отменить запись?')) {
+                    // Удаляем бронирование
+                    const { error: cancelError } = await sb
+                        .from('bookings')
+                        .delete()
+                        .eq('id', booking.id);
+                    
+                    if (!cancelError) {
+                        // Разблокируем слот
+                        await sb
+                            .from('slots')
+                            .update({ is_available: true })
+                            .eq('id', booking.slot_id);
+                        
+                        alert('Запись отменена');
+                        await loadMyBookings(); // обновляем список
+                    } else {
+                        alert('Ошибка отмены');
+                    }
+                }
+            });
+            
+            dayDiv.appendChild(div);
         });
         
-        container.appendChild(div);
+        container.appendChild(dayDiv);
     }
 }
-
 
 
 
@@ -397,24 +437,31 @@ async function ensureWeeklySchedule() {
 // --- Вспомогательная функция для отображения отдельного слота в админке ---
 function addSlotElement(container, slot) {
     const start = new Date(slot.start_time);
+    const isAvailable = slot.is_available;
+    
     const div = document.createElement('div');
-    div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: #fff; border-radius: 8px; border: 1px solid #e0e0e0;';
+    div.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: ${isAvailable ? '#fff' : '#f0f0f0'}; border-radius: 8px; border: 1px solid ${isAvailable ? '#e0e0e0' : '#ffcccc'};`;
     div.innerHTML = `
-        <span>${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-        <button class="delete-slot-btn" data-id="${slot.id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>
+        <span style="${isAvailable ? '' : 'text-decoration: line-through; color: #999;'}">
+            ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+            ${!isAvailable ? ' ❌ занят' : ''}
+        </span>
+        ${isAvailable ? '<button class="delete-slot-btn" data-id="' + slot.id + '" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>' : ''}
     `;
     
-    div.querySelector('.delete-slot-btn').addEventListener('click', async () => {
-        if (confirm('Удалить этот слот?')) {
-            await sb.from('bookings').delete().eq('slot_id', slot.id);
-            await sb.from('slots').delete().eq('id', slot.id);
-            await loadAdminData();
-        }
-    });
+    if (isAvailable) {
+        const deleteBtn = div.querySelector('.delete-slot-btn');
+        deleteBtn.addEventListener('click', async () => {
+            if (confirm('Удалить этот слот?')) {
+                await sb.from('bookings').delete().eq('slot_id', slot.id);
+                await sb.from('slots').delete().eq('id', slot.id);
+                await loadAdminData();
+            }
+        });
+    }
     
     container.appendChild(div);
 }
-
 
 
 
@@ -432,6 +479,7 @@ async function loadAdminData() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 7);
     
+    // Получаем все слоты на неделю (включая занятые)
     const { data: slots } = await sb
         .from('slots')
         .select('*')
@@ -440,6 +488,7 @@ async function loadAdminData() {
         .order('start_time');
     
     if (adminSlotsDiv && slots) {
+        // Группируем по дням
         const groupedByDay = {};
         slots.forEach(slot => {
             const date = new Date(slot.start_time);
@@ -478,6 +527,7 @@ async function loadAdminData() {
         }
     }
     
+    // Бронирования (оставляем как было)
     const { data: bookings } = await sb.rpc('get_bookings_with_profiles');
     
     if (adminBookingsDiv) {
@@ -501,21 +551,8 @@ async function loadAdminData() {
                 const deleteBtn = div.querySelector('.delete-booking-btn');
                 deleteBtn.addEventListener('click', async () => {
                     if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
-                        const { error: deleteError } = await sb
-                            .from('bookings')
-                            .delete()
-                            .eq('id', booking.id);
-                        
-                        if (deleteError) {
-                            alert('Ошибка удаления записи');
-                            return;
-                        }
-                        
-                        await sb
-                            .from('slots')
-                            .update({ is_available: true })
-                            .eq('id', booking.slot_id);
-                        
+                        await sb.from('bookings').delete().eq('id', booking.id);
+                        await sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
                         alert('Запись удалена, слот свободен');
                         await loadAdminData();
                     }
