@@ -1252,9 +1252,9 @@ async function renderClientsList() {
 
 
 
-// --- Отображение карточки клиента с его записями и редактированием ---
+// --- Отображение карточки клиента с записями, профилем и отчетами ---
 async function showClientDetails(client) {
-    // Получаем все записи клиента
+    // Получаем записи клиента
     const { data: bookings, error: bookingsError } = await sb
         .from('bookings')
         .select(`
@@ -1270,6 +1270,28 @@ async function showClientDetails(client) {
         alert('Ошибка загрузки записей');
         return;
     }
+    
+    // Получаем историю шагов за последние 7 дней
+    const { data: stepsHistory, error: stepsError } = await sb
+        .from('steps_history')
+        .select('steps, steps_date')
+        .eq('user_id', client.id)
+        .order('steps_date', { ascending: false })
+        .limit(7);
+    
+    if (stepsError) console.error('Ошибка загрузки шагов:', stepsError);
+    
+    // Получаем историю веса за последние 7 дней
+    const { data: weightHistory, error: weightError } = await sb
+        .from('weight_history')
+        .select('weight, weigh_date')
+        .eq('user_id', client.id)
+        .order('weigh_date', { ascending: false })
+        .limit(7);
+    
+    if (weightError) console.error('Ошибка загрузки веса:', weightError);
+    
+    const minSteps = client.min_steps || 10000;
     
     // Создаем модальное окно
     const modal = document.createElement('div');
@@ -1290,34 +1312,73 @@ async function showClientDetails(client) {
     modalContent.style.cssText = `
         background: white;
         border-radius: 16px;
-        max-width: 500px;
+        max-width: 550px;
         width: 90%;
-        max-height: 80vh;
+        max-height: 85vh;
         overflow-y: auto;
         padding: 20px;
     `;
     
+    // Формируем HTML для шагов
+    let stepsHtml = '';
+    if (stepsHistory && stepsHistory.length > 0) {
+        stepsHtml = '<div style="margin-bottom: 15px;">';
+        for (let record of stepsHistory) {
+            const date = new Date(record.steps_date);
+            const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
+            const isOk = record.steps >= minSteps;
+            stepsHtml += `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="font-size: 13px; color: #666;">${dayName}</span>
+                    <span style="font-weight: 500; color: ${isOk ? '#34c759' : '#ff3b30'};">${record.steps.toLocaleString()}</span>
+                    <span style="font-size: 11px; color: ${isOk ? '#34c759' : '#ff3b30'};">${isOk ? '✅' : '⚠️'}</span>
+                </div>
+            `;
+        }
+        stepsHtml += '</div>';
+    } else {
+        stepsHtml = '<p style="font-size: 13px; color: #999; text-align: center;">Нет данных за последние 7 дней</p>';
+    }
+    
+    // Формируем HTML для веса
+    let weightHtml = '';
+    if (weightHistory && weightHistory.length > 0) {
+        weightHtml = '<div style="margin-bottom: 15px;">';
+        for (let record of weightHistory) {
+            const date = new Date(record.weigh_date);
+            const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
+            weightHtml += `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="font-size: 13px; color: #666;">${dayName}</span>
+                    <span style="font-weight: 500;">${record.weight} кг</span>
+                </div>
+            `;
+        }
+        weightHtml += '</div>';
+    } else {
+        weightHtml = '<p style="font-size: 13px; color: #999; text-align: center;">Нет данных о весе</p>';
+    }
+    
+    // Записи клиента
     let bookingsHtml = '';
     if (bookings && bookings.length > 0) {
         const groupedByDay = {};
         bookings.forEach(booking => {
             const date = new Date(booking.slots.start_time);
-            const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+            const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
             if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
             groupedByDay[dayKey].push(booking);
         });
         
         for (let [day, dayBookings] of Object.entries(groupedByDay)) {
-            bookingsHtml += `<h4 style="margin: 15px 0 8px 0; color: #007aff;">📅 ${day}</h4>`;
-            
+            bookingsHtml += `<div style="margin-top: 10px;"><strong style="font-size: 13px; color: #007aff;">📅 ${day}</strong></div>`;
             dayBookings.forEach(booking => {
                 const start = new Date(booking.slots.start_time);
                 const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-                
                 bookingsHtml += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; margin-bottom: 8px; background: #f8f9fa; border-radius: 8px;">
-                        <span style="font-weight: 500;">🕐 ${timeStr}</span>
-                        <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer;">✖ Удалить</button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                        <span>🕐 ${timeStr}</span>
+                        <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">✖</button>
                     </div>
                 `;
             });
@@ -1334,33 +1395,56 @@ async function showClientDetails(client) {
         
         <div style="margin-bottom: 20px;">
             <p><strong>📞 Телефон:</strong> ${client.phone || 'не указан'}</p>
-            <p><strong>🆔 ID:</strong> ${client.id.substring(0, 8)}...</p>
+            <p><strong>🎯 Норма шагов:</strong> ${minSteps.toLocaleString()} шагов/день</p>
         </div>
         
+        <!-- Дашборд отчетов -->
         <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
-            <h3 style="margin: 0 0 15px 0; font-size: 16px;">✏️ Редактировать профиль</h3>
+            <h3 style="margin: 0 0 12px 0; font-size: 16px;">📊 Отчеты за последние 7 дней</h3>
             
-            <div style="margin-bottom: 12px;">
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <!-- Шаги -->
+                <div style="flex: 1; min-width: 120px;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги</div>
+                    ${stepsHtml}
+                </div>
+                
+                <!-- Вес -->
+                <div style="flex: 1; min-width: 120px;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 8px;">⚖️ Вес</div>
+                    ${weightHtml}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Редактирование профиля -->
+        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 12px 0; font-size: 16px;">✏️ Редактировать профиль</h3>
+            
+            <div style="margin-bottom: 10px;">
                 <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Вес (кг)</label>
                 <input type="number" id="edit-weight" step="0.1" value="${client.weight || ''}" placeholder="например: 75.5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
             
-            <div style="margin-bottom: 12px;">
+            <div style="margin-bottom: 10px;">
                 <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Абонемент до</label>
                 <input type="date" id="edit-subscription" value="${client.subscription_until || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
             
-            <div style="margin-bottom: 12px;">
+            <div style="margin-bottom: 10px;">
                 <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Минимальное количество шагов в день</label>
                 <input type="number" id="edit-min-steps" value="${client.min_steps || 10000}" placeholder="например: 10000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
             
-            <button id="save-profile-btn" style="background: #007aff; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%;">💾 Сохранить</button>
+            <button id="save-profile-btn" style="background: #007aff; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 5px;">💾 Сохранить</button>
         </div>
         
-        <h3 style="margin: 20px 0 10px 0;">📋 Записи клиента</h3>
-        <div id="client-bookings-list">
-            ${bookingsHtml}
+        <!-- Записи клиента -->
+        <div>
+            <h3 style="margin: 0 0 10px 0; font-size: 16px;">📋 Записи клиента</h3>
+            <div id="client-bookings-list" style="max-height: 200px; overflow-y: auto;">
+                ${bookingsHtml}
+            </div>
         </div>
     `;
     
@@ -1369,13 +1453,8 @@ async function showClientDetails(client) {
     
     // Закрытие модального окна
     const closeBtn = modalContent.querySelector('#close-client-modal');
-    closeBtn.addEventListener('click', () => {
-        modal.remove();
-    });
-    
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
-    });
+    closeBtn.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
     
     // Сохранение профиля
     const saveBtn = modalContent.querySelector('#save-profile-btn');
@@ -1389,15 +1468,10 @@ async function showClientDetails(client) {
         if (subscriptionUntil) updateData.subscription_until = subscriptionUntil;
         if (minSteps) updateData.min_steps = parseInt(minSteps);
         
-        console.log('Обновляем профиль:', client.id, updateData);
-        
-        const { data, error: updateError } = await sb
+        const { error: updateError } = await sb
             .from('profiles')
             .update(updateData)
-            .eq('id', client.id)
-            .select();
-        
-        console.log('Результат обновления:', { data, updateError });
+            .eq('id', client.id);
         
         if (updateError) {
             alert('Ошибка сохранения: ' + updateError.message);
@@ -1408,7 +1482,7 @@ async function showClientDetails(client) {
         }
     });
     
-    // Обработчики для кнопок удаления записей
+    // Обработчики удаления записей
     const deleteButtons = modalContent.querySelectorAll('.delete-booking-from-client');
     deleteButtons.forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -1416,21 +1490,8 @@ async function showClientDetails(client) {
             const slotId = btn.dataset.slot;
             
             if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
-                const { error: deleteError } = await sb
-                    .from('bookings')
-                    .delete()
-                    .eq('id', bookingId);
-                
-                if (deleteError) {
-                    alert('Ошибка удаления записи');
-                    return;
-                }
-                
-                await sb
-                    .from('slots')
-                    .update({ is_available: true })
-                    .eq('id', slotId);
-                
+                await sb.from('bookings').delete().eq('id', bookingId);
+                await sb.from('slots').update({ is_available: true }).eq('id', slotId);
                 alert('Запись удалена, слот свободен');
                 modal.remove();
                 await renderClientsList();
