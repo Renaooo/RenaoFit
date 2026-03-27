@@ -103,33 +103,80 @@ async function renderSlots(slots) {
         return;
     }
     
+    // Получаем все занятые слоты для определения соседних
+    const { data: allSlots } = await sb
+        .from('slots')
+        .select('start_time, is_available')
+        .gte('start_time', new Date().toISOString())
+        .lte('start_time', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString());
+    
+    const bookedTimesByDay = {};
+    (allSlots || []).forEach(slot => {
+        if (!slot.is_available) {
+            const date = new Date(slot.start_time);
+            const dayKey = date.toLocaleDateString('ru-RU');
+            const timeStr = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            if (!bookedTimesByDay[dayKey]) bookedTimesByDay[dayKey] = [];
+            bookedTimesByDay[dayKey].push(timeStr);
+        }
+    });
+    
+    function hasAdjacentBooking(dayKey, timeStr) {
+        const [hours] = timeStr.split(':').map(Number);
+        const prevHour = `${(hours - 1).toString().padStart(2,'0')}:00`;
+        const nextHour = `${(hours + 1).toString().padStart(2,'0')}:00`;
+        const bookedTimes = bookedTimesByDay[dayKey] || [];
+        return bookedTimes.includes(prevHour) || bookedTimes.includes(nextHour);
+    }
+    
     const groupedByDay = {};
     slots.forEach(slot => {
         const date = new Date(slot.start_time);
-        const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
-        if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
-        groupedByDay[dayKey].push(slot);
+        const dayKey = date.toLocaleDateString('ru-RU');
+        const displayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+        if (!groupedByDay[displayKey]) {
+            groupedByDay[displayKey] = { slots: [], dayKey: dayKey };
+        }
+        groupedByDay[displayKey].slots.push(slot);
     });
     
-    for (let [day, daySlots] of Object.entries(groupedByDay)) {
-        const dayDiv = document.createElement('div');
-        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
-        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px;">📅 ${day}</h3>`;
+    for (let [displayDay, dayData] of Object.entries(groupedByDay)) {
+        const daySlots = dayData.slots;
+        const dayKey = dayData.dayKey;
+        
+        daySlots.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
         
         const morning = daySlots.filter(s => new Date(s.start_time).getHours() < 15);
         const evening = daySlots.filter(s => new Date(s.start_time).getHours() >= 15);
+        
+        const dayDiv = document.createElement('div');
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
+        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px;">📅 ${displayDay}</h3>`;
         
         if (morning.length > 0) {
             const morningDiv = document.createElement('div');
             morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
             morning.forEach(slot => {
                 const start = new Date(slot.start_time);
+                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                const hasAdjacent = hasAdjacentBooking(dayKey, timeStr);
+                
                 const slotDiv = document.createElement('div');
-                slotDiv.style.cssText = 'display: flex; justify-content: space-between; padding: 10px; margin-bottom: 6px; background: #f8f9fa; border-radius: 8px;';
+                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#fff9e6' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#ffc107' : '#e9ecef'};`;
+                
+                let badgeHtml = '';
+                if (hasAdjacent) {
+                    badgeHtml = '<span style="background: #ffc107; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
+                }
+                
                 slotDiv.innerHTML = `
-                    <span>${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 500;">${timeStr}</span>
+                        ${badgeHtml}
+                    </div>
                     <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''}>
                 `;
+                
                 const cb = slotDiv.querySelector('.slot-select');
                 cb.addEventListener('change', () => {
                     if (cb.checked) selectedSlotIds.add(slot.id);
@@ -147,12 +194,25 @@ async function renderSlots(slots) {
             eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
             evening.forEach(slot => {
                 const start = new Date(slot.start_time);
+                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                const hasAdjacent = hasAdjacentBooking(dayKey, timeStr);
+                
                 const slotDiv = document.createElement('div');
-                slotDiv.style.cssText = 'display: flex; justify-content: space-between; padding: 10px; margin-bottom: 6px; background: #f8f9fa; border-radius: 8px;';
+                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#fff9e6' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#ffc107' : '#e9ecef'};`;
+                
+                let badgeHtml = '';
+                if (hasAdjacent) {
+                    badgeHtml = '<span style="background: #ffc107; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
+                }
+                
                 slotDiv.innerHTML = `
-                    <span>${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 500;">${timeStr}</span>
+                        ${badgeHtml}
+                    </div>
                     <input type="checkbox" class="slot-select" data-id="${slot.id}" ${selectedSlotIds.has(slot.id) ? 'checked' : ''}>
                 `;
+                
                 const cb = slotDiv.querySelector('.slot-select');
                 cb.addEventListener('change', () => {
                     if (cb.checked) selectedSlotIds.add(slot.id);
@@ -416,12 +476,11 @@ async function loadWeeklyProgress() {
     
     const { data: profile } = await sb
         .from('profiles')
-        .select('min_steps, target_steps_weekly, target_strength_weekly, target_cardio_weekly')
+        .select('min_steps, target_strength_weekly, target_cardio_weekly')
         .eq('id', currentUser.id)
         .single();
     
     const dailyNorm = profile?.min_steps || 10000;
-    const targetSteps = profile?.target_steps_weekly || 70000;
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
     
@@ -443,7 +502,6 @@ async function loadWeeklyProgress() {
         return;
     }
     
-    let totalSteps = 0;
     let strengthCount = 0;
     let cardioCount = 0;
     let socialDays = 0;
@@ -458,14 +516,12 @@ async function loadWeeklyProgress() {
         const stepsOk = steps >= dailyNorm;
         if (!stepsOk) lowStepsDays++;
         
-        // Тип тренировки
         let trainingIcon = '';
         if (r.training_type === 'strength') trainingIcon = '💪';
         else if (r.training_type === 'cardio') trainingIcon = '🏃';
         else if (r.training_type === 'rest') trainingIcon = '😴';
         else trainingIcon = '⚪';
         
-        // Социальный прием
         const socialIcon = r.social_event ? '🎉' : '✅';
         
         dailyTable += `
@@ -481,14 +537,12 @@ async function loadWeeklyProgress() {
             </div>
         `;
         
-        totalSteps += steps;
         if (r.training_type === 'strength') strengthCount++;
         if (r.training_type === 'cardio') cardioCount++;
         if (r.social_event) socialDays++;
     }
     dailyTable += '</div>';
     
-    const stepsPercent = Math.round((totalSteps / targetSteps) * 100);
     const strengthOk = strengthCount >= targetStrength;
     const cardioOk = cardioCount >= targetCardio;
     const socialOk = socialDays <= 1;
@@ -503,10 +557,6 @@ async function loadWeeklyProgress() {
             </div>
             
             <div style="margin-bottom: 15px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                    <span>👣 Всего шагов за неделю:</span>
-                    <span><strong>${totalSteps.toLocaleString()} / ${targetSteps.toLocaleString()}</strong> (${stepsPercent}%)</span>
-                </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                     <span>💪 Силовые:</span>
                     <span><strong>${strengthCount} / ${targetStrength}</strong> ${strengthOk ? '✅' : '⚠️'}</span>
@@ -529,7 +579,6 @@ async function loadWeeklyProgress() {
         </div>
     `;
 }
-
 async function openDailyReport() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('daily-report-date').innerHTML = `📅 ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
@@ -571,7 +620,7 @@ async function updateWeeklyMessage() {
     const today = new Date();
     const lastMonday = new Date(today);
     lastMonday.setDate(today.getDate() - today.getDay() + 1);
-    lastMonday.setHours(0,0,0,0);
+    lastMonday.setHours(0, 0, 0, 0);
     const prevMonday = new Date(lastMonday);
     prevMonday.setDate(lastMonday.getDate() - 7);
     
@@ -630,14 +679,14 @@ async function updateWeeklyMessage() {
     
     if (!messageDiv || !messageText) return;
     
-    // Сценарий 1: есть отвес
+    // Сценарий 1: есть отвес (потеря веса >= 0.2 кг)
     if (weightChange !== null && weightChange < -0.2) {
         messageDiv.style.background = '#e8f5e9';
         messageDiv.style.borderLeftColor = '#34c759';
         messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел${weightChange > 0 ? 'а' : ''} на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
         messageDiv.style.display = 'block';
     } 
-    // Сценарий 2: нет отвеса, рекомендации НЕ соблюдены
+    // Сценарий 2: нет отвеса или привес, рекомендации НЕ соблюдены
     else if (!allCompliant) {
         let failures = [];
         if (!stepsOk) failures.push(`👣 Шаги: ${Math.round(actualSteps).toLocaleString()} из ${targetSteps.toLocaleString()} (в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()})`);
@@ -647,18 +696,57 @@ async function updateWeeklyMessage() {
         
         messageDiv.style.background = '#fff3e0';
         messageDiv.style.borderLeftColor = '#ff9800';
-        messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
+        
+        let adjustmentText = '';
+        let newTargetSteps = targetSteps;
+        let newTargetCardio = targetCardio;
+        
+        // Автоматическая корректировка норм при неудовлетворительном результате
+        if (weightChange !== null && (weightChange >= -0.2 || weightChange > 0)) {
+            newTargetSteps = Math.min(Math.round(targetSteps * 1.1), 105000);
+            newTargetCardio = Math.min(targetCardio + 1, 4);
+            
+            await sb
+                .from('profiles')
+                .update({
+                    target_steps_weekly: newTargetSteps,
+                    target_cardio_weekly: newTargetCardio
+                })
+                .eq('id', currentUser.id);
+            
+            adjustmentText = `<br><br>📈 <strong>Корректировка плана на следующую неделю:</strong><br>
+            • Шаги: +10% → ${newTargetSteps.toLocaleString()} в неделю<br>
+            • Кардио: +1 сессия → ${newTargetCardio} в неделю`;
+        }
+        
+        messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥${adjustmentText}`;
         messageDiv.style.display = 'block';
     } 
     // Сценарий 3: нет отвеса, но все рекомендации соблюдены
     else {
         messageDiv.style.background = '#e3f2fd';
         messageDiv.style.borderLeftColor = '#007aff';
-        messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌`;
+        
+        let adjustmentText = '';
+        
+        // Если вес неудовлетворительный, но рекомендации соблюдены — мягкая корректировка
+        if (weightChange !== null && (weightChange >= -0.2 || weightChange > 0)) {
+            const newTargetSteps = Math.min(Math.round(targetSteps * 1.05), 100000);
+            
+            await sb
+                .from('profiles')
+                .update({
+                    target_steps_weekly: newTargetSteps
+                })
+                .eq('id', currentUser.id);
+            
+            adjustmentText = `<br><br>📈 <strong>Мягкая корректировка:</strong> шаги +5% → ${newTargetSteps.toLocaleString()} в неделю. Организм адаптируется, дадим ему время.`;
+        }
+        
+        messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌${adjustmentText}`;
         messageDiv.style.display = 'block';
     }
 }
-
 
 
 // ============================================
