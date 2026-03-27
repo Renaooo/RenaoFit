@@ -402,7 +402,7 @@ async function loadWeeklyProgress() {
     const today = new Date();
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - today.getDay() + 1);
-    startOfWeek.setHours(0,0,0,0);
+    startOfWeek.setHours(0, 0, 0, 0);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
@@ -414,11 +414,32 @@ async function loadWeeklyProgress() {
         .lte('report_date', endOfWeek.toISOString().split('T')[0])
         .order('report_date');
     
+    const { data: profile } = await sb
+        .from('profiles')
+        .select('min_steps, target_steps_weekly, target_strength_weekly, target_cardio_weekly')
+        .eq('id', currentUser.id)
+        .single();
+    
+    const dailyNorm = profile?.min_steps || 10000;
+    const targetSteps = profile?.target_steps_weekly || 70000;
+    const targetStrength = profile?.target_strength_weekly || 3;
+    const targetCardio = profile?.target_cardio_weekly || 1;
+    
     const container = document.getElementById('weekly-progress');
     if (!container) return;
     
     if (!reports || reports.length === 0) {
-        container.innerHTML = '<p style="text-align: center;">Нет данных за эту неделю</p>';
+        container.innerHTML = `
+            <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
+                        <span><strong style="color: #007aff;">${dailyNorm.toLocaleString()}</strong> шагов</span>
+                    </div>
+                </div>
+                <p style="text-align: center;">Нет данных за эту неделю</p>
+            </div>
+        `;
         return;
     }
     
@@ -426,32 +447,85 @@ async function loadWeeklyProgress() {
     let strengthCount = 0;
     let cardioCount = 0;
     let socialDays = 0;
+    let lowStepsDays = 0;
     
-    reports.forEach(r => {
-        totalSteps += r.steps || 0;
+    // Создаем таблицу по дням
+    let dailyTable = '<div style="margin-top: 15px;"><h4 style="margin-bottom: 10px;">📅 По дням</h4>';
+    for (let r of reports) {
+        const date = new Date(r.report_date);
+        const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
+        const steps = r.steps || 0;
+        const stepsOk = steps >= dailyNorm;
+        if (!stepsOk) lowStepsDays++;
+        
+        // Тип тренировки
+        let trainingIcon = '';
+        if (r.training_type === 'strength') trainingIcon = '💪';
+        else if (r.training_type === 'cardio') trainingIcon = '🏃';
+        else if (r.training_type === 'rest') trainingIcon = '😴';
+        else trainingIcon = '⚪';
+        
+        // Социальный прием
+        const socialIcon = r.social_event ? '🎉' : '✅';
+        
+        dailyTable += `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
+                <div style="flex: 1;">
+                    <span style="font-weight: 500;">${dayName}</span>
+                    <span style="margin-left: 8px; font-size: 12px;">${trainingIcon} ${socialIcon}</span>
+                </div>
+                <div style="text-align: right;">
+                    <span style="font-weight: 500;">${steps.toLocaleString()}</span>
+                    <span style="margin-left: 8px; color: ${stepsOk ? '#34c759' : '#ff3b30'};">${stepsOk ? '✅' : '⚠️'}</span>
+                </div>
+            </div>
+        `;
+        
+        totalSteps += steps;
         if (r.training_type === 'strength') strengthCount++;
         if (r.training_type === 'cardio') cardioCount++;
         if (r.social_event) socialDays++;
-    });
+    }
+    dailyTable += '</div>';
+    
+    const stepsPercent = Math.round((totalSteps / targetSteps) * 100);
+    const strengthOk = strengthCount >= targetStrength;
+    const cardioOk = cardioCount >= targetCardio;
+    const socialOk = socialDays <= 1;
     
     container.innerHTML = `
         <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                <span>👣 Шаги:</span>
-                <span><strong>${totalSteps.toLocaleString()}</strong></span>
+            <div style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
+                    <span><strong style="color: #007aff;">${dailyNorm.toLocaleString()}</strong> шагов</span>
+                </div>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                <span>💪 Силовые:</span>
-                <span><strong>${strengthCount}</strong></span>
+            
+            <div style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>👣 Всего шагов за неделю:</span>
+                    <span><strong>${totalSteps.toLocaleString()} / ${targetSteps.toLocaleString()}</strong> (${stepsPercent}%)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>💪 Силовые:</span>
+                    <span><strong>${strengthCount} / ${targetStrength}</strong> ${strengthOk ? '✅' : '⚠️'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>🏃 Кардио:</span>
+                    <span><strong>${cardioCount} / ${targetCardio}</strong> ${cardioOk ? '✅' : '⚠️'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>🎉 Социальные приемы:</span>
+                    <span><strong>${socialDays} дней</strong> ${socialOk ? '✅' : '⚠️'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>📉 Дней с шагами ниже нормы:</span>
+                    <span><strong style="color: ${lowStepsDays > 0 ? '#ff3b30' : '#34c759'};">${lowStepsDays} дней</strong></span>
+                </div>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                <span>🏃 Кардио:</span>
-                <span><strong>${cardioCount}</strong></span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-                <span>🎉 Нарушения:</span>
-                <span><strong>${socialDays} дней</strong></span>
-            </div>
+            
+            ${dailyTable}
         </div>
     `;
 }
@@ -524,42 +598,49 @@ async function updateWeeklyMessage() {
     
     const { data: profile } = await sb
         .from('profiles')
-        .select('target_steps_weekly, target_strength_weekly, target_cardio_weekly')
+        .select('target_steps_weekly, target_strength_weekly, target_cardio_weekly, min_steps')
         .eq('id', currentUser.id)
         .single();
     
     const targetSteps = profile?.target_steps_weekly || 70000;
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
+    const dailyNorm = profile?.min_steps || 10000;
     
     let actualSteps = 0, actualStrength = 0, actualCardio = 0, socialDays = 0;
+    let lowStepsDays = 0;
+    
     reports?.forEach(r => {
         actualSteps += r.steps || 0;
         if (r.training_type === 'strength') actualStrength++;
         if (r.training_type === 'cardio') actualCardio++;
         if (r.social_event) socialDays++;
+        if ((r.steps || 0) < dailyNorm) lowStepsDays++;
     });
     
     const stepsPercent = actualSteps / targetSteps;
     const strengthOk = actualStrength >= targetStrength;
     const cardioOk = actualCardio >= targetCardio;
     const socialOk = socialDays <= 1;
-    const allCompliant = stepsPercent >= 0.9 && strengthOk && cardioOk && socialOk;
+    const stepsOk = stepsPercent >= 0.9;
+    const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
     
     const messageDiv = document.getElementById('weekly-message');
     const messageText = document.getElementById('weekly-message-text');
     
     if (!messageDiv || !messageText) return;
     
+    // Сценарий 1: есть отвес
     if (weightChange !== null && weightChange < -0.2) {
         messageDiv.style.background = '#e8f5e9';
         messageDiv.style.borderLeftColor = '#34c759';
         messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел${weightChange > 0 ? 'а' : ''} на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
         messageDiv.style.display = 'block';
     } 
+    // Сценарий 2: нет отвеса, рекомендации НЕ соблюдены
     else if (!allCompliant) {
         let failures = [];
-        if (stepsPercent < 0.9) failures.push(`👣 Шаги: ${Math.round(actualSteps).toLocaleString()} из ${targetSteps.toLocaleString()}`);
+        if (!stepsOk) failures.push(`👣 Шаги: ${Math.round(actualSteps).toLocaleString()} из ${targetSteps.toLocaleString()} (в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()})`);
         if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
         if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${targetCardio}`);
         if (!socialOk) failures.push(`🎉 Социальные приемы: ${socialDays} дней`);
@@ -569,6 +650,7 @@ async function updateWeeklyMessage() {
         messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
         messageDiv.style.display = 'block';
     } 
+    // Сценарий 3: нет отвеса, но все рекомендации соблюдены
     else {
         messageDiv.style.background = '#e3f2fd';
         messageDiv.style.borderLeftColor = '#007aff';
@@ -576,7 +658,6 @@ async function updateWeeklyMessage() {
         messageDiv.style.display = 'block';
     }
 }
-
 
 
 
@@ -909,87 +990,242 @@ async function renderClientsList() {
 
 // --- Отображение карточки клиента ---
 async function showClientDetails(client) {
-    const { data: bookings } = await sb
+    // Получаем записи клиента
+    const { data: bookings, error: bookingsError } = await sb
         .from('bookings')
-        .select('id, slot_id, slots(start_time, end_time)')
-        .eq('user_id', client.id);
+        .select(`
+            id,
+            slot_id,
+            slots (start_time, end_time)
+        `)
+        .eq('user_id', client.id)
+        .order('slot_id');
     
+    if (bookingsError) {
+        console.error('Ошибка загрузки записей клиента:', bookingsError);
+        alert('Ошибка загрузки записей');
+        return;
+    }
+    
+    // Получаем отчеты клиента за текущую неделю
+    const today = new Date();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+    startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    
+    const { data: weeklyReports } = await sb
+        .from('daily_reports')
+        .select('*')
+        .eq('user_id', client.id)
+        .gte('report_date', startOfWeek.toISOString().split('T')[0])
+        .lte('report_date', endOfWeek.toISOString().split('T')[0]);
+    
+    const targetSteps = client.target_steps_weekly || 70000;
+    const targetStrength = client.target_strength_weekly || 3;
+    const targetCardio = client.target_cardio_weekly || 1;
+    
+    let actualSteps = 0, actualStrength = 0, actualCardio = 0, socialDays = 0;
+    weeklyReports?.forEach(r => {
+        actualSteps += r.steps || 0;
+        if (r.training_type === 'strength') actualStrength++;
+        if (r.training_type === 'cardio') actualCardio++;
+        if (r.social_event) socialDays++;
+    });
+    
+    const stepsPercent = (actualSteps / targetSteps * 100).toFixed(0);
+    const strengthOk = actualStrength >= targetStrength;
+    const cardioOk = actualCardio >= targetCardio;
+    const socialOk = socialDays <= 1;
+    
+    // Создаем модальное окно
     const modal = document.createElement('div');
-    modal.style.cssText = `position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;`;
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    `;
     
     const modalContent = document.createElement('div');
-    modalContent.style.cssText = `background: white; border-radius: 16px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; padding: 20px;`;
+    modalContent.style.cssText = `
+        background: white;
+        border-radius: 16px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 85vh;
+        overflow-y: auto;
+        padding: 20px;
+    `;
     
+    // Формируем HTML для записей
     let bookingsHtml = '';
     if (bookings && bookings.length > 0) {
+        const groupedByDay = {};
         bookings.forEach(booking => {
-            const start = new Date(booking.slots.start_time);
-            bookingsHtml += `
-                <div style="display: flex; justify-content: space-between; padding: 10px; margin-bottom: 8px; background: #f8f9fa; border-radius: 8px;">
-                    <span>${start.toLocaleString()}</span>
-                    <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px;">✖</button>
-                </div>
-            `;
+            const date = new Date(booking.slots.start_time);
+            const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
+            if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+            groupedByDay[dayKey].push(booking);
         });
+        
+        for (let [day, dayBookings] of Object.entries(groupedByDay)) {
+            bookingsHtml += `<div style="margin-top: 10px;"><strong style="font-size: 13px; color: #007aff;">📅 ${day}</strong></div>`;
+            dayBookings.forEach(booking => {
+                const start = new Date(booking.slots.start_time);
+                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                bookingsHtml += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+                        <span>🕐 ${timeStr}</span>
+                        <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">✖</button>
+                    </div>
+                `;
+            });
+        }
     } else {
-        bookingsHtml = '<p>Нет записей</p>';
+        bookingsHtml = '<p style="text-align: center; padding: 20px;">Нет записей</p>';
     }
     
     modalContent.innerHTML = `
-        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-            <h2>👤 ${client.name || 'Без имени'}</h2>
-            <button id="close-client-modal" style="background: none; border: none; font-size: 24px;">✖</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0;">👤 ${client.name || 'Без имени'}</h2>
+            <button id="close-client-modal" style="background: none; border: none; font-size: 24px; cursor: pointer;">✖</button>
         </div>
-        <p><strong>📞 Телефон:</strong> ${client.phone || 'не указан'}</p>
-        <div style="margin: 15px 0;">
-            <label>Вес (кг):</label>
-            <input type="number" id="edit-weight" step="0.1" value="${client.weight || ''}" style="width: 100%; padding: 8px; margin-top: 5px;">
+        
+        <div style="margin-bottom: 20px;">
+            <p><strong>📞 Телефон:</strong> ${client.phone || 'не указан'}</p>
         </div>
-        <div style="margin: 15px 0;">
-            <label>Абонемент до:</label>
-            <input type="date" id="edit-subscription" value="${client.subscription_until || ''}" style="width: 100%; padding: 8px; margin-top: 5px;">
+        
+        <!-- Блок протокола за неделю -->
+        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;">
+            <h3 style="margin: 0 0 12px 0; font-size: 16px;">📋 Протокол за эту неделю</h3>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <span>👣 Шаги:</span>
+                <span><strong>${Math.round(actualSteps).toLocaleString()} / ${targetSteps.toLocaleString()}</strong> (${stepsPercent}%)</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <span>💪 Силовые:</span>
+                <span><strong>${actualStrength} / ${targetStrength}</strong> ${strengthOk ? '✅' : '⚠️'}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <span>🏃 Кардио:</span>
+                <span><strong>${actualCardio} / ${targetCardio}</strong> ${cardioOk ? '✅' : '⚠️'}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span>🎉 Нарушения (СПП):</span>
+                <span><strong>${socialDays} дней</strong> ${socialOk ? '✅' : '⚠️'}</span>
+            </div>
         </div>
-        <div style="margin: 15px 0;">
-            <label>Норма шагов в день:</label>
-            <input type="number" id="edit-min-steps" value="${client.min_steps || 10000}" style="width: 100%; padding: 8px; margin-top: 5px;">
+        
+        <!-- Редактирование профиля -->
+        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 12px 0; font-size: 16px;">✏️ Редактировать профиль</h3>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Вес (кг)</label>
+                <input type="number" id="edit-weight" step="0.1" value="${client.weight || ''}" placeholder="например: 75.5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Абонемент до</label>
+                <input type="date" id="edit-subscription" value="${client.subscription_until || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Минимальное количество шагов в день</label>
+                <input type="number" id="edit-min-steps" value="${client.min_steps || 10000}" placeholder="например: 10000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Норма шагов в неделю</label>
+                <input type="number" id="edit-target-steps" value="${client.target_steps_weekly || 70000}" placeholder="например: 70000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Норма силовых в неделю</label>
+                <input type="number" id="edit-target-strength" value="${client.target_strength_weekly || 3}" placeholder="например: 3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Норма кардио в неделю</label>
+                <input type="number" id="edit-target-cardio" value="${client.target_cardio_weekly || 1}" placeholder="например: 1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <button id="save-profile-btn" style="background: #007aff; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 5px;">💾 Сохранить</button>
         </div>
-        <button id="save-profile-btn" style="background: #007aff; color: white; padding: 10px; border: none; border-radius: 8px; width: 100%; margin: 10px 0;">💾 Сохранить</button>
-        <h3>Записи клиента</h3>
-        <div id="client-bookings-list">${bookingsHtml}</div>
+        
+        <!-- Записи клиента -->
+        <div>
+            <h3 style="margin: 0 0 10px 0; font-size: 16px;">📋 Записи клиента</h3>
+            <div id="client-bookings-list" style="max-height: 200px; overflow-y: auto;">
+                ${bookingsHtml}
+            </div>
+        </div>
     `;
     
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
     
-    document.getElementById('close-client-modal').onclick = () => modal.remove();
-    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    // Закрытие модального окна
+    const closeBtn = modalContent.querySelector('#close-client-modal');
+    closeBtn.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
     
-    document.getElementById('save-profile-btn').onclick = async () => {
-        const weight = document.getElementById('edit-weight').value;
-        const subscriptionUntil = document.getElementById('edit-subscription').value;
-        const minSteps = document.getElementById('edit-min-steps').value;
+    // Сохранение профиля
+    const saveBtn = modalContent.querySelector('#save-profile-btn');
+    saveBtn.addEventListener('click', async () => {
+        const weight = modalContent.querySelector('#edit-weight').value;
+        const subscriptionUntil = modalContent.querySelector('#edit-subscription').value;
+        const minSteps = modalContent.querySelector('#edit-min-steps').value;
+        const targetSteps = modalContent.querySelector('#edit-target-steps').value;
+        const targetStrength = modalContent.querySelector('#edit-target-strength').value;
+        const targetCardio = modalContent.querySelector('#edit-target-cardio').value;
         
         const updateData = {};
         if (weight) updateData.weight = parseFloat(weight);
         if (subscriptionUntil) updateData.subscription_until = subscriptionUntil;
         if (minSteps) updateData.min_steps = parseInt(minSteps);
+        if (targetSteps) updateData.target_steps_weekly = parseInt(targetSteps);
+        if (targetStrength) updateData.target_strength_weekly = parseInt(targetStrength);
+        if (targetCardio) updateData.target_cardio_weekly = parseInt(targetCardio);
         
-        await sb.from('profiles').update(updateData).eq('id', client.id);
-        alert('✅ Профиль обновлен');
-        modal.remove();
-        await renderClientsList();
-    };
+        const { error: updateError } = await sb
+            .from('profiles')
+            .update(updateData)
+            .eq('id', client.id);
+        
+        if (updateError) {
+            alert('Ошибка сохранения: ' + updateError.message);
+        } else {
+            alert('✅ Профиль обновлен!');
+            modal.remove();
+            await renderClientsList();
+        }
+    });
     
-    document.querySelectorAll('.delete-booking-from-client').forEach(btn => {
-        btn.onclick = async () => {
-            if (confirm('Удалить запись?')) {
-                await sb.from('bookings').delete().eq('id', btn.dataset.id);
-                await sb.from('slots').update({ is_available: true }).eq('id', btn.dataset.slot);
+    // Обработчики удаления записей
+    const deleteButtons = modalContent.querySelectorAll('.delete-booking-from-client');
+    deleteButtons.forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const bookingId = btn.dataset.id;
+            const slotId = btn.dataset.slot;
+            
+            if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
+                await sb.from('bookings').delete().eq('id', bookingId);
+                await sb.from('slots').update({ is_available: true }).eq('id', slotId);
+                alert('Запись удалена, слот свободен');
                 modal.remove();
                 await renderClientsList();
                 await loadAdminData();
             }
-        };
+        });
     });
 }
 
