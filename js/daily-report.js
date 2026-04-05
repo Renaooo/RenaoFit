@@ -325,7 +325,7 @@ window.app.loadWeeklyProgress = async function() {
         else if (r.training_type === 'cardio') trainingIcon = '🏃';
         else if (r.training_type === 'rest') trainingIcon = '😴';
         
-        const socialIcon = r.social_event ? '🎉' : '✅';
+        const socialIcon = r.social_event ? '⚠️' : '✅';
         
         dailyTable += `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
