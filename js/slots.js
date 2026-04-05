@@ -74,7 +74,7 @@ window.app.renderSlots = async function(slots) {
         const evening = daySlots.filter(s => new Date(s.start_time).getHours() >= 15);
         
         const dayDiv = document.createElement('div');
-        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
         dayDiv.innerHTML = `<h3 style="margin-bottom: 10px;">📅 ${displayDay}</h3>`;
         
         // Утро
@@ -88,11 +88,13 @@ window.app.renderSlots = async function(slots) {
                 const hasAdjacent = hasAdjacentBooking(dayKey, timeStr);
                 
                 const slotDiv = document.createElement('div');
-                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#fff9e6' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#ffc107' : '#e9ecef'};`;
+                slotDiv.className = 'slot-item';
+                if (window.app.selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
+                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#e8f5e9' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#36B647' : '#e9ecef'};`;
                 
                 let badgeHtml = '';
                 if (hasAdjacent) {
-                    badgeHtml = '<span style="background: #ffc107; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
+                    badgeHtml = '<span style="background: #36B647; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
                 }
                 
                 slotDiv.innerHTML = `
@@ -133,11 +135,13 @@ window.app.renderSlots = async function(slots) {
                 const hasAdjacent = hasAdjacentBooking(dayKey, timeStr);
                 
                 const slotDiv = document.createElement('div');
-                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#fff9e6' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#ffc107' : '#e9ecef'};`;
+                slotDiv.className = 'slot-item';
+                if (window.app.selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
+                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#e8f5e9' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#36B647' : '#e9ecef'};`;
                 
                 let badgeHtml = '';
                 if (hasAdjacent) {
-                    badgeHtml = '<span style="background: #ffc107; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
+                    badgeHtml = '<span style="background: #36B647; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>';
                 }
                 
                 slotDiv.innerHTML = `
@@ -255,7 +259,7 @@ window.app.loadMyBookings = async function() {
     for (let day of sortedDays) {
         const dayBookings = groupedByDay[day];
         const dayDiv = document.createElement('div');
-        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
         dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
         
         for (let booking of dayBookings) {
@@ -266,7 +270,7 @@ window.app.loadMyBookings = async function() {
             div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
             div.innerHTML = `
                 <span style="font-weight: 500;">${formatted}</span>
-                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
+                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
             `;
             
             const cancelBtn = div.querySelector('.cancel-btn');
@@ -383,7 +387,7 @@ window.app.addSlotElement = function(container, slot) {
             ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
             ${!isAvailable ? ' ❌ занят' : ''}
         </span>
-        ${isAvailable ? '<button class="delete-slot-btn" data-id="' + slot.id + '" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>' : ''}
+        ${isAvailable ? '<button class="delete-slot-btn" data-id="' + slot.id + '" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>' : ''}
     `;
     
     if (isAvailable) {
@@ -435,7 +439,7 @@ window.app.loadAdminData = async function() {
         } else {
             for (let [day, daySlots] of Object.entries(groupedByDay)) {
                 const dayDiv = document.createElement('div');
-                dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #007aff; padding-left: 12px;';
+                dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
                 dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
                 
                 const morning = daySlots.filter(s => new Date(s.start_time).getHours() < 15);
@@ -477,7 +481,7 @@ window.app.loadAdminData = async function() {
                         📞 ${booking.phone || 'нет телефона'}<br>
                         🕐 ${new Date(booking.start_time).toLocaleString()}
                     </div>
-                    <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
+                    <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
                 `;
                 
                 const deleteBtn = div.querySelector('.delete-booking-btn');
@@ -521,20 +525,20 @@ window.app.setupAdminTabs = function() {
     clientsTab.parentNode.replaceChild(newClientsTab, clientsTab);
     
     newSlotsTab.addEventListener('click', () => {
-        newSlotsTab.style.background = '#007aff';
+        newSlotsTab.style.background = '#36B647';
         newSlotsTab.style.color = 'white';
-        newClientsTab.style.background = '#e9ecef';
-        newClientsTab.style.color = '#1e1e1e';
+        newClientsTab.style.background = '#f0f0f0';
+        newClientsTab.style.color = '#323338';
         slotsPanel.style.display = 'block';
         clientsPanel.style.display = 'none';
         if (adminBookingsDiv) adminBookingsDiv.style.display = 'block';
     });
     
     newClientsTab.addEventListener('click', async () => {
-        newClientsTab.style.background = '#007aff';
+        newClientsTab.style.background = '#36B647';
         newClientsTab.style.color = 'white';
-        newSlotsTab.style.background = '#e9ecef';
-        newSlotsTab.style.color = '#1e1e1e';
+        newSlotsTab.style.background = '#f0f0f0';
+        newSlotsTab.style.color = '#323338';
         slotsPanel.style.display = 'none';
         clientsPanel.style.display = 'block';
         if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
