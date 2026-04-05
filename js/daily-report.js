@@ -9,17 +9,6 @@ let currentSocialEvent = false;
 let currentPreMeal = '';
 let currentPostMeal = '';
 
-// --- Глобальная функция определения начала недели (понедельник) ---
-function getStartOfWeek(date) {
-    const day = date.getDay(); // 0 = воскресенье, 1 = понедельник, ...
-    // Для воскресенья (0) — понедельник был 6 дней назад
-    // Для остальных дней — вычитаем (day - 1) дней
-    const daysToMonday = (day === 0 ? 6 : day - 1);
-    const start = new Date(date);
-    start.setDate(date.getDate() - daysToMonday);
-    start.setHours(0, 0, 0, 0);
-    return start;
-}
 
 // --- Инициализация UI ежедневного отчета ---
 window.app.initDailyReportUI = function() {
