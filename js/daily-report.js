@@ -370,7 +370,7 @@ window.app.loadWeeklyProgress = async function() {
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                     <span>🎉 Социальные приемы:</span>
-                    <span><strong>${socialDays} дней</strong> ${socialOk ? '✅' : '⚠️'}</span>
+                   <span><strong>${socialDays} дней</strong> ${socialDays > 0 ? '⚠️' : '✅'}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between;">
                     <span>📉 Дней с шагами ниже нормы:</span>
