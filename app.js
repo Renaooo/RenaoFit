@@ -633,6 +633,45 @@ async function openDailyReport() {
 
 
 // --- ПРОФИЛЬ И МОТИВАЦИОННОЕ СООБЩЕНИЕ ---
+async function loadMyProfile() {
+    if (!currentUser) return;
+    
+    const { data: profile } = await sb
+        .from('profiles')
+        .select('weight, subscription_until')
+        .eq('id', currentUser.id)
+        .single();
+    
+    const subscriptionEl = document.getElementById('profile-subscription');
+    if (subscriptionEl && profile?.subscription_until) {
+        const untilDate = new Date(profile.subscription_until);
+        const daysLeft = Math.ceil((untilDate - new Date()) / (1000 * 60 * 60 * 24));
+        if (daysLeft < 0) subscriptionEl.innerHTML = '❌ Истек';
+        else if (daysLeft <= 7) subscriptionEl.innerHTML = `⚠️ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
+        else subscriptionEl.innerHTML = `✅ ${daysLeft} дней (до ${untilDate.toLocaleDateString()})`;
+    } else if (subscriptionEl) {
+        subscriptionEl.innerHTML = '—';
+    }
+    
+    const weightHistory = await loadWeightHistory();
+    const weightEl = document.getElementById('profile-weight');
+    if (weightEl) {
+        if (weightHistory && weightHistory.length > 0) {
+            weightEl.innerHTML = `${weightHistory[weightHistory.length - 1].weight} кг`;
+        } else {
+            weightEl.innerHTML = '—';
+        }
+    }
+    
+    const weightContainer = document.getElementById('profile-weight-container');
+    if (weightContainer) {
+        weightContainer.style.cursor = 'pointer';
+        weightContainer.onclick = () => openWeightModal();
+    }
+    
+    await renderWeightChart();
+}
+
 async function updateWeeklyMessage() {
     const today = new Date();
     const lastMonday = new Date(today);
@@ -749,4 +788,359 @@ async function updateWeeklyMessage() {
             adjustmentText = `<br><br>📈 <strong>Мягкая корректировка:</strong> шаги +5% → ${newTargetSteps.toLocaleString()} в неделю. Организм адаптируется, дадим ему время.`;
         }
         
-        messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ри
+        messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌${adjustmentText}`;
+        messageDiv.style.display = 'block';
+    }
+}
+
+
+
+
+// --- ВЕС, ГРАФИКИ, ШАГИ, АДМИНКА ---
+async function loadWeightHistory() {
+    if (!currentUser) return [];
+    const { data } = await sb
+        .from('weight_history')
+        .select('weight, weigh_date')
+        .eq('user_id', currentUser.id)
+        .order('weigh_date', { ascending: true });
+    return data || [];
+}
+
+async function saveWeight(weight) {
+    if (!currentUser) return false;
+    const today = new Date().toISOString().split('T')[0];
+    const { error } = await sb.from('weight_history').insert({
+        user_id: currentUser.id,
+        weight: parseFloat(weight),
+        weigh_date: today
+    });
+    return !error;
+}
+
+function canAddWeight(history) {
+    if (!history || history.length === 0) return true;
+    const lastDate = new Date(history[history.length - 1].weigh_date);
+    const today = new Date();
+    const isMonday = today.getDay() === 1;
+    const daysSinceLast = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+    return isMonday && daysSinceLast >= 7;
+}
+
+async function openWeightModal() {
+    const history = await loadWeightHistory();
+    const canAdd = canAddWeight(history);
+    const modal = document.getElementById('weight-modal');
+    const weightInput = document.getElementById('weight-input');
+    const errorDiv = document.getElementById('weight-error');
+    const saveBtn = document.getElementById('weight-save-btn');
+    const cancelBtn = document.getElementById('weight-cancel-btn');
+    
+    if (!canAdd) {
+        errorDiv.textContent = '⚠️ Взвешивание возможно только по понедельникам, 1 раз в неделю.';
+        errorDiv.style.display = 'block';
+        weightInput.disabled = true;
+        saveBtn.disabled = true;
+    } else {
+        errorDiv.style.display = 'none';
+        weightInput.disabled = false;
+        saveBtn.disabled = false;
+        weightInput.value = '';
+    }
+    
+    modal.style.display = 'flex';
+    
+    const handleSave = async () => {
+        const weight = weightInput.value;
+        if (!weight || weight <= 0) return alert('Введите корректный вес');
+        const success = await saveWeight(weight);
+        if (success) {
+            alert('✅ Вес сохранен');
+            modal.style.display = 'none';
+            await loadMyProfile();
+            await updateWeeklyMessage();
+        } else {
+            alert('❌ Ошибка сохранения');
+        }
+        cleanup();
+    };
+    
+    const handleCancel = () => {
+        modal.style.display = 'none';
+        cleanup();
+    };
+    
+    const handleClickOutside = (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+            cleanup();
+        }
+    };
+    
+    const cleanup = () => {
+        saveBtn.removeEventListener('click', handleSave);
+        cancelBtn.removeEventListener('click', handleCancel);
+        modal.removeEventListener('click', handleClickOutside);
+    };
+    
+    saveBtn.addEventListener('click', handleSave);
+    cancelBtn.addEventListener('click', handleCancel);
+    modal.addEventListener('click', handleClickOutside);
+}
+
+async function renderWeightChart() {
+    const history = await loadWeightHistory();
+    const container = document.getElementById('weight-chart-container');
+    const totalLossEl = document.getElementById('total-loss');
+    
+    if (!history || history.length < 2) {
+        if (container) container.style.display = 'none';
+        return;
+    }
+    
+    if (container) container.style.display = 'block';
+    
+    const ctx = document.getElementById('weight-chart')?.getContext('2d');
+    if (!ctx) return;
+    
+    const labels = history.map(h => new Date(h.weigh_date).toLocaleDateString());
+    const weights = history.map(h => h.weight);
+    
+    if (window.weightChart) window.weightChart.destroy();
+    
+    window.weightChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Вес (кг)',
+                data: weights,
+                borderColor: '#007aff',
+                backgroundColor: 'rgba(0,122,255,0.1)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: true }
+    });
+    
+    const loss = (history[0].weight - history[history.length - 1].weight).toFixed(1);
+    if (totalLossEl) {
+        if (loss > 0) totalLossEl.innerHTML = `📉 Общая потеря: ${loss} кг`;
+        else if (loss < 0) totalLossEl.innerHTML = `📈 Общий набор: ${Math.abs(loss)} кг`;
+        else totalLossEl.innerHTML = `⚖️ Вес стабилен`;
+    }
+}
+
+
+
+
+// --- АДМИНКА (упрощенная версия для совместимости) ---
+async function ensureWeeklySchedule() {
+    // Базовая функция для совместимости
+    console.log('ensureWeeklySchedule вызвана');
+}
+
+function addSlotElement(container, slot) {
+    const start = new Date(slot.start_time);
+    const div = document.createElement('div');
+    div.style.cssText = 'display: flex; justify-content: space-between; padding: 8px; margin-bottom: 5px; background: #f5f5f5; border-radius: 8px;';
+    div.innerHTML = `
+        <span>${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+        <button class="delete-slot-btn" data-id="${slot.id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px;">✖</button>
+    `;
+    div.querySelector('.delete-slot-btn').addEventListener('click', async () => {
+        await sb.from('slots').delete().eq('id', slot.id);
+        await loadAdminData();
+    });
+    container.appendChild(div);
+}
+
+async function loadAdminData() {
+    const container = document.getElementById('admin-slots');
+    if (container) {
+        const { data: slots } = await sb.from('slots').select('*').order('start_time');
+        container.innerHTML = '';
+        if (slots && slots.length > 0) {
+            slots.forEach(slot => {
+                const start = new Date(slot.start_time);
+                const div = document.createElement('div');
+                div.style.cssText = 'display: flex; justify-content: space-between; padding: 8px; margin-bottom: 5px; background: #f5f5f5; border-radius: 8px;';
+                div.innerHTML = `
+                    <span>${start.toLocaleString()}</span>
+                    <button class="delete-slot-btn" data-id="${slot.id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px;">✖</button>
+                `;
+                div.querySelector('.delete-slot-btn').addEventListener('click', async () => {
+                    await sb.from('slots').delete().eq('id', slot.id);
+                    await loadAdminData();
+                });
+                container.appendChild(div);
+            });
+        } else {
+            container.innerHTML = '<p>Нет слотов</p>';
+        }
+    }
+    
+    const bookingsContainer = document.getElementById('admin-bookings');
+    if (bookingsContainer) {
+        const { data: bookings } = await sb.from('bookings').select('*, profiles(name, phone), slots(start_time)');
+        bookingsContainer.innerHTML = '<h3>Все записи</h3>';
+        if (bookings && bookings.length > 0) {
+            bookings.forEach(b => {
+                bookingsContainer.innerHTML += `
+                    <div style="border:1px solid #ddd; padding:10px; margin:10px 0; border-radius:8px;">
+                        <strong>${b.profiles?.name || 'Неизвестно'}</strong> (${b.profiles?.phone || 'нет телефона'})<br>
+                        ${new Date(b.slots.start_time).toLocaleString()}
+                    </div>
+                `;
+            });
+        } else {
+            bookingsContainer.innerHTML += '<p>Нет записей</p>';
+        }
+    }
+}
+
+async function renderClientsList() {
+    const container = document.getElementById('admin-clients-list');
+    if (!container) return;
+    container.innerHTML = '<p>Загрузка клиентов...</p>';
+    
+    const { data: clients } = await sb
+        .from('profiles')
+        .select('*')
+        .neq('id', currentUser?.id || '')
+        .order('name');
+    
+    if (!clients || clients.length === 0) {
+        container.innerHTML = '<p>Нет клиентов</p>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    clients.forEach(client => {
+        const div = document.createElement('div');
+        div.style.cssText = 'border:1px solid #ddd; padding:15px; margin:10px 0; border-radius:12px; cursor:pointer;';
+        div.innerHTML = `
+            <strong>${client.name || 'Без имени'}</strong><br>
+            📞 ${client.phone || 'нет телефона'}
+        `;
+        div.onclick = () => alert(`Клиент: ${client.name}\nТелефон: ${client.phone}\nID: ${client.id}`);
+        container.appendChild(div);
+    });
+}
+
+function setupAdminTabs() {
+    const slotsTab = document.getElementById('admin-slots-tab');
+    const clientsTab = document.getElementById('admin-clients-tab');
+    const slotsPanel = document.getElementById('admin-slots-panel');
+    const clientsPanel = document.getElementById('admin-clients-panel');
+    
+    if (slotsTab && clientsTab) {
+        slotsTab.onclick = () => {
+            slotsTab.style.background = '#007aff';
+            clientsTab.style.background = '#e9ecef';
+            slotsPanel.style.display = 'block';
+            clientsPanel.style.display = 'none';
+        };
+        clientsTab.onclick = async () => {
+            clientsTab.style.background = '#007aff';
+            slotsTab.style.background = '#e9ecef';
+            slotsPanel.style.display = 'none';
+            clientsPanel.style.display = 'block';
+            await renderClientsList();
+        };
+    }
+}
+
+
+
+
+// --- ИНИЦИАЛИЗАЦИЯ ---
+document.addEventListener('DOMContentLoaded', async () => {
+    initDailyReportUI();
+    
+    const { data: { session } } = await sb.auth.getSession();
+    
+    if (session) {
+        currentUser = session.user;
+        document.getElementById('user-name').innerText = session.user.user_metadata.name || 'Друг';
+        
+        const adminBtn = document.getElementById('admin-btn');
+        if (adminBtn && session.user.user_metadata?.is_admin === true) {
+            adminBtn.style.display = 'block';
+        }
+        
+        showScreen('menu');
+    } else {
+        showScreen('auth');
+    }
+    
+    document.getElementById('login-btn')?.addEventListener('click', async () => {
+        if (isLoggingIn) return;
+        isLoggingIn = true;
+        const phone = document.getElementById('phone-input').value;
+        const name = document.getElementById('name-input').value;
+        if (!phone || !name) {
+            alert('Введите телефон и имя');
+            isLoggingIn = false;
+            return;
+        }
+        try {
+            currentUser = await loginWithPhone(phone, name);
+            document.getElementById('user-name').innerText = name;
+            showScreen('menu');
+        } catch(e) {
+            alert('Ошибка входа: ' + e.message);
+        } finally {
+            isLoggingIn = false;
+        }
+    });
+    
+    document.getElementById('book-btn')?.addEventListener('click', async () => {
+        const slots = await loadSlots();
+        await renderSlots(slots);
+        showScreen('booking');
+    });
+    
+    document.getElementById('my-bookings-btn')?.addEventListener('click', async () => {
+        await loadMyBookings();
+        showScreen('myBookings');
+    });
+    
+    document.getElementById('daily-report-btn')?.addEventListener('click', async () => {
+        await openDailyReport();
+    });
+    
+    document.getElementById('my-profile-btn')?.addEventListener('click', async () => {
+        await loadMyProfile();
+        await updateWeeklyMessage();
+        showScreen('profile');
+    });
+    
+    document.getElementById('admin-btn')?.addEventListener('click', async () => {
+        await loadAdminData();
+        setupAdminTabs();
+        showScreen('admin');
+    });
+    
+    document.getElementById('confirm-booking-btn')?.addEventListener('click', confirmBooking);
+    
+    document.querySelectorAll('.back-btn').forEach(btn => {
+        btn.addEventListener('click', () => showScreen('menu'));
+    });
+    
+    document.getElementById('logout-btn')?.addEventListener('click', async () => {
+        await sb.auth.signOut();
+        currentUser = null;
+        showScreen('auth');
+    });
+    
+    document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
+        const start = document.getElementById('admin-start').value;
+        if (!start) return alert('Выберите время');
+        const end = new Date(new Date(start).getTime() + 60*60*1000).toISOString().slice(0,16);
+        const { error } = await sb.from('slots').insert({ start_time: start, end_time: end, is_available: true });
+        if (error) alert('Ошибка: ' + error.message);
+        else { alert('Слот добавлен'); loadAdminData(); }
+    });
+});
