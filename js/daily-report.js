@@ -232,14 +232,14 @@ window.app.saveDailyReport = async function() {
 
 // --- Определение начала недели (понедельник) ---
 function getStartOfWeek(date) {
-    const day = date.getDay(); // 0 = воскресенье, 1 = понедельник, ... 6 = суббота
-    // Если сегодня воскресенье (0), то понедельник был 6 дней назад
+    const day = date.getDay();
     const daysToMonday = (day === 0 ? 6 : day - 1);
     const start = new Date(date);
     start.setDate(date.getDate() - daysToMonday);
     start.setHours(0, 0, 0, 0);
     return start;
 }
+
 // --- Загрузка и отображение прогресса за неделю ---
 window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress START ===');
