@@ -2,6 +2,40 @@
 // ГЛОБАЛЬНОЕ ПРОСТРАНСТВО ИМЕН
 // ============================================
 
+
+// ============================================
+// ФУНКЦИИ ДЛЯ РАБОТЫ С МОСКОВСКИМ ВРЕМЕНЕМ
+// ============================================
+
+// Получить текущую дату в московском времени
+window.app.getMoscowDate = function(date = new Date()) {
+    const mskDate = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    return mskDate;
+};
+
+// Получить строку даты в формате YYYY-MM-DD (московское время)
+window.app.getMoscowDateString = function(date = new Date()) {
+    const mskDate = window.app.getMoscowDate(date);
+    return mskDate.toISOString().split('T')[0];
+};
+
+// Получить начало дня в московском времени
+window.app.getMoscowStartOfDay = function(date = new Date()) {
+    const mskDate = window.app.getMoscowDate(date);
+    mskDate.setHours(0, 0, 0, 0);
+    return mskDate;
+};
+
+// Получить начало недели (понедельник) в московском времени
+window.app.getMoscowStartOfWeek = function(date = new Date()) {
+    const mskDate = window.app.getMoscowDate(date);
+    const day = mskDate.getDay();
+    const diff = (day === 0 ? 6 : day - 1);
+    mskDate.setDate(mskDate.getDate() - diff);
+    mskDate.setHours(0, 0, 0, 0);
+    return mskDate;
+};
+
 window.app = window.app || {};
 
 // Supabase клиент
