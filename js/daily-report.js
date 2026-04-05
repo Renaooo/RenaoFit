@@ -252,6 +252,18 @@ window.app.loadWeeklyProgress = async function() {
     const today = new Date();
     console.log('Сегодня:', today.toISOString().split('T')[0]);
     
+    // --- Функция определения начала недели (понедельник) ---
+    function getStartOfWeek(date) {
+        const day = date.getDay();
+        // Для воскресенья (0) — понедельник был 6 дней назад
+        // Для остальных — вычитаем (day - 1) дней
+        const daysToMonday = (day === 0 ? 6 : day - 1);
+        const start = new Date(date);
+        start.setDate(date.getDate() - daysToMonday);
+        start.setHours(0, 0, 0, 0);
+        return start;
+    }
+    
     const startOfWeek = getStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
@@ -264,6 +276,14 @@ window.app.loadWeeklyProgress = async function() {
     
     const todayStr = today.toISOString().split('T')[0];
     console.log('Сегодня в диапазоне?', todayStr >= startDateStr && todayStr <= endDateStr);
+    
+    // Проверяем работу функции через консоль
+    const testDate = new Date('2026-04-05');
+    const testDay = testDate.getDay();
+    const testDaysToMonday = (testDay === 0 ? 6 : testDay - 1);
+    const testStart = new Date(testDate);
+    testStart.setDate(testDate.getDate() - testDaysToMonday);
+    console.log('ТЕСТ: для 2026-04-05 понедельник должен быть 2026-03-30, получилось:', testStart.toISOString().split('T')[0]);
     
     const { data: reports, error } = await window.app.sb
         .from('daily_reports')
@@ -395,6 +415,7 @@ window.app.loadWeeklyProgress = async function() {
     
     console.log('=== loadWeeklyProgress END (данные загружены) ===');
 };
+
 
 // --- Открытие экрана ежедневного отчета ---
 window.app.openDailyReport = async function() {
