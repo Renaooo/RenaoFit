@@ -11,30 +11,50 @@ let currentPostMeal = '';
 
 // --- Инициализация UI ежедневного отчета ---
 window.app.initDailyReportUI = function() {
+    console.log('initDailyReportUI вызван');
+    
     // Тип тренировки
-    document.getElementById('training-strength')?.addEventListener('click', () => setTrainingType('strength'));
-    document.getElementById('training-cardio')?.addEventListener('click', () => setTrainingType('cardio'));
-    document.getElementById('training-rest')?.addEventListener('click', () => setTrainingType('rest'));
+    const strengthBtn = document.getElementById('training-strength');
+    const cardioBtn = document.getElementById('training-cardio');
+    const restBtn = document.getElementById('training-rest');
+    
+    if (strengthBtn) strengthBtn.addEventListener('click', () => setTrainingType('strength'));
+    if (cardioBtn) cardioBtn.addEventListener('click', () => setTrainingType('cardio'));
+    if (restBtn) restBtn.addEventListener('click', () => setTrainingType('rest'));
     
     // Время тренировки
-    document.getElementById('time-morning')?.addEventListener('click', () => setTrainingTime('morning'));
-    document.getElementById('time-day')?.addEventListener('click', () => setTrainingTime('day'));
-    document.getElementById('time-evening')?.addEventListener('click', () => setTrainingTime('evening'));
+    const morningBtn = document.getElementById('time-morning');
+    const dayBtn = document.getElementById('time-day');
+    const eveningBtn = document.getElementById('time-evening');
+    
+    if (morningBtn) morningBtn.addEventListener('click', () => setTrainingTime('morning'));
+    if (dayBtn) dayBtn.addEventListener('click', () => setTrainingTime('day'));
+    if (eveningBtn) eveningBtn.addEventListener('click', () => setTrainingTime('evening'));
     
     // Социальный прием пищи
-    document.getElementById('social-no')?.addEventListener('click', () => setSocialEvent(false));
-    document.getElementById('social-yes')?.addEventListener('click', () => setSocialEvent(true));
+    const socialNoBtn = document.getElementById('social-no');
+    const socialYesBtn = document.getElementById('social-yes');
+    
+    if (socialNoBtn) socialNoBtn.addEventListener('click', () => setSocialEvent(false));
+    if (socialYesBtn) socialYesBtn.addEventListener('click', () => setSocialEvent(true));
     
     // Питание до тренировки
-    document.getElementById('pre-yes')?.addEventListener('click', () => setPreMeal('yes'));
-    document.getElementById('pre-no')?.addEventListener('click', () => setPreMeal('no'));
+    const preYesBtn = document.getElementById('pre-yes');
+    const preNoBtn = document.getElementById('pre-no');
+    
+    if (preYesBtn) preYesBtn.addEventListener('click', () => setPreMeal('yes'));
+    if (preNoBtn) preNoBtn.addEventListener('click', () => setPreMeal('no'));
     
     // Питание после тренировки
-    document.getElementById('post-yes')?.addEventListener('click', () => setPostMeal('yes'));
-    document.getElementById('post-no')?.addEventListener('click', () => setPostMeal('no'));
+    const postYesBtn = document.getElementById('post-yes');
+    const postNoBtn = document.getElementById('post-no');
+    
+    if (postYesBtn) postYesBtn.addEventListener('click', () => setPostMeal('yes'));
+    if (postNoBtn) postNoBtn.addEventListener('click', () => setPostMeal('no'));
     
     // Сохранение
-    document.getElementById('save-daily-report-btn')?.addEventListener('click', window.app.saveDailyReport);
+    const saveBtn = document.getElementById('save-daily-report-btn');
+    if (saveBtn) saveBtn.addEventListener('click', window.app.saveDailyReport);
 };
 
 // --- Установка типа тренировки ---
@@ -53,7 +73,8 @@ function setTrainingType(type) {
         }
     });
     
-    document.getElementById('training-type').value = type;
+    const trainingTypeInput = document.getElementById('training-type');
+    if (trainingTypeInput) trainingTypeInput.value = type;
     
     const timeContainer = document.getElementById('training-time-container');
     const preMealContainer = document.getElementById('pre-meal-container');
@@ -88,7 +109,8 @@ function setTrainingTime(time) {
             btn.style.color = time === key ? 'white' : '#1e1e1e';
         }
     });
-    document.getElementById('training-time').value = time;
+    const trainingTimeInput = document.getElementById('training-time');
+    if (trainingTimeInput) trainingTimeInput.value = time;
 }
 
 // --- Установка социального события ---
@@ -104,7 +126,8 @@ function setSocialEvent(value) {
         yesBtn.style.background = value ? '#007aff' : '#e9ecef';
         yesBtn.style.color = value ? 'white' : '#1e1e1e';
     }
-    document.getElementById('social-event').value = value;
+    const socialEventInput = document.getElementById('social-event');
+    if (socialEventInput) socialEventInput.value = value;
 }
 
 // --- Установка питания до тренировки ---
@@ -120,7 +143,8 @@ function setPreMeal(value) {
         noBtn.style.background = value === 'no' ? '#ff3b30' : '#e9ecef';
         noBtn.style.color = value === 'no' ? 'white' : '#1e1e1e';
     }
-    document.getElementById('pre-meal').value = value;
+    const preMealInput = document.getElementById('pre-meal');
+    if (preMealInput) preMealInput.value = value;
 }
 
 // --- Установка питания после тренировки ---
@@ -136,25 +160,42 @@ function setPostMeal(value) {
         noBtn.style.background = value === 'no' ? '#ff3b30' : '#e9ecef';
         noBtn.style.color = value === 'no' ? 'white' : '#1e1e1e';
     }
-    document.getElementById('post-meal').value = value;
+    const postMealInput = document.getElementById('post-meal');
+    if (postMealInput) postMealInput.value = value;
 }
 
 // --- Сохранение ежедневного отчета ---
 window.app.saveDailyReport = async function() {
-    const steps = parseInt(document.getElementById('daily-steps').value);
-    const trainingType = currentTrainingType;
-    const trainingTime = currentTrainingTime;
-    const socialEvent = currentSocialEvent;
-    const preMeal = currentPreMeal === 'yes' ? true : (currentPreMeal === 'no' ? false : null);
-    const postMeal = currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null);
-    const notes = document.getElementById('daily-notes').value;
+    console.log('saveDailyReport вызвана');
+    
+    const stepsInput = document.getElementById('daily-steps');
+    const steps = parseInt(stepsInput?.value || 0);
     
     if (!steps || steps <= 0) {
         alert('Введите количество шагов');
         return;
     }
     
+    const trainingType = currentTrainingType;
+    const trainingTime = currentTrainingTime;
+    const socialEvent = currentSocialEvent;
+    const preMeal = currentPreMeal === 'yes' ? true : (currentPreMeal === 'no' ? false : null);
+    const postMeal = currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null);
+    const notes = document.getElementById('daily-notes')?.value || '';
+    
     const today = new Date().toISOString().split('T')[0];
+    
+    console.log('Сохраняем отчет:', {
+        user_id: window.app.currentUser?.id,
+        report_date: today,
+        steps: steps,
+        training_type: trainingType === 'rest' ? 'rest' : trainingType,
+        training_time: trainingTime || null,
+        social_event: socialEvent,
+        pre_meal_compliant: preMeal,
+        post_meal_compliant: postMeal,
+        notes: notes
+    });
     
     const { error } = await window.app.sb
         .from('daily_reports')
@@ -171,10 +212,18 @@ window.app.saveDailyReport = async function() {
         }, { onConflict: 'user_id,report_date' });
     
     if (error) {
+        console.error('Ошибка сохранения:', error);
         alert('Ошибка сохранения: ' + error.message);
     } else {
+        console.log('Отчет успешно сохранен');
         alert('✅ Отчет сохранен!');
-        await window.app.loadWeeklyProgress();
+        
+        // Обновляем прогресс за неделю
+        if (typeof window.app.loadWeeklyProgress === 'function') {
+            await window.app.loadWeeklyProgress();
+        }
+        
+        // Обновляем мотивационное сообщение
         if (typeof window.app.updateWeeklyMessage === 'function') {
             await window.app.updateWeeklyMessage();
         }
@@ -193,18 +242,37 @@ function getStartOfWeek(date) {
 
 // --- Загрузка и отображение прогресса за неделю ---
 window.app.loadWeeklyProgress = async function() {
+    console.log('loadWeeklyProgress вызвана');
+    
+    if (!window.app.currentUser) {
+        console.log('Нет текущего пользователя');
+        return;
+    }
+    
     const today = new Date();
     const startOfWeek = getStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
-    const { data: reports } = await window.app.sb
+    const startDateStr = startOfWeek.toISOString().split('T')[0];
+    const endDateStr = endOfWeek.toISOString().split('T')[0];
+    
+    console.log('Диапазон:', startDateStr, 'до', endDateStr);
+    
+    const { data: reports, error } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
-        .gte('report_date', startOfWeek.toISOString().split('T')[0])
-        .lte('report_date', endOfWeek.toISOString().split('T')[0])
+        .gte('report_date', startDateStr)
+        .lte('report_date', endDateStr)
         .order('report_date');
+    
+    if (error) {
+        console.error('Ошибка загрузки отчетов:', error);
+        return;
+    }
+    
+    console.log('Найдено отчетов:', reports?.length || 0);
     
     const { data: profile } = await window.app.sb
         .from('profiles')
@@ -313,34 +381,59 @@ window.app.loadWeeklyProgress = async function() {
 
 // --- Открытие экрана ежедневного отчета ---
 window.app.openDailyReport = async function() {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('daily-report-date').innerHTML = `📅 ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
+    console.log('openDailyReport вызвана');
     
-    const { data: existing } = await window.app.sb
+    if (!window.app.currentUser) {
+        console.log('Нет текущего пользователя');
+        return;
+    }
+    
+    const today = new Date().toISOString().split('T')[0];
+    const dateEl = document.getElementById('daily-report-date');
+    if (dateEl) {
+        dateEl.innerHTML = `📅 ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
+    }
+    
+    const { data: existing, error } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
         .eq('report_date', today)
-        .single();
+        .maybeSingle();
+    
+    if (error) {
+        console.error('Ошибка загрузки существующего отчета:', error);
+    }
     
     if (existing) {
-        document.getElementById('daily-steps').value = existing.steps || '';
+        const stepsInput = document.getElementById('daily-steps');
+        if (stepsInput) stepsInput.value = existing.steps || '';
+        
         setTrainingType(existing.training_type || '');
         setTrainingTime(existing.training_time || '');
         setSocialEvent(existing.social_event || false);
         setPreMeal(existing.pre_meal_compliant === true ? 'yes' : (existing.pre_meal_compliant === false ? 'no' : ''));
         setPostMeal(existing.post_meal_compliant === true ? 'yes' : (existing.post_meal_compliant === false ? 'no' : ''));
-        document.getElementById('daily-notes').value = existing.notes || '';
+        
+        const notesInput = document.getElementById('daily-notes');
+        if (notesInput) notesInput.value = existing.notes || '';
     } else {
-        document.getElementById('daily-steps').value = '';
+        const stepsInput = document.getElementById('daily-steps');
+        if (stepsInput) stepsInput.value = '';
+        
         setTrainingType('');
         setTrainingTime('');
         setSocialEvent(false);
         setPreMeal('');
         setPostMeal('');
-        document.getElementById('daily-notes').value = '';
+        
+        const notesInput = document.getElementById('daily-notes');
+        if (notesInput) notesInput.value = '';
     }
     
-    await window.app.loadWeeklyProgress();
+    if (typeof window.app.loadWeeklyProgress === 'function') {
+        await window.app.loadWeeklyProgress();
+    }
+    
     window.app.showScreen('dailyReport');
 };
