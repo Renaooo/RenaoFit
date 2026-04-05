@@ -10,7 +10,7 @@ let currentPreMeal = '';
 let currentPostMeal = '';
 
 // --- Инициализация UI ежедневного отчета ---
-function initDailyReportUI() {
+window.app.initDailyReportUI = function() {
     // Тип тренировки
     document.getElementById('training-strength')?.addEventListener('click', () => setTrainingType('strength'));
     document.getElementById('training-cardio')?.addEventListener('click', () => setTrainingType('cardio'));
@@ -34,8 +34,8 @@ function initDailyReportUI() {
     document.getElementById('post-no')?.addEventListener('click', () => setPostMeal('no'));
     
     // Сохранение
-    document.getElementById('save-daily-report-btn')?.addEventListener('click', saveDailyReport);
-}
+    document.getElementById('save-daily-report-btn')?.addEventListener('click', window.app.saveDailyReport);
+};
 
 // --- Установка типа тренировки ---
 function setTrainingType(type) {
@@ -140,7 +140,7 @@ function setPostMeal(value) {
 }
 
 // --- Сохранение ежедневного отчета ---
-async function saveDailyReport() {
+window.app.saveDailyReport = async function() {
     const steps = parseInt(document.getElementById('daily-steps').value);
     const trainingType = currentTrainingType;
     const trainingTime = currentTrainingTime;
@@ -156,10 +156,10 @@ async function saveDailyReport() {
     
     const today = new Date().toISOString().split('T')[0];
     
-    const { error } = await sb
+    const { error } = await window.app.sb
         .from('daily_reports')
         .upsert({
-            user_id: currentUser.id,
+            user_id: window.app.currentUser.id,
             report_date: today,
             steps: steps,
             training_type: trainingType === 'rest' ? 'rest' : trainingType,
@@ -174,10 +174,12 @@ async function saveDailyReport() {
         alert('Ошибка сохранения: ' + error.message);
     } else {
         alert('✅ Отчет сохранен!');
-        await loadWeeklyProgress();
-        await updateWeeklyMessage();
+        await window.app.loadWeeklyProgress();
+        if (typeof window.app.updateWeeklyMessage === 'function') {
+            await window.app.updateWeeklyMessage();
+        }
     }
-}
+};
 
 // --- Определение начала недели (понедельник) ---
 function getStartOfWeek(date) {
@@ -190,24 +192,24 @@ function getStartOfWeek(date) {
 }
 
 // --- Загрузка и отображение прогресса за неделю ---
-async function loadWeeklyProgress() {
+window.app.loadWeeklyProgress = async function() {
     const today = new Date();
     const startOfWeek = getStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
-    const { data: reports } = await sb
+    const { data: reports } = await window.app.sb
         .from('daily_reports')
         .select('*')
-        .eq('user_id', currentUser.id)
+        .eq('user_id', window.app.currentUser.id)
         .gte('report_date', startOfWeek.toISOString().split('T')[0])
         .lte('report_date', endOfWeek.toISOString().split('T')[0])
         .order('report_date');
     
-    const { data: profile } = await sb
+    const { data: profile } = await window.app.sb
         .from('profiles')
         .select('target_strength_weekly, target_cardio_weekly, min_steps')
-        .eq('id', currentUser.id)
+        .eq('id', window.app.currentUser.id)
         .single();
     
     const targetStrength = profile?.target_strength_weekly || 3;
@@ -307,17 +309,17 @@ async function loadWeeklyProgress() {
             ${dailyTable}
         </div>
     `;
-}
+};
 
 // --- Открытие экрана ежедневного отчета ---
-async function openDailyReport() {
+window.app.openDailyReport = async function() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('daily-report-date').innerHTML = `📅 ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
     
-    const { data: existing } = await sb
+    const { data: existing } = await window.app.sb
         .from('daily_reports')
         .select('*')
-        .eq('user_id', currentUser.id)
+        .eq('user_id', window.app.currentUser.id)
         .eq('report_date', today)
         .single();
     
@@ -339,6 +341,6 @@ async function openDailyReport() {
         document.getElementById('daily-notes').value = '';
     }
     
-    await loadWeeklyProgress();
-    showScreen('dailyReport');
-}
+    await window.app.loadWeeklyProgress();
+    window.app.showScreen('dailyReport');
+};
