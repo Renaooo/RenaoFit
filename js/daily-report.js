@@ -9,12 +9,22 @@ let currentSocialEvent = false;
 let currentPreMeal = '';
 let currentPostMeal = '';
 
+// --- ЕДИНСТВЕННАЯ функция определения начала недели (понедельник) ---
+function getStartOfWeek(date) {
+    const day = date.getDay(); // 0 = воскресенье, 1 = понедельник, ...
+    // Для воскресенья (0) — понедельник был 6 дней назад
+    // Для остальных — вычитаем (day - 1) дней
+    const daysToMonday = (day === 0 ? 6 : day - 1);
+    const start = new Date(date);
+    start.setDate(date.getDate() - daysToMonday);
+    start.setHours(0, 0, 0, 0);
+    return start;
+}
 
 // --- Инициализация UI ежедневного отчета ---
 window.app.initDailyReportUI = function() {
     console.log('initDailyReportUI вызван');
     
-    // Тип тренировки
     const strengthBtn = document.getElementById('training-strength');
     const cardioBtn = document.getElementById('training-cardio');
     const restBtn = document.getElementById('training-rest');
@@ -23,7 +33,6 @@ window.app.initDailyReportUI = function() {
     if (cardioBtn) cardioBtn.addEventListener('click', () => setTrainingType('cardio'));
     if (restBtn) restBtn.addEventListener('click', () => setTrainingType('rest'));
     
-    // Время тренировки
     const morningBtn = document.getElementById('time-morning');
     const dayBtn = document.getElementById('time-day');
     const eveningBtn = document.getElementById('time-evening');
@@ -32,28 +41,24 @@ window.app.initDailyReportUI = function() {
     if (dayBtn) dayBtn.addEventListener('click', () => setTrainingTime('day'));
     if (eveningBtn) eveningBtn.addEventListener('click', () => setTrainingTime('evening'));
     
-    // Социальный прием пищи
     const socialNoBtn = document.getElementById('social-no');
     const socialYesBtn = document.getElementById('social-yes');
     
     if (socialNoBtn) socialNoBtn.addEventListener('click', () => setSocialEvent(false));
     if (socialYesBtn) socialYesBtn.addEventListener('click', () => setSocialEvent(true));
     
-    // Питание до тренировки
     const preYesBtn = document.getElementById('pre-yes');
     const preNoBtn = document.getElementById('pre-no');
     
     if (preYesBtn) preYesBtn.addEventListener('click', () => setPreMeal('yes'));
     if (preNoBtn) preNoBtn.addEventListener('click', () => setPreMeal('no'));
     
-    // Питание после тренировки
     const postYesBtn = document.getElementById('post-yes');
     const postNoBtn = document.getElementById('post-no');
     
     if (postYesBtn) postYesBtn.addEventListener('click', () => setPostMeal('yes'));
     if (postNoBtn) postNoBtn.addEventListener('click', () => setPostMeal('no'));
     
-    // Сохранение
     const saveBtn = document.getElementById('save-daily-report-btn');
     if (saveBtn) saveBtn.addEventListener('click', window.app.saveDailyReport);
 };
@@ -241,18 +246,7 @@ window.app.loadWeeklyProgress = async function() {
     const today = new Date();
     console.log('Сегодня:', today.toISOString().split('T')[0]);
     
-    // --- Функция определения начала недели (понедельник) ---
-    function getStartOfWeek(date) {
-        const day = date.getDay();
-        // Для воскресенья (0) — понедельник был 6 дней назад
-        // Для остальных — вычитаем (day - 1) дней
-        const daysToMonday = (day === 0 ? 6 : day - 1);
-        const start = new Date(date);
-        start.setDate(date.getDate() - daysToMonday);
-        start.setHours(0, 0, 0, 0);
-        return start;
-    }
-    
+    // Используем ЕДИНСТВЕННУЮ функцию getStartOfWeek
     const startOfWeek = getStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
@@ -265,14 +259,6 @@ window.app.loadWeeklyProgress = async function() {
     
     const todayStr = today.toISOString().split('T')[0];
     console.log('Сегодня в диапазоне?', todayStr >= startDateStr && todayStr <= endDateStr);
-    
-    // Проверяем работу функции через консоль
-    const testDate = new Date('2026-04-05');
-    const testDay = testDate.getDay();
-    const testDaysToMonday = (testDay === 0 ? 6 : testDay - 1);
-    const testStart = new Date(testDate);
-    testStart.setDate(testDate.getDate() - testDaysToMonday);
-    console.log('ТЕСТ: для 2026-04-05 понедельник должен быть 2026-03-30, получилось:', testStart.toISOString().split('T')[0]);
     
     const { data: reports, error } = await window.app.sb
         .from('daily_reports')
@@ -404,7 +390,6 @@ window.app.loadWeeklyProgress = async function() {
     
     console.log('=== loadWeeklyProgress END (данные загружены) ===');
 };
-
 
 // --- Открытие экрана ежедневного отчета ---
 window.app.openDailyReport = async function() {
