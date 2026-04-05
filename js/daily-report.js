@@ -9,6 +9,18 @@ let currentSocialEvent = false;
 let currentPreMeal = '';
 let currentPostMeal = '';
 
+// --- Глобальная функция определения начала недели (понедельник) ---
+function getStartOfWeek(date) {
+    const day = date.getDay(); // 0 = воскресенье, 1 = понедельник, ...
+    // Для воскресенья (0) — понедельник был 6 дней назад
+    // Для остальных дней — вычитаем (day - 1) дней
+    const daysToMonday = (day === 0 ? 6 : day - 1);
+    const start = new Date(date);
+    start.setDate(date.getDate() - daysToMonday);
+    start.setHours(0, 0, 0, 0);
+    return start;
+}
+
 // --- Инициализация UI ежедневного отчета ---
 window.app.initDailyReportUI = function() {
     console.log('initDailyReportUI вызван');
@@ -218,27 +230,15 @@ window.app.saveDailyReport = async function() {
         console.log('Отчет успешно сохранен');
         alert('✅ Отчет сохранен!');
         
-        // Обновляем прогресс за неделю
         if (typeof window.app.loadWeeklyProgress === 'function') {
             await window.app.loadWeeklyProgress();
         }
         
-        // Обновляем мотивационное сообщение
         if (typeof window.app.updateWeeklyMessage === 'function') {
             await window.app.updateWeeklyMessage();
         }
     }
 };
-
-// --- Определение начала недели (понедельник) ---
-function getStartOfWeek(date) {
-    const day = date.getDay();
-    const daysToMonday = (day === 0 ? 6 : day - 1);
-    const start = new Date(date);
-    start.setDate(date.getDate() - daysToMonday);
-    start.setHours(0, 0, 0, 0);
-    return start;
-}
 
 // --- Загрузка и отображение прогресса за неделю ---
 window.app.loadWeeklyProgress = async function() {
@@ -252,16 +252,6 @@ window.app.loadWeeklyProgress = async function() {
     const today = new Date();
     console.log('Сегодня:', today.toISOString().split('T')[0]);
     
-    // --- Определение начала недели (понедельник) ---
-    function getStartOfWeek(date) {
-        const day = date.getDay(); // 0 = воскресенье, 1 = понедельник, ... 6 = суббота
-        const daysToMonday = (day === 0 ? 6 : day - 1);
-        const start = new Date(date);
-        start.setDate(date.getDate() - daysToMonday);
-        start.setHours(0, 0, 0, 0);
-        return start;
-    }
-    
     const startOfWeek = getStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
@@ -271,6 +261,9 @@ window.app.loadWeeklyProgress = async function() {
     
     console.log('Начало недели (понедельник):', startDateStr);
     console.log('Конец недели (воскресенье):', endDateStr);
+    
+    const todayStr = today.toISOString().split('T')[0];
+    console.log('Сегодня в диапазоне?', todayStr >= startDateStr && todayStr <= endDateStr);
     
     const { data: reports, error } = await window.app.sb
         .from('daily_reports')
@@ -287,23 +280,11 @@ window.app.loadWeeklyProgress = async function() {
     
     console.log('Найдено отчетов:', reports?.length || 0);
     
-    // Выводим все даты отчетов
     if (reports && reports.length > 0) {
         reports.forEach(r => {
             console.log('  Отчет за:', r.report_date, 'шаги:', r.steps);
         });
     }
-    
-    // Проверяем отчет за сегодня
-    const todayStr = today.toISOString().split('T')[0];
-    const { data: todayReport } = await window.app.sb
-        .from('daily_reports')
-        .select('*')
-        .eq('user_id', window.app.currentUser.id)
-        .eq('report_date', todayStr)
-        .maybeSingle();
-    
-    console.log('Отчет за сегодня:', todayReport ? `есть (${todayReport.steps} шагов)` : 'нет');
     
     const { data: profile } = await window.app.sb
         .from('profiles')
@@ -329,6 +310,7 @@ window.app.loadWeeklyProgress = async function() {
                 </div>
                 <p style="text-align: center;">Нет данных за эту неделю</p>
                 <p style="text-align: center; font-size: 12px; color: #999;">Неделя: ${startDateStr} - ${endDateStr}</p>
+                <p style="text-align: center; font-size: 12px; color: #999;">Сегодня: ${todayStr}</p>
             </div>
         `;
         console.log('=== loadWeeklyProgress END (нет данных) ===');
