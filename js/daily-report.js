@@ -140,7 +140,7 @@ function setSocialEvent(value) {
         noBtn.style.color = !value ? 'white' : '#1e1e1e';
     }
     if (yesBtn) {
-        yesBtn.style.background = value ? '#36B647' : '#e9ecef';
+        yesBtn.style.background = value ? '#dc3545' : '#e9ecef';
         yesBtn.style.color = value ? 'white' : '#1e1e1e';
     }
     const socialEventInput = document.getElementById('social-event');
