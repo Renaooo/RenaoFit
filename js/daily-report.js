@@ -11,14 +11,12 @@ let currentPostMeal = '';
 
 // --- ЕДИНСТВЕННАЯ функция определения начала недели (понедельник) ---
 function getStartOfWeek(date) {
-    const day = date.getDay(); // 0 = воскресенье, 1 = понедельник, ...
-    // Для воскресенья (0) — понедельник был 6 дней назад
-    // Для остальных — вычитаем (day - 1) дней
-    const daysToMonday = (day === 0 ? 6 : day - 1);
-    const start = new Date(date);
-    start.setDate(date.getDate() - daysToMonday);
-    start.setHours(0, 0, 0, 0);
-    return start;
+    const [year, month, day] = date.toISOString().split('T')[0].split('-').map(Number);
+    const utcDate = new Date(Date.UTC(year, month - 1, day));
+    const dayOfWeek = utcDate.getUTCDay();
+    const diff = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+    utcDate.setUTCDate(utcDate.getUTCDate() - diff);
+    return utcDate;
 }
 
 // --- Инициализация UI ежедневного отчета ---
