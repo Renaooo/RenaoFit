@@ -252,6 +252,16 @@ window.app.loadWeeklyProgress = async function() {
     const today = new Date();
     console.log('Сегодня:', today.toISOString().split('T')[0]);
     
+    // --- Определение начала недели (понедельник) ---
+    function getStartOfWeek(date) {
+        const day = date.getDay(); // 0 = воскресенье, 1 = понедельник, ... 6 = суббота
+        const daysToMonday = (day === 0 ? 6 : day - 1);
+        const start = new Date(date);
+        start.setDate(date.getDate() - daysToMonday);
+        start.setHours(0, 0, 0, 0);
+        return start;
+    }
+    
     const startOfWeek = getStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
@@ -259,13 +269,8 @@ window.app.loadWeeklyProgress = async function() {
     const startDateStr = startOfWeek.toISOString().split('T')[0];
     const endDateStr = endOfWeek.toISOString().split('T')[0];
     
-    console.log('Начало недели:', startDateStr);
-    console.log('Конец недели:', endDateStr);
-    
-    // Проверяем, попадает ли сегодня в диапазон
-    const todayStr = today.toISOString().split('T')[0];
-    const isTodayInRange = todayStr >= startDateStr && todayStr <= endDateStr;
-    console.log('Сегодня в диапазоне?', isTodayInRange);
+    console.log('Начало недели (понедельник):', startDateStr);
+    console.log('Конец недели (воскресенье):', endDateStr);
     
     const { data: reports, error } = await window.app.sb
         .from('daily_reports')
@@ -287,21 +292,18 @@ window.app.loadWeeklyProgress = async function() {
         reports.forEach(r => {
             console.log('  Отчет за:', r.report_date, 'шаги:', r.steps);
         });
-    } else {
-        console.log('Нет отчетов за этот период');
     }
     
-    // Также проверим, есть ли отчет за сегодня напрямую
-    const todayStr2 = today.toISOString().split('T')[0];
-    const { data: todayReport, error: todayError } = await window.app.sb
+    // Проверяем отчет за сегодня
+    const todayStr = today.toISOString().split('T')[0];
+    const { data: todayReport } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
-        .eq('report_date', todayStr2)
+        .eq('report_date', todayStr)
         .maybeSingle();
     
-    console.log('Отчет за сегодня:', todayReport || 'нет');
-    if (todayError) console.error('Ошибка проверки сегодняшнего отчета:', todayError);
+    console.log('Отчет за сегодня:', todayReport ? `есть (${todayReport.steps} шагов)` : 'нет');
     
     const { data: profile } = await window.app.sb
         .from('profiles')
@@ -326,17 +328,91 @@ window.app.loadWeeklyProgress = async function() {
                     </div>
                 </div>
                 <p style="text-align: center;">Нет данных за эту неделю</p>
-                <p style="text-align: center; font-size: 12px; color: #999;">Ищем с ${startDateStr} по ${endDateStr}</p>
+                <p style="text-align: center; font-size: 12px; color: #999;">Неделя: ${startDateStr} - ${endDateStr}</p>
             </div>
         `;
         console.log('=== loadWeeklyProgress END (нет данных) ===');
         return;
     }
     
-    // ... остальной код (если есть отчеты)
-    console.log('=== loadWeeklyProgress END (есть данные) ===');
+    let strengthCount = 0;
+    let cardioCount = 0;
+    let socialDays = 0;
+    let lowStepsDays = 0;
+    
+    let dailyTable = '<div style="margin-top: 15px;"><h4 style="margin-bottom: 10px;">📅 По дням</h4>';
+    for (let r of reports) {
+        const date = new Date(r.report_date);
+        const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
+        const steps = r.steps || 0;
+        const stepsOk = steps >= dailyNorm;
+        if (!stepsOk) lowStepsDays++;
+        
+        let trainingIcon = '';
+        if (r.training_type === 'strength') trainingIcon = '💪';
+        else if (r.training_type === 'cardio') trainingIcon = '🏃';
+        else if (r.training_type === 'rest') trainingIcon = '😴';
+        else trainingIcon = '⚪';
+        
+        const socialIcon = r.social_event ? '🎉' : '✅';
+        
+        dailyTable += `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
+                <div style="flex: 1;">
+                    <span style="font-weight: 500;">${dayName}</span>
+                    <span style="margin-left: 8px; font-size: 12px;">${trainingIcon} ${socialIcon}</span>
+                </div>
+                <div style="text-align: right;">
+                    <span style="font-weight: 500;">${steps.toLocaleString()}</span>
+                    <span style="margin-left: 8px; color: ${stepsOk ? '#34c759' : '#ff3b30'};">${stepsOk ? '✅' : '⚠️'}</span>
+                </div>
+            </div>
+        `;
+        
+        if (r.training_type === 'strength') strengthCount++;
+        if (r.training_type === 'cardio') cardioCount++;
+        if (r.social_event) socialDays++;
+    }
+    dailyTable += '</div>';
+    
+    const strengthOk = strengthCount >= targetStrength;
+    const cardioOk = cardioCount >= targetCardio;
+    const socialOk = socialDays <= 1;
+    
+    container.innerHTML = `
+        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
+            <div style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
+                    <span><strong style="color: #007aff;">${dailyNorm.toLocaleString()}</strong> шагов</span>
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>💪 Силовые:</span>
+                    <span><strong>${strengthCount} / ${targetStrength}</strong> ${strengthOk ? '✅' : '⚠️'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>🏃 Кардио:</span>
+                    <span><strong>${cardioCount} / ${targetCardio}</strong> ${cardioOk ? '✅' : '⚠️'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>🎉 Социальные приемы:</span>
+                    <span><strong>${socialDays} дней</strong> ${socialOk ? '✅' : '⚠️'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>📉 Дней с шагами ниже нормы:</span>
+                    <span><strong style="color: ${lowStepsDays > 0 ? '#ff3b30' : '#34c759'};">${lowStepsDays} дней</strong></span>
+                </div>
+            </div>
+            
+            ${dailyTable}
+        </div>
+    `;
+    
+    console.log('=== loadWeeklyProgress END (данные загружены) ===');
 };
-
 
 // --- Открытие экрана ежедневного отчета ---
 window.app.openDailyReport = async function() {
