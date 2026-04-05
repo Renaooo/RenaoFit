@@ -227,12 +227,16 @@ window.app.renderWeightChart = async function() {
     const container = document.getElementById('weight-chart-container');
     const totalLossEl = document.getElementById('total-loss');
     
+    if (!container) return;
+    
+    // Всегда показываем контейнер, даже если нет данных
+    container.style.display = 'block';
+    
     if (!history || history.length < 2) {
-        if (container) container.style.display = 'none';
+        totalLossEl.innerHTML = '📊 Добавьте вес в понедельник, чтобы увидеть динамику';
+        totalLossEl.style.color = '#999';
         return;
     }
-    
-    if (container) container.style.display = 'block';
     
     const ctx = document.getElementById('weight-chart')?.getContext('2d');
     if (!ctx) return;
@@ -249,15 +253,14 @@ window.app.renderWeightChart = async function() {
             datasets: [{
                 label: 'Вес (кг)',
                 data: weights,
-                borderColor: '#007aff',
-                backgroundColor: 'rgba(0, 122, 255, 0.1)',
+                borderColor: '#36B647',
+                backgroundColor: 'rgba(54, 182, 71, 0.1)',
                 tension: 0.3,
                 fill: true,
-                pointBackgroundColor: '#007aff',
+                pointBackgroundColor: '#36B647',
                 pointBorderColor: '#fff',
                 pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
+                pointRadius: 4
             }]
         },
         options: {
@@ -272,16 +275,6 @@ window.app.renderWeightChart = async function() {
                         }
                     }
                 }
-            },
-            scales: {
-                y: {
-                    title: { display: true, text: 'кг', font: { size: 12 } },
-                    min: Math.floor(Math.min(...weights) - 2),
-                    max: Math.ceil(Math.max(...weights) + 2)
-                },
-                x: {
-                    title: { display: true, text: 'Дата', font: { size: 12 } }
-                }
             }
         }
     });
@@ -292,12 +285,12 @@ window.app.renderWeightChart = async function() {
     
     if (loss > 0) {
         totalLossEl.innerHTML = `📉 Общая потеря: ${loss} кг`;
-        totalLossEl.style.color = '#34c759';
+        totalLossEl.style.color = '#36B647';
     } else if (loss < 0) {
         totalLossEl.innerHTML = `📈 Общий набор: ${Math.abs(loss)} кг`;
-        totalLossEl.style.color = '#ff3b30';
+        totalLossEl.style.color = '#dc3545';
     } else {
-        totalLossEl.innerHTML = `⚖️ Вес стабилен: ${loss} кг`;
+        totalLossEl.innerHTML = `⚖️ Вес стабилен`;
         totalLossEl.style.color = '#666';
     }
 };
