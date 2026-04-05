@@ -1295,36 +1295,39 @@ async function showClientDetails(client) {
     closeBtn.addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
     
-    // Сохранение профиля
-    const saveBtn = modalContent.querySelector('#save-profile-btn');
-    saveBtn.addEventListener('click', async () => {
-        const weight = modalContent.querySelector('#edit-weight').value;
-        const subscriptionUntil = modalContent.querySelector('#edit-subscription').value;
-        const minSteps = modalContent.querySelector('#edit-min-steps').value;
-        const targetStepsWeekly = modalContent.querySelector('#edit-target-steps').value;
-        const targetStrengthWeekly = modalContent.querySelector('#edit-target-strength').value;
-        const targetCardioWeekly = modalContent.querySelector('#edit-target-cardio').value;
-        
-        const updateData = {};
-        if (weight) updateData.weight = parseFloat(weight);
-        if (subscriptionUntil) updateData.subscription_until = subscriptionUntil;
-        if (minSteps) updateData.min_steps = parseInt(minSteps);
-        if (targetStrengthWeekly) updateData.target_strength_weekly = parseInt(targetStrengthWeekly);
-        if (targetCardioWeekly) updateData.target_cardio_weekly = parseInt(targetCardioWeekly);
-        
-        const { error: updateError } = await sb
-            .from('profiles')
-            .update(updateData)
-            .eq('id', client.id);
-        
-        if (updateError) {
-            alert('Ошибка сохранения: ' + updateError.message);
-        } else {
-            alert('✅ Профиль обновлен!');
-            modal.remove();
-            await renderClientsList();
-        }
-    });
+   // Сохранение профиля
+const saveBtn = modalContent.querySelector('#save-profile-btn');
+saveBtn.addEventListener('click', async () => {
+    const weight = modalContent.querySelector('#edit-weight')?.value;
+    const subscriptionUntil = modalContent.querySelector('#edit-subscription')?.value;
+    const minSteps = modalContent.querySelector('#edit-min-steps')?.value;
+    const targetStrengthWeekly = modalContent.querySelector('#edit-target-strength')?.value;
+    const targetCardioWeekly = modalContent.querySelector('#edit-target-cardio')?.value;
+    
+    const updateData = {};
+    if (weight && weight !== '') updateData.weight = parseFloat(weight);
+    if (subscriptionUntil && subscriptionUntil !== '') updateData.subscription_until = subscriptionUntil;
+    if (minSteps && minSteps !== '') updateData.min_steps = parseInt(minSteps);
+    if (targetStrengthWeekly && targetStrengthWeekly !== '') updateData.target_strength_weekly = parseInt(targetStrengthWeekly);
+    if (targetCardioWeekly && targetCardioWeekly !== '') updateData.target_cardio_weekly = parseInt(targetCardioWeekly);
+    
+    console.log('Обновляем данные:', updateData);
+    
+    const { error: updateError } = await sb
+        .from('profiles')
+        .update(updateData)
+        .eq('id', client.id);
+    
+    if (updateError) {
+        console.error('Ошибка сохранения:', updateError);
+        alert('Ошибка сохранения: ' + updateError.message);
+    } else {
+        alert('✅ Профиль обновлен!');
+        modal.remove(); // Закрываем модальное окно
+        await renderClientsList(); // Обновляем список клиентов
+        // Не вызываем loadAdminData, чтобы не перезагружать всё
+    }
+});
     
     // Обработчики удаления записей
     const deleteButtons = modalContent.querySelectorAll('.delete-booking-from-client');
