@@ -230,12 +230,19 @@ window.app.saveDailyReport = async function() {
     }
 };
 
-// --- Определение начала недели (понедельник) ---
+// --- Определение начала недели (понедельник, воскресенье включается) ---
 function getStartOfWeek(date) {
-    const day = date.getDay();
-    const diff = (day === 0 ? 6 : day - 1);
+    const day = date.getDay(); // 0 = воскресенье, 1 = понедельник, ...
+    // Если сегодня воскресенье, начинаем с понедельника этой недели (6 дней назад)
+    if (day === 0) {
+        const start = new Date(date);
+        start.setDate(date.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        return start;
+    }
+    // Иначе начинаем с понедельника (day - 1 дней назад)
     const start = new Date(date);
-    start.setDate(date.getDate() - diff);
+    start.setDate(date.getDate() - (day - 1));
     start.setHours(0, 0, 0, 0);
     return start;
 }
