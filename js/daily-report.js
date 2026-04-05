@@ -17,12 +17,20 @@ function getMoscowDateString(date = new Date()) {
 }
 
 function getMoscowStartOfWeek(date = new Date()) {
+    // Создаём строку в формате ГГГГ-ММ-ДД из московской даты
     const mskDate = getMoscowDate(date);
-    const day = mskDate.getDay();
-    const daysToMonday = (day === 0 ? 6 : day - 1);
-    mskDate.setDate(mskDate.getDate() - daysToMonday);
-    mskDate.setHours(0, 0, 0, 0);
-    return mskDate;
+    const year = mskDate.getFullYear();
+    const month = mskDate.getMonth();
+    const day = mskDate.getDate();
+    
+    // Создаём новую дату без времени
+    const utcDate = new Date(Date.UTC(year, month, day));
+    const utcDay = utcDate.getUTCDay();
+    
+    const daysToMonday = (utcDay === 0 ? 6 : utcDay - 1);
+    utcDate.setUTCDate(utcDate.getUTCDate() - daysToMonday);
+    
+    return utcDate;
 }
 
 // --- Переменные состояния отчета ---
