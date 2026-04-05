@@ -17,20 +17,12 @@ function getMoscowDateString(date = new Date()) {
 }
 
 function getMoscowStartOfWeek(date = new Date()) {
-    // Создаём строку в формате ГГГГ-ММ-ДД из московской даты
     const mskDate = getMoscowDate(date);
-    const year = mskDate.getFullYear();
-    const month = mskDate.getMonth();
-    const day = mskDate.getDate();
-    
-    // Создаём новую дату без времени
-    const utcDate = new Date(Date.UTC(year, month, day));
-    const utcDay = utcDate.getUTCDay();
-    
-    const daysToMonday = (utcDay === 0 ? 6 : utcDay - 1);
-    utcDate.setUTCDate(utcDate.getUTCDate() - daysToMonday);
-    
-    return utcDate;
+    const day = mskDate.getDay();
+    const daysToMonday = (day === 0 ? 6 : day - 1);
+    mskDate.setDate(mskDate.getDate() - daysToMonday);
+    mskDate.setHours(0, 0, 0, 0);
+    return mskDate;
 }
 
 // --- Переменные состояния отчета ---
@@ -93,7 +85,7 @@ function setTrainingType(type) {
     
     Object.entries(btns).forEach(([key, btn]) => {
         if (btn) {
-            btn.style.background = type === key ? '#007aff' : '#e9ecef';
+            btn.style.background = type === key ? '#36B647' : '#e9ecef';
             btn.style.color = type === key ? 'white' : '#1e1e1e';
         }
     });
@@ -130,7 +122,7 @@ function setTrainingTime(time) {
     
     Object.entries(btns).forEach(([key, btn]) => {
         if (btn) {
-            btn.style.background = time === key ? '#007aff' : '#e9ecef';
+            btn.style.background = time === key ? '#36B647' : '#e9ecef';
             btn.style.color = time === key ? 'white' : '#1e1e1e';
         }
     });
@@ -144,11 +136,11 @@ function setSocialEvent(value) {
     const noBtn = document.getElementById('social-no');
     const yesBtn = document.getElementById('social-yes');
     if (noBtn) {
-        noBtn.style.background = !value ? '#007aff' : '#e9ecef';
+        noBtn.style.background = !value ? '#36B647' : '#e9ecef';
         noBtn.style.color = !value ? 'white' : '#1e1e1e';
     }
     if (yesBtn) {
-        yesBtn.style.background = value ? '#007aff' : '#e9ecef';
+        yesBtn.style.background = value ? '#36B647' : '#e9ecef';
         yesBtn.style.color = value ? 'white' : '#1e1e1e';
     }
     const socialEventInput = document.getElementById('social-event');
@@ -161,11 +153,11 @@ function setPreMeal(value) {
     const yesBtn = document.getElementById('pre-yes');
     const noBtn = document.getElementById('pre-no');
     if (yesBtn) {
-        yesBtn.style.background = value === 'yes' ? '#34c759' : '#e9ecef';
+        yesBtn.style.background = value === 'yes' ? '#36B647' : '#e9ecef';
         yesBtn.style.color = value === 'yes' ? 'white' : '#1e1e1e';
     }
     if (noBtn) {
-        noBtn.style.background = value === 'no' ? '#ff3b30' : '#e9ecef';
+        noBtn.style.background = value === 'no' ? '#dc3545' : '#e9ecef';
         noBtn.style.color = value === 'no' ? 'white' : '#1e1e1e';
     }
     const preMealInput = document.getElementById('pre-meal');
@@ -178,11 +170,11 @@ function setPostMeal(value) {
     const yesBtn = document.getElementById('post-yes');
     const noBtn = document.getElementById('post-no');
     if (yesBtn) {
-        yesBtn.style.background = value === 'yes' ? '#34c759' : '#e9ecef';
+        yesBtn.style.background = value === 'yes' ? '#36B647' : '#e9ecef';
         yesBtn.style.color = value === 'yes' ? 'white' : '#1e1e1e';
     }
     if (noBtn) {
-        noBtn.style.background = value === 'no' ? '#ff3b30' : '#e9ecef';
+        noBtn.style.background = value === 'no' ? '#dc3545' : '#e9ecef';
         noBtn.style.color = value === 'no' ? 'white' : '#1e1e1e';
     }
     const postMealInput = document.getElementById('post-meal');
@@ -290,7 +282,7 @@ window.app.loadWeeklyProgress = async function() {
                 <div style="margin-bottom: 15px;">
                     <div style="display: flex; justify-content: space-between;">
                         <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
-                        <span><strong style="color: #007aff;">${dailyNorm.toLocaleString()}</strong> шагов</span>
+                        <span><strong style="color: #36B647;">${dailyNorm.toLocaleString()}</strong> шагов</span>
                     </div>
                 </div>
                 <p style="text-align: center;">Нет данных за эту неделю</p>
@@ -326,7 +318,7 @@ window.app.loadWeeklyProgress = async function() {
                 </div>
                 <div style="text-align: right;">
                     <span style="font-weight: 500;">${steps.toLocaleString()}</span>
-                    <span style="margin-left: 8px; color: ${stepsOk ? '#34c759' : '#ff3b30'};">${stepsOk ? '✅' : '⚠️'}</span>
+                    <span style="margin-left: 8px; color: ${stepsOk ? '#36B647' : '#dc3545'};">${stepsOk ? '✅' : '⚠️'}</span>
                 </div>
             </div>
         `;
@@ -346,7 +338,7 @@ window.app.loadWeeklyProgress = async function() {
             <div style="margin-bottom: 15px;">
                 <div style="display: flex; justify-content: space-between;">
                     <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
-                    <span><strong style="color: #007aff;">${dailyNorm.toLocaleString()}</strong> шагов</span>
+                    <span><strong style="color: #36B647;">${dailyNorm.toLocaleString()}</strong> шагов</span>
                 </div>
             </div>
             
@@ -365,7 +357,7 @@ window.app.loadWeeklyProgress = async function() {
                 </div>
                 <div style="display: flex; justify-content: space-between;">
                     <span>📉 Дней с шагами ниже нормы:</span>
-                    <span><strong style="color: ${lowStepsDays > 0 ? '#ff3b30' : '#34c759'};">${lowStepsDays} дней</strong></span>
+                    <span><strong style="color: ${lowStepsDays > 0 ? '#dc3545' : '#36B647'};">${lowStepsDays} дней</strong></span>
                 </div>
             </div>
             
