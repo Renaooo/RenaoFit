@@ -11,10 +11,10 @@ function escapeHtml(text) {
 }
 
 // --- Загрузка списка клиентов (все пользователи, кроме админа) ---
-async function loadClientsList() {
+window.app.loadClientsList = async function() {
     const adminId = 'edafd00c-3f7d-47aa-8d69-9efbe95de98e';
     
-    const { data: profiles, error } = await sb
+    const { data: profiles, error } = await window.app.sb
         .from('profiles')
         .select('*')
         .neq('id', adminId)
@@ -26,16 +26,16 @@ async function loadClientsList() {
     }
     
     return profiles || [];
-}
+};
 
 // --- Отображение списка клиентов ---
-async function renderClientsList() {
+window.app.renderClientsList = async function() {
     const container = document.getElementById('admin-clients-list');
     if (!container) return;
     
     container.innerHTML = '<div style="text-align: center; padding: 20px;">Загрузка клиентов...</div>';
     
-    const clients = await loadClientsList();
+    const clients = await window.app.loadClientsList();
     
     if (!clients || clients.length === 0) {
         container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет зарегистрированных клиентов</p>';
@@ -46,7 +46,7 @@ async function renderClientsList() {
     
     for (let client of clients) {
         // Получаем количество записей клиента
-        const { count } = await sb
+        const { count } = await window.app.sb
             .from('bookings')
             .select('*', { count: 'exact', head: true })
             .eq('user_id', client.id);
@@ -73,7 +73,7 @@ async function renderClientsList() {
         const clientInfoDiv = clientCard.querySelector('div:first-child');
         clientInfoDiv.addEventListener('click', (e) => {
             e.stopPropagation();
-            showClientDetails(client);
+            window.app.showClientDetails(client);
         });
         
         // Кнопка удаления
@@ -83,20 +83,22 @@ async function renderClientsList() {
             const clientName = client.name || client.phone || 'клиента';
             if (confirm(`⚠️ Удалить клиента "${clientName}"?\n\nЭто действие удалит все записи клиента и его профиль.`)) {
                 // Удаляем бронирования
-                await sb.from('bookings').delete().eq('user_id', client.id);
+                await window.app.sb.from('bookings').delete().eq('user_id', client.id);
                 // Удаляем профиль
-                await sb.from('profiles').delete().eq('id', client.id);
+                await window.app.sb.from('profiles').delete().eq('id', client.id);
                 alert(`✅ Клиент "${clientName}" удален`);
-                await renderClientsList();
-                await loadAdminData();
+                await window.app.renderClientsList();
+                if (typeof window.app.loadAdminData === 'function') {
+                    await window.app.loadAdminData();
+                }
             }
         });
         
         container.appendChild(clientCard);
     }
-}
+};
 
-// --- Определение начала недели (понедельник) ---
+// --- Определение начала недели (понедельник) для клиента ---
 function getStartOfWeekForClient(date) {
     const day = date.getDay();
     const diff = (day === 0 ? 6 : day - 1);
@@ -107,9 +109,9 @@ function getStartOfWeekForClient(date) {
 }
 
 // --- Отображение карточки клиента с протоколом, комментариями и редактированием ---
-async function showClientDetails(client) {
+window.app.showClientDetails = async function(client) {
     // Получаем записи клиента
-    const { data: bookings, error: bookingsError } = await sb
+    const { data: bookings, error: bookingsError } = await window.app.sb
         .from('bookings')
         .select(`
             id,
@@ -131,7 +133,7 @@ async function showClientDetails(client) {
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
-    const { data: weeklyReports } = await sb
+    const { data: weeklyReports } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', client.id)
@@ -153,7 +155,7 @@ async function showClientDetails(client) {
     const cardioOk = actualCardio >= targetCardio;
     const socialOk = socialDays <= 1;
     
-    // Формируем HTML для кружочков шагов (сравнение с дневной нормой)
+    // Формируем HTML для кружочков шагов
     let stepsCirclesHtml = '<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">';
     const daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
     for (let i = 0; i < 7; i++) {
@@ -354,7 +356,7 @@ async function showClientDetails(client) {
         if (targetStrengthWeekly && targetStrengthWeekly !== '') updateData.target_strength_weekly = parseInt(targetStrengthWeekly);
         if (targetCardioWeekly && targetCardioWeekly !== '') updateData.target_cardio_weekly = parseInt(targetCardioWeekly);
         
-        const { error: updateError } = await sb
+        const { error: updateError } = await window.app.sb
             .from('profiles')
             .update(updateData)
             .eq('id', client.id);
@@ -364,7 +366,7 @@ async function showClientDetails(client) {
         } else {
             alert('✅ Профиль обновлен!');
             modal.remove();
-            await renderClientsList();
+            await window.app.renderClientsList();
         }
     });
     
@@ -376,13 +378,15 @@ async function showClientDetails(client) {
             const slotId = btn.dataset.slot;
             
             if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
-                await sb.from('bookings').delete().eq('id', bookingId);
-                await sb.from('slots').update({ is_available: true }).eq('id', slotId);
+                await window.app.sb.from('bookings').delete().eq('id', bookingId);
+                await window.app.sb.from('slots').update({ is_available: true }).eq('id', slotId);
                 alert('Запись удалена, слот свободен');
                 modal.remove();
-                await renderClientsList();
-                await loadAdminData();
+                await window.app.renderClientsList();
+                if (typeof window.app.loadAdminData === 'function') {
+                    await window.app.loadAdminData();
+                }
             }
         });
     });
-}
+};
