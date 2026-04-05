@@ -2,30 +2,36 @@
 // МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (НАВИГАЦИЯ, ИНИЦИАЛИЗАЦИЯ)
 // ============================================
 
-// --- Функция переключения экранов ---
-function showScreen(name) {
-    Object.keys(screens).forEach(key => {
-        if (screens[key]) {
-            screens[key].classList.remove('active');
+// --- Функция переключения экранов (уже определена в globals.js, но дублируем для надежности) ---
+if (typeof window.app.showScreen !== 'function') {
+    window.app.showScreen = function(name) {
+        Object.keys(window.app.screens).forEach(key => {
+            if (window.app.screens[key]) {
+                window.app.screens[key].classList.remove('active');
+            }
+        });
+        if (window.app.screens[name]) {
+            window.app.screens[name].classList.add('active');
         }
-    });
-    if (screens[name]) {
-        screens[name].classList.add('active');
-    }
+    };
 }
 
 // --- Инициализация приложения ---
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('Приложение загружено');
+    
     // Инициализируем UI ежедневного отчета
-    if (typeof initDailyReportUI === 'function') {
-        initDailyReportUI();
+    if (typeof window.app.initDailyReportUI === 'function') {
+        window.app.initDailyReportUI();
+        console.log('DailyReportUI инициализирован');
     }
     
     // Проверяем сессию пользователя
-    const { data: { session } } = await sb.auth.getSession();
+    const { data: { session } } = await window.app.sb.auth.getSession();
+    console.log('Сессия:', session ? 'есть' : 'нет');
     
     if (session) {
-        currentUser = session.user;
+        window.app.currentUser = session.user;
         const userNameSpan = document.getElementById('user-name');
         if (userNameSpan) {
             userNameSpan.innerText = session.user.user_metadata.name || 'Друг';
@@ -35,109 +41,141 @@ document.addEventListener('DOMContentLoaded', async () => {
         const adminBtn = document.getElementById('admin-btn');
         if (adminBtn && session.user.user_metadata?.is_admin === true) {
             adminBtn.style.display = 'block';
+            console.log('Админ-панель доступна');
         }
         
-        showScreen('menu');
+        window.app.showScreen('menu');
     } else {
-        showScreen('auth');
+        window.app.showScreen('auth');
     }
     
     // ========== ОБРАБОТЧИКИ КНОПОК ==========
     
     // --- Авторизация ---
-    document.getElementById('login-btn')?.addEventListener('click', async () => {
-        if (isLoggingIn) return;
-        isLoggingIn = true;
-        
-        const phone = document.getElementById('phone-input').value;
-        const name = document.getElementById('name-input').value;
-        
-        if (!phone || !name) {
-            alert('Введите телефон и имя');
-            isLoggingIn = false;
-            return;
-        }
-        
-        try {
-            currentUser = await loginWithPhone(phone, name);
-            const userNameSpan = document.getElementById('user-name');
-            if (userNameSpan) userNameSpan.innerText = name;
-            showScreen('menu');
-        } catch(e) {
-            console.error('Ошибка входа:', e);
-            alert('Ошибка входа: ' + e.message);
-        } finally {
-            isLoggingIn = false;
-        }
-    });
+    const loginBtn = document.getElementById('login-btn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', async () => {
+            if (window.app.isLoggingIn) return;
+            window.app.isLoggingIn = true;
+            
+            const phone = document.getElementById('phone-input').value;
+            const name = document.getElementById('name-input').value;
+            
+            if (!phone || !name) {
+                alert('Введите телефон и имя');
+                window.app.isLoggingIn = false;
+                return;
+            }
+            
+            try {
+                window.app.currentUser = await window.app.loginWithPhone(phone, name);
+                const userNameSpan = document.getElementById('user-name');
+                if (userNameSpan) userNameSpan.innerText = name;
+                window.app.showScreen('menu');
+            } catch(e) {
+                console.error('Ошибка входа:', e);
+                alert('Ошибка входа: ' + e.message);
+            } finally {
+                window.app.isLoggingIn = false;
+            }
+        });
+    }
     
     // --- Записаться ---
-    document.getElementById('book-btn')?.addEventListener('click', async () => {
-        const slots = await loadSlots();
-        await renderSlots(slots);
-        showScreen('booking');
-    });
+    const bookBtn = document.getElementById('book-btn');
+    if (bookBtn) {
+        bookBtn.addEventListener('click', async () => {
+            const slots = await window.app.loadSlots();
+            await window.app.renderSlots(slots);
+            window.app.showScreen('booking');
+        });
+    }
     
     // --- Мои записи ---
-    document.getElementById('my-bookings-btn')?.addEventListener('click', async () => {
-        await loadMyBookings();
-        showScreen('myBookings');
-    });
+    const myBookingsBtn = document.getElementById('my-bookings-btn');
+    if (myBookingsBtn) {
+        myBookingsBtn.addEventListener('click', async () => {
+            await window.app.loadMyBookings();
+            window.app.showScreen('myBookings');
+        });
+    }
     
     // --- Ежедневный отчет ---
-    document.getElementById('daily-report-btn')?.addEventListener('click', async () => {
-        await openDailyReport();
-    });
+    const dailyReportBtn = document.getElementById('daily-report-btn');
+    if (dailyReportBtn) {
+        dailyReportBtn.addEventListener('click', async () => {
+            await window.app.openDailyReport();
+        });
+    }
     
     // --- Мой профиль ---
-    document.getElementById('my-profile-btn')?.addEventListener('click', async () => {
-        await loadMyProfile();
-        await updateWeeklyMessage();
-        showScreen('profile');
-    });
+    const myProfileBtn = document.getElementById('my-profile-btn');
+    if (myProfileBtn) {
+        myProfileBtn.addEventListener('click', async () => {
+            await window.app.loadMyProfile();
+            if (typeof window.app.updateWeeklyMessage === 'function') {
+                await window.app.updateWeeklyMessage();
+            }
+            window.app.showScreen('profile');
+        });
+    }
     
     // --- Админ-панель ---
-    document.getElementById('admin-btn')?.addEventListener('click', async () => {
-        await loadAdminData();
-        showScreen('admin');
-    });
+    const adminBtn = document.getElementById('admin-btn');
+    if (adminBtn) {
+        adminBtn.addEventListener('click', async () => {
+            await window.app.loadAdminData();
+            window.app.showScreen('admin');
+        });
+    }
     
     // --- Кнопка подтверждения записи ---
-    document.getElementById('confirm-booking-btn')?.addEventListener('click', confirmBooking);
+    const confirmBtn = document.getElementById('confirm-booking-btn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', window.app.confirmBooking);
+    }
     
     // --- Кнопки "Назад" ---
     document.querySelectorAll('.back-btn').forEach(btn => {
-        btn.addEventListener('click', () => showScreen('menu'));
+        btn.addEventListener('click', () => window.app.showScreen('menu'));
     });
     
     // --- Выход ---
-    document.getElementById('logout-btn')?.addEventListener('click', async () => {
-        await sb.auth.signOut();
-        currentUser = null;
-        showScreen('auth');
-    });
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            await window.app.sb.auth.signOut();
+            window.app.currentUser = null;
+            window.app.showScreen('auth');
+        });
+    }
     
     // --- Добавление слота в админ-панели ---
-    document.getElementById('admin-add-slot')?.addEventListener('click', async () => {
-        const start = document.getElementById('admin-start').value;
-        if (!start) return alert('Выберите начало слота');
-        
-        const startDate = new Date(start);
-        const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-        const end = endDate.toISOString().slice(0, 16);
-        
-        const { error } = await sb.from('slots').insert({ 
-            start_time: start, 
-            end_time: end, 
-            is_available: true 
+    const adminAddSlotBtn = document.getElementById('admin-add-slot');
+    if (adminAddSlotBtn) {
+        adminAddSlotBtn.addEventListener('click', async () => {
+            const start = document.getElementById('admin-start').value;
+            if (!start) return alert('Выберите начало слота');
+            
+            const startDate = new Date(start);
+            const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+            const end = endDate.toISOString().slice(0, 16);
+            
+            const { error } = await window.app.sb.from('slots').insert({ 
+                start_time: start, 
+                end_time: end, 
+                is_available: true 
+            });
+            
+            if (error) {
+                alert('Ошибка: ' + error.message);
+            } else { 
+                alert('Слот добавлен (1 час)'); 
+                if (typeof window.app.loadAdminData === 'function') {
+                    await window.app.loadAdminData();
+                }
+                document.getElementById('admin-start').value = '';
+            }
         });
-        
-        if (error) {
-            alert('Ошибка: ' + error.message);
-        } else { 
-            alert('Слот добавлен (1 час)'); 
-            loadAdminData();
-            document.getElementById('admin-start').value = '';
-        }
-    });
+    }
 });
