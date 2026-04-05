@@ -1,3 +1,8 @@
+/* ============================================
+   X-FIT СТИЛЬ
+   Цвета: #36B647 (зеленый), #FFFFFF (белый), #323338 (темно-серый)
+   ============================================ */
+
 * {
     margin: 0;
     padding: 0;
@@ -8,7 +13,7 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     background: #f5f5f5;
-    color: #1e1e1e;
+    color: #323338;
     line-height: 1.4;
 }
 
@@ -18,36 +23,48 @@ body {
     padding: 20px;
 }
 
+/* ========== ЭКРАНЫ ========== */
 .screen {
     display: none;
     min-height: 100vh;
-    background: #fff;
+    background: #FFFFFF;
 }
 
 .screen.active {
     display: block;
 }
 
+/* ========== ЗАГОЛОВКИ ========== */
 h1, h2, h3 {
     font-weight: 600;
     margin-bottom: 24px;
     text-align: center;
+    color: #323338;
 }
 
 h1 { font-size: 28px; }
 h2 { font-size: 22px; }
 h3 { font-size: 18px; margin-top: 20px; }
 
-input {
+/* ========== ПОЛЯ ВВОДА ========== */
+input, textarea {
     width: 100%;
     padding: 14px;
     font-size: 16px;
-    border: 1px solid #ddd;
+    border: 1px solid #e0e0e0;
     border-radius: 12px;
     margin-bottom: 16px;
-    background: #fff;
+    background: #FFFFFF;
+    color: #323338;
 }
 
+input:focus, textarea:focus {
+    outline: none;
+    border-color: #36B647;
+    box-shadow: 0 0 0 3px rgba(54, 182, 71, 0.2);
+}
+
+/* ========== КНОПКИ ========== */
 .btn {
     width: 100%;
     padding: 14px;
@@ -56,43 +73,50 @@ input {
     border: none;
     border-radius: 14px;
     cursor: pointer;
-    transition: opacity 0.2s;
+    transition: all 0.2s;
     margin-bottom: 12px;
     text-align: center;
 }
 
 .btn:active {
-    opacity: 0.7;
+    transform: scale(0.98);
+    opacity: 0.9;
 }
 
+/* Основная кнопка (зеленая) */
 .primary {
-    background: #007aff;
+    background: #36B647;
     color: white;
 }
 
+/* Вторичная кнопка (светло-серая) */
 .secondary {
-    background: #e9ecef;
-    color: #1e1e1e;
+    background: #f0f0f0;
+    color: #323338;
 }
 
+/* Админ-кнопка (темно-серая) */
 .admin {
-    background: #ff9f0a;
+    background: #323338;
     color: white;
 }
 
+/* Кнопка выхода (красная) */
 .logout {
     background: #ff3b30;
     color: white;
 }
 
+/* Кнопка "Назад" */
 .back-btn {
     background: none;
-    color: #007aff;
+    color: #36B647;
     font-size: 16px;
     text-align: left;
     padding: 8px 0;
 }
 
+/* ========== СПИСОК СЛОТОВ ========== */
 .slots-grid {
     display: flex;
     flex-direction: column;
@@ -101,29 +125,32 @@ input {
 }
 
 .slot-item {
-    background: #f8f9fa;
+    background: #FFFFFF;
     padding: 16px;
     border-radius: 14px;
-    border: 1px solid #e9ecef;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border: 1px solid #e9ecef;
 }
 
 .slot-item.selected {
-    background: #e3f2fd;
-    border-color: #007aff;
+    background: #e8f5e9;
+    border-color: #36B647;
 }
 
 .slot-time {
     font-weight: 500;
+    color: #323338;
 }
 
 .slot-select {
     width: 24px;
     height: 24px;
+    accent-color: #36B647;
 }
 
+/* ========== КАРТОЧКИ ЗАПИСЕЙ ========== */
 .booking-card {
     background: #f8f9fa;
     padding: 16px;
@@ -132,17 +159,25 @@ input {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border: 1px solid #e9ecef;
 }
 
-.cancel-btn {
+.cancel-btn, .delete-slot-btn, .delete-booking-btn {
     background: #ff3b30;
     color: white;
     border: none;
     padding: 8px 16px;
     border-radius: 20px;
     font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
+.cancel-btn:active, .delete-slot-btn:active, .delete-booking-btn:active {
+    transform: scale(0.95);
+}
+
+/* ========== АДМИН-ПАНЕЛЬ ========== */
 .admin-slot {
     background: #f1f3f5;
     padding: 12px;
@@ -150,4 +185,117 @@ input {
     border-radius: 12px;
     display: flex;
     justify-content: space-between;
+    align-items: center;
+}
+
+/* ========== ВКЛАДКИ ========== */
+#admin-slots-tab, #admin-clients-tab {
+    transition: all 0.2s;
+}
+
+/* ========== КАРТОЧКИ КЛИЕНТОВ ========== */
+#admin-clients-list .client-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: #FFFFFF;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#admin-clients-list .client-card:hover {
+    background: #f8f9fa;
+    border-color: #36B647;
+}
+
+/* ========== КРУЖОЧКИ ШАГОВ ========== */
+.steps-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.steps-circle-ok {
+    background: #36B647;
+    color: white;
+}
+
+.steps-circle-bad {
+    background: #ff3b30;
+    color: white;
+}
+
+.steps-circle-empty {
+    background: #e0e0e0;
+    color: #999;
+}
+
+/* ========== СООБЩЕНИЕ НЕДЕЛИ ========== */
+#weekly-message {
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-left: 4px solid #36B647;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+/* ========== ГРАФИК ВЕСА ========== */
+#weight-chart-container {
+    margin-top: 20px;
+}
+
+#total-loss {
+    text-align: center;
+    margin-top: 10px;
+    font-weight: 500;
+    color: #36B647;
+}
+
+/* ========== ПРОГРЕСС ЗА НЕДЕЛЮ ========== */
+#weekly-progress {
+    background: #f8f9fa;
+    border-radius: 16px;
+    padding: 15px;
+}
+
+/* ========== МОДАЛЬНЫЕ ОКНА ========== */
+#weight-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+#weight-modal > div {
+    background: #FFFFFF;
+    border-radius: 16px;
+    max-width: 400px;
+    width: 90%;
+    padding: 24px;
+    margin: 20px;
+}
+
+/* ========== ДОПОЛНИТЕЛЬНО ========== */
+a {
+    color: #36B647;
+    text-decoration: none;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #e9ecef;
+    margin: 16px 0;
 }
