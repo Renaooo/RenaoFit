@@ -149,6 +149,13 @@ window.app.openWeightModal = async function() {
     const saveBtn = document.getElementById('weight-save-btn');
     const cancelBtn = document.getElementById('weight-cancel-btn');
     
+    // Сбрасываем состояние перед показом
+    errorDiv.style.display = 'none';
+    weightInput.disabled = false;
+    saveBtn.disabled = false;
+    saveBtn.style.opacity = '1';
+    weightInput.value = '';
+    
     if (!canAdd) {
         const today = new Date();
         const isMonday = today.getDay() === 1;
@@ -162,12 +169,6 @@ window.app.openWeightModal = async function() {
         weightInput.disabled = true;
         saveBtn.disabled = true;
         saveBtn.style.opacity = '0.5';
-    } else {
-        errorDiv.style.display = 'none';
-        weightInput.disabled = false;
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-        weightInput.value = '';
     }
     
     modal.style.display = 'flex';
@@ -220,6 +221,7 @@ window.app.openWeightModal = async function() {
     cancelBtn.addEventListener('click', handleCancel);
     modal.addEventListener('click', handleClickOutside);
 };
+
 
 // --- Отрисовка графика веса ---
 window.app.renderWeightChart = async function() {
