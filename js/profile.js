@@ -3,13 +3,13 @@
 // ============================================
 
 // --- Загрузка профиля пользователя ---
-async function loadMyProfile() {
-    if (!currentUser) return;
+window.app.loadMyProfile = async function() {
+    if (!window.app.currentUser) return;
     
-    const { data: profile, error } = await sb
+    const { data: profile, error } = await window.app.sb
         .from('profiles')
         .select('weight, subscription_until')
-        .eq('id', currentUser.id)
+        .eq('id', window.app.currentUser.id)
         .single();
     
     if (error) {
@@ -41,7 +41,7 @@ async function loadMyProfile() {
     }
     
     // Отображаем последний вес из истории
-    const weightHistory = await loadWeightHistory();
+    const weightHistory = await window.app.loadWeightHistory();
     const weightEl = document.getElementById('profile-weight');
     const weightContainer = document.getElementById('profile-weight-container');
     
@@ -59,21 +59,21 @@ async function loadMyProfile() {
     // Делаем вес кликабельным
     if (weightContainer) {
         weightContainer.style.cursor = 'pointer';
-        weightContainer.onclick = () => openWeightModal();
+        weightContainer.onclick = () => window.app.openWeightModal();
     }
     
     // Отрисовываем график
-    await renderWeightChart();
-}
+    await window.app.renderWeightChart();
+};
 
 // --- Загрузка истории веса ---
-async function loadWeightHistory() {
-    if (!currentUser) return [];
+window.app.loadWeightHistory = async function() {
+    if (!window.app.currentUser) return [];
     
-    const { data, error } = await sb
+    const { data, error } = await window.app.sb
         .from('weight_history')
         .select('weight, weigh_date, target_strength_weekly, target_cardio_weekly')
-        .eq('user_id', currentUser.id)
+        .eq('user_id', window.app.currentUser.id)
         .order('weigh_date', { ascending: true });
     
     if (error) {
@@ -82,11 +82,11 @@ async function loadWeightHistory() {
     }
     
     return data || [];
-}
+};
 
 // --- Сохранение нового веса ---
-async function saveWeight(weight) {
-    if (!currentUser) return false;
+window.app.saveWeight = async function(weight) {
+    if (!window.app.currentUser) return false;
     
     const today = new Date();
     const isMonday = today.getDay() === 1;
@@ -99,19 +99,19 @@ async function saveWeight(weight) {
     const weighDate = today.toISOString().split('T')[0];
     
     // Получаем текущие цели пользователя
-    const { data: profile } = await sb
+    const { data: profile } = await window.app.sb
         .from('profiles')
         .select('target_strength_weekly, target_cardio_weekly')
-        .eq('id', currentUser.id)
+        .eq('id', window.app.currentUser.id)
         .single();
     
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
     
-    const { error } = await sb
+    const { error } = await window.app.sb
         .from('weight_history')
         .insert({
-            user_id: currentUser.id,
+            user_id: window.app.currentUser.id,
             weight: parseFloat(weight),
             weigh_date: weighDate,
             target_strength_weekly: targetStrength,
@@ -125,10 +125,10 @@ async function saveWeight(weight) {
     }
     
     return true;
-}
+};
 
 // --- Проверка, можно ли добавить новый вес ---
-function canAddWeight(history) {
+window.app.canAddWeight = function(history) {
     if (!history || history.length === 0) return true;
     
     const lastWeighDate = new Date(history[history.length - 1].weigh_date);
@@ -137,12 +137,12 @@ function canAddWeight(history) {
     const daysSinceLast = Math.floor((today - lastWeighDate) / (1000 * 60 * 60 * 24));
     
     return isMonday && daysSinceLast >= 7;
-}
+};
 
 // --- Открытие модального окна для взвешивания ---
-async function openWeightModal() {
-    const history = await loadWeightHistory();
-    const canAdd = canAddWeight(history);
+window.app.openWeightModal = async function() {
+    const history = await window.app.loadWeightHistory();
+    const canAdd = window.app.canAddWeight(history);
     const modal = document.getElementById('weight-modal');
     const weightInput = document.getElementById('weight-input');
     const errorDiv = document.getElementById('weight-error');
@@ -187,12 +187,14 @@ async function openWeightModal() {
             return;
         }
         
-        const success = await saveWeight(weight);
+        const success = await window.app.saveWeight(weight);
         if (success) {
             alert('✅ Вес сохранен!');
             modal.style.display = 'none';
-            await loadMyProfile();
-            await updateWeeklyMessage();
+            await window.app.loadMyProfile();
+            if (typeof window.app.updateWeeklyMessage === 'function') {
+                await window.app.updateWeeklyMessage();
+            }
         } else {
             alert('❌ Ошибка сохранения. Возможно, вы уже взвешивались на этой неделе.');
         }
@@ -217,11 +219,11 @@ async function openWeightModal() {
     saveBtn.addEventListener('click', handleSave);
     cancelBtn.addEventListener('click', handleCancel);
     modal.addEventListener('click', handleClickOutside);
-}
+};
 
 // --- Отрисовка графика веса ---
-async function renderWeightChart() {
-    const history = await loadWeightHistory();
+window.app.renderWeightChart = async function() {
+    const history = await window.app.loadWeightHistory();
     const container = document.getElementById('weight-chart-container');
     const totalLossEl = document.getElementById('total-loss');
     
@@ -298,10 +300,10 @@ async function renderWeightChart() {
         totalLossEl.innerHTML = `⚖️ Вес стабилен: ${loss} кг`;
         totalLossEl.style.color = '#666';
     }
-}
+};
 
 // --- Определение начала недели (понедельник) ---
-function getWeekStart(date) {
+function getWeekStartForMessage(date) {
     const day = date.getDay();
     const diff = (day === 0 ? 6 : day - 1);
     const start = new Date(date);
@@ -311,14 +313,14 @@ function getWeekStart(date) {
 }
 
 // --- Обновление мотивационного сообщения ---
-async function updateWeeklyMessage() {
+window.app.updateWeeklyMessage = async function() {
     const today = new Date();
     
     // Получаем два последних взвешивания с их целями
-    const { data: weights, error: weightsError } = await sb
+    const { data: weights, error: weightsError } = await window.app.sb
         .from('weight_history')
         .select('weight, weigh_date, target_strength_weekly, target_cardio_weekly')
-        .eq('user_id', currentUser.id)
+        .eq('user_id', window.app.currentUser.id)
         .order('weigh_date', { ascending: false })
         .limit(2);
     
@@ -340,17 +342,17 @@ async function updateWeeklyMessage() {
     const startDate = prevWeight.weigh_date;
     const endDate = currentWeight.weigh_date;
     
-    const { data: reports } = await sb
+    const { data: reports } = await window.app.sb
         .from('daily_reports')
         .select('*')
-        .eq('user_id', currentUser.id)
+        .eq('user_id', window.app.currentUser.id)
         .gte('report_date', startDate)
         .lt('report_date', endDate);
     
-    const { data: profile } = await sb
+    const { data: profile } = await window.app.sb
         .from('profiles')
         .select('min_steps')
-        .eq('id', currentUser.id)
+        .eq('id', window.app.currentUser.id)
         .single();
     
     const dailyNorm = profile?.min_steps || 10000;
@@ -403,12 +405,12 @@ async function updateWeeklyMessage() {
         if (weightChange >= -0.2 || weightChange > 0) {
             newTargetCardio = Math.min(targetCardio + 1, 4);
             
-            await sb
+            await window.app.sb
                 .from('profiles')
                 .update({
                     target_cardio_weekly: newTargetCardio
                 })
-                .eq('id', currentUser.id);
+                .eq('id', window.app.currentUser.id);
             
             adjustmentText = `<br><br>📈 <strong>Корректировка плана на следующую неделю:</strong><br>• Кардио: +1 сессия → ${newTargetCardio} в неделю`;
         }
@@ -430,4 +432,4 @@ async function updateWeeklyMessage() {
         messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌${adjustmentText}`;
         messageDiv.style.display = 'block';
     }
-}
+};
