@@ -137,8 +137,8 @@ window.app.showClientDetails = async function(client) {
         .from('daily_reports')
         .select('*')
         .eq('user_id', client.id)
-        .gte('report_date', startOfWeek.toISOString().split('T')[0])
-        .lte('report_date', endOfWeek.toISOString().split('T')[0]);
+        .gte('report_date', startOfWeek.toLocaleDateString('fr-CA'))
+        .lte('report_date', endOfWeek.toLocaleDateString('fr-CA'));
     
     const targetStrength = client.target_strength_weekly || 3;
     const targetCardio = client.target_cardio_weekly || 1;
@@ -161,7 +161,7 @@ window.app.showClientDetails = async function(client) {
     for (let i = 0; i < 7; i++) {
         const dayDate = new Date(startOfWeek);
         dayDate.setDate(startOfWeek.getDate() + i);
-        const dateStr = dayDate.toISOString().split('T')[0];
+        const dateStr = dayDate.toLocaleDateString('fr-CA');
         const report = weeklyReports?.find(r => r.report_date === dateStr);
         const steps = report?.steps || 0;
         const isOk = steps >= dailyNorm;
