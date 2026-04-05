@@ -103,7 +103,7 @@ input:focus, textarea:focus {
 
 /* Кнопка выхода (красная) */
 .logout {
-    background: #ff3b30;
+    background: #dc3545;
     color: white;
 }
 
@@ -150,6 +150,21 @@ input:focus, textarea:focus {
     accent-color: #36B647;
 }
 
+/* ========== РЕКОМЕНДУЕМЫЙ СЛОТ ========== */
+.slot-item-recommended {
+    background: #e8f5e9;
+    border: 1px solid #36B647;
+}
+
+.recommended-badge {
+    background: #36B647;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    margin-left: 8px;
+}
+
 /* ========== КАРТОЧКИ ЗАПИСЕЙ ========== */
 .booking-card {
     background: #f8f9fa;
@@ -162,13 +177,33 @@ input:focus, textarea:focus {
     border: 1px solid #e9ecef;
 }
 
-.cancel-btn, .delete-slot-btn, .delete-booking-btn {
-    background: #ff3b30;
+.cancel-btn {
+    background: #dc3545;
     color: white;
     border: none;
     padding: 8px 16px;
     border-radius: 20px;
     font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.delete-slot-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.delete-booking-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -191,6 +226,11 @@ input:focus, textarea:focus {
 /* ========== ВКЛАДКИ ========== */
 #admin-slots-tab, #admin-clients-tab {
     transition: all 0.2s;
+}
+
+#admin-slots-tab.active, #admin-clients-tab.active {
+    background: #36B647;
+    color: white;
 }
 
 /* ========== КАРТОЧКИ КЛИЕНТОВ ========== */
@@ -227,7 +267,7 @@ input:focus, textarea:focus {
 }
 
 .steps-circle-bad {
-    background: #ff3b30;
+    background: #dc3545;
     color: white;
 }
 
