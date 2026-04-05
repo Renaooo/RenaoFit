@@ -17,12 +17,29 @@ function getMoscowDateString(date = new Date()) {
 }
 
 function getMoscowStartOfWeek(date = new Date()) {
+    // Получаем московскую дату
     const mskDate = getMoscowDate(date);
-    const day = mskDate.getDay();
-    const daysToMonday = (day === 0 ? 6 : day - 1);
-    mskDate.setDate(mskDate.getDate() - daysToMonday);
-    mskDate.setHours(0, 0, 0, 0);
-    return mskDate;
+    
+    // Создаём UTC дату из компонентов (год, месяц, день)
+    const year = mskDate.getFullYear();
+    const month = mskDate.getMonth();
+    const day = mskDate.getDate();
+    const utcDate = new Date(Date.UTC(year, month, day));
+    
+    // Определяем день недели в UTC
+    const utcDay = utcDate.getUTCDay();
+    
+    // Вычисляем сколько дней до понедельника
+    // 0 = воскресенье -> 6 дней назад
+    // 1 = понедельник -> 0
+    // 2 = вторник -> 1
+    // и т.д.
+    const daysToMonday = (utcDay === 0 ? 6 : utcDay - 1);
+    
+    // Вычитаем нужное количество дней
+    utcDate.setUTCDate(utcDate.getUTCDate() - daysToMonday);
+    
+    return utcDate;
 }
 
 // --- Переменные состояния отчета ---
