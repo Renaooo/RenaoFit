@@ -1,25 +1,14 @@
 // ============================================
-// МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ
+// МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ (с московским временем)
 // ============================================
 
-// --- Переменные состояния отчета ---
 let currentTrainingType = '';
 let currentTrainingTime = '';
 let currentSocialEvent = false;
 let currentPreMeal = '';
 let currentPostMeal = '';
 
-// --- ЕДИНСТВЕННАЯ функция определения начала недели (понедельник) ---
-function getStartOfWeek(date) {
-    const [year, month, day] = date.toISOString().split('T')[0].split('-').map(Number);
-    const utcDate = new Date(Date.UTC(year, month - 1, day));
-    const dayOfWeek = utcDate.getUTCDay();
-    const diff = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
-    utcDate.setUTCDate(utcDate.getUTCDate() - diff);
-    return utcDate;
-}
-
-// --- Инициализация UI ежедневного отчета ---
+// --- Инициализация UI ---
 window.app.initDailyReportUI = function() {
     console.log('initDailyReportUI вызван');
     
@@ -168,7 +157,7 @@ function setPostMeal(value) {
     if (postMealInput) postMealInput.value = value;
 }
 
-// --- Сохранение ежедневного отчета ---
+// --- Сохранение отчета (с московским временем) ---
 window.app.saveDailyReport = async function() {
     console.log('saveDailyReport вызвана');
     
@@ -187,19 +176,10 @@ window.app.saveDailyReport = async function() {
     const postMeal = currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null);
     const notes = document.getElementById('daily-notes')?.value || '';
     
-    const today = new Date().toISOString().split('T')[0];
+    // Используем московскую дату
+    const today = window.app.getMoscowDateString();
     
-    console.log('Сохраняем отчет:', {
-        user_id: window.app.currentUser?.id,
-        report_date: today,
-        steps: steps,
-        training_type: trainingType === 'rest' ? 'rest' : trainingType,
-        training_time: trainingTime || null,
-        social_event: socialEvent,
-        pre_meal_compliant: preMeal,
-        post_meal_compliant: postMeal,
-        notes: notes
-    });
+    console.log('Сохраняем отчет за дату (МСК):', today);
     
     const { error } = await window.app.sb
         .from('daily_reports')
@@ -232,33 +212,25 @@ window.app.saveDailyReport = async function() {
     }
 };
 
-// --- Загрузка и отображение прогресса за неделю ---
+// --- Загрузка прогресса за неделю (с московским временем) ---
 window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress START ===');
     
-    if (!window.app.currentUser) {
-        console.log('Нет текущего пользователя');
-        return;
-    }
+    if (!window.app.currentUser) return;
     
-    const today = new Date();
-    console.log('Сегодня:', today.toISOString().split('T')[0]);
-    
-    // Используем ЕДИНСТВЕННУЮ функцию getStartOfWeek
-    const startOfWeek = getStartOfWeek(today);
+    const today = window.app.getMoscowDate();
+    const startOfWeek = window.app.getMoscowStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
     const startDateStr = startOfWeek.toISOString().split('T')[0];
     const endDateStr = endOfWeek.toISOString().split('T')[0];
+    const todayStr = window.app.getMoscowDateString();
     
-    console.log('Начало недели (понедельник):', startDateStr);
-    console.log('Конец недели (воскресенье):', endDateStr);
+    console.log('Неделя (МСК):', startDateStr, '-', endDateStr);
+    console.log('Сегодня (МСК):', todayStr);
     
-    const todayStr = today.toISOString().split('T')[0];
-    console.log('Сегодня в диапазоне?', todayStr >= startDateStr && todayStr <= endDateStr);
-    
-    const { data: reports, error } = await window.app.sb
+    const { data: reports } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
@@ -266,18 +238,7 @@ window.app.loadWeeklyProgress = async function() {
         .lte('report_date', endDateStr)
         .order('report_date');
     
-    if (error) {
-        console.error('Ошибка загрузки отчетов:', error);
-        return;
-    }
-    
     console.log('Найдено отчетов:', reports?.length || 0);
-    
-    if (reports && reports.length > 0) {
-        reports.forEach(r => {
-            console.log('  Отчет за:', r.report_date, 'шаги:', r.steps);
-        });
-    }
     
     const { data: profile } = await window.app.sb
         .from('profiles')
@@ -306,16 +267,12 @@ window.app.loadWeeklyProgress = async function() {
                 <p style="text-align: center; font-size: 12px; color: #999;">Сегодня: ${todayStr}</p>
             </div>
         `;
-        console.log('=== loadWeeklyProgress END (нет данных) ===');
         return;
     }
     
-    let strengthCount = 0;
-    let cardioCount = 0;
-    let socialDays = 0;
-    let lowStepsDays = 0;
-    
+    let strengthCount = 0, cardioCount = 0, socialDays = 0, lowStepsDays = 0;
     let dailyTable = '<div style="margin-top: 15px;"><h4 style="margin-bottom: 10px;">📅 По дням</h4>';
+    
     for (let r of reports) {
         const date = new Date(r.report_date);
         const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
@@ -327,7 +284,6 @@ window.app.loadWeeklyProgress = async function() {
         if (r.training_type === 'strength') trainingIcon = '💪';
         else if (r.training_type === 'cardio') trainingIcon = '🏃';
         else if (r.training_type === 'rest') trainingIcon = '😴';
-        else trainingIcon = '⚪';
         
         const socialIcon = r.social_event ? '🎉' : '✅';
         
@@ -385,35 +341,27 @@ window.app.loadWeeklyProgress = async function() {
             ${dailyTable}
         </div>
     `;
-    
-    console.log('=== loadWeeklyProgress END (данные загружены) ===');
 };
 
-// --- Открытие экрана ежедневного отчета ---
+// --- Открытие экрана отчета ---
 window.app.openDailyReport = async function() {
     console.log('openDailyReport вызвана');
     
-    if (!window.app.currentUser) {
-        console.log('Нет текущего пользователя');
-        return;
-    }
+    if (!window.app.currentUser) return;
     
-    const today = new Date().toISOString().split('T')[0];
+    const today = window.app.getMoscowDateString();
     const dateEl = document.getElementById('daily-report-date');
     if (dateEl) {
-        dateEl.innerHTML = `📅 ${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
+        const mskDate = window.app.getMoscowDate();
+        dateEl.innerHTML = `📅 ${mskDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
     }
     
-    const { data: existing, error } = await window.app.sb
+    const { data: existing } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
         .eq('report_date', today)
         .maybeSingle();
-    
-    if (error) {
-        console.error('Ошибка загрузки существующего отчета:', error);
-    }
     
     if (existing) {
         const stepsInput = document.getElementById('daily-steps');
