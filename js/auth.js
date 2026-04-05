@@ -2,26 +2,21 @@
 // МОДУЛЬ АВТОРИЗАЦИИ
 // ============================================
 
-// --- Очистка телефона от лишних символов ---
-function cleanPhone(phone) {
-    return phone.replace(/[^0-9]/g, '');
-}
-
 // --- Авторизация / регистрация ---
-async function loginWithPhone(phone, name) {
-    const cleanPhoneNumber = cleanPhone(phone);
+window.app.loginWithPhone = async function(phone, name) {
+    const cleanPhoneNumber = window.app.cleanPhone(phone);
     const email = `${cleanPhoneNumber}@gmail.com`;
     const password = cleanPhoneNumber + 'simplepass';
     
     // Сначала пробуем войти
-    let { data, error } = await sb.auth.signInWithPassword({
+    let { data, error } = await window.app.sb.auth.signInWithPassword({
         email: email,
         password: password
     });
     
     // Если пользователь не найден — регистрируем
     if (error && error.message.includes('Invalid login credentials')) {
-        const { data: signUpData, error: signUpError } = await sb.auth.signUp({
+        const { data: signUpData, error: signUpError } = await window.app.sb.auth.signUp({
             email: email,
             password: password,
             options: {
@@ -36,23 +31,23 @@ async function loginWithPhone(phone, name) {
     }
     
     // Сохраняем/обновляем профиль
-    const { error: profileError } = await sb
+    const { error: profileError } = await window.app.sb
         .from('profiles')
         .upsert({ id: data.user.id, phone: phone, name: name });
     
     if (profileError) console.error('Ошибка сохранения профиля:', profileError);
     
     return data.user;
-}
+};
 
 // --- Выход из аккаунта ---
-async function logout() {
-    await sb.auth.signOut();
-    currentUser = null;
-    showScreen('auth');
-}
+window.app.logout = async function() {
+    await window.app.sb.auth.signOut();
+    window.app.currentUser = null;
+    window.app.showScreen('auth');
+};
 
 // --- Проверка, является ли пользователь админом ---
-function isAdmin(user) {
+window.app.isAdmin = function(user) {
     return user && user.user_metadata?.is_admin === true;
-}
+};
