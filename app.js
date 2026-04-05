@@ -498,13 +498,13 @@ async function loadWeeklyProgress() {
     
     const { data: profile } = await sb
         .from('profiles')
-        .select('min_steps, target_strength_weekly, target_cardio_weekly')
+        .select('target_strength_weekly, target_cardio_weekly, min_steps')
         .eq('id', currentUser.id)
         .single();
     
-    const dailyNorm = profile?.min_steps || 10000;
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
+    const dailyNorm = profile?.min_steps || 10000;
     
     const container = document.getElementById('weekly-progress');
     if (!container) return;
@@ -600,6 +600,8 @@ async function loadWeeklyProgress() {
         </div>
     `;
 }
+
+
 
 async function openDailyReport() {
     const today = new Date().toISOString().split('T')[0];
@@ -704,31 +706,28 @@ async function updateWeeklyMessage() {
     
     const { data: profile } = await sb
         .from('profiles')
-        .select('target_steps_weekly, target_strength_weekly, target_cardio_weekly, min_steps')
+        .select('target_strength_weekly, target_cardio_weekly, min_steps')
         .eq('id', currentUser.id)
         .single();
     
-    const targetSteps = profile?.target_steps_weekly || 70000;
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
     const dailyNorm = profile?.min_steps || 10000;
     
-    let actualSteps = 0, actualStrength = 0, actualCardio = 0, socialDays = 0;
+    let actualStrength = 0, actualCardio = 0, socialDays = 0;
     let lowStepsDays = 0;
     
     reports?.forEach(r => {
-        actualSteps += r.steps || 0;
         if (r.training_type === 'strength') actualStrength++;
         if (r.training_type === 'cardio') actualCardio++;
         if (r.social_event) socialDays++;
         if ((r.steps || 0) < dailyNorm) lowStepsDays++;
     });
     
-    const stepsPercent = actualSteps / targetSteps;
     const strengthOk = actualStrength >= targetStrength;
     const cardioOk = actualCardio >= targetCardio;
     const socialOk = socialDays <= 1;
-    const stepsOk = stepsPercent >= 0.9;
+    const stepsOk = lowStepsDays === 0; // все дни с шагами выше нормы
     const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
     
     const messageDiv = document.getElementById('weekly-message');
@@ -744,7 +743,7 @@ async function updateWeeklyMessage() {
     } 
     else if (!allCompliant) {
         let failures = [];
-        if (!stepsOk) failures.push(`👣 Шаги: ${Math.round(actualSteps).toLocaleString()} из ${targetSteps.toLocaleString()} (в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()})`);
+        if (!stepsOk) failures.push(`👣 Шаги: в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()}`);
         if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
         if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${targetCardio}`);
         if (!socialOk) failures.push(`🎉 Социальные приемы: ${socialDays} дней`);
@@ -753,22 +752,19 @@ async function updateWeeklyMessage() {
         messageDiv.style.borderLeftColor = '#ff9800';
         
         let adjustmentText = '';
-        let newTargetSteps = targetSteps;
         let newTargetCardio = targetCardio;
         
         if (weightChange !== null && (weightChange >= -0.2 || weightChange > 0)) {
-            newTargetSteps = Math.min(Math.round(targetSteps * 1.1), 105000);
             newTargetCardio = Math.min(targetCardio + 1, 4);
             
             await sb
                 .from('profiles')
                 .update({
-                    target_steps_weekly: newTargetSteps,
                     target_cardio_weekly: newTargetCardio
                 })
                 .eq('id', currentUser.id);
             
-            adjustmentText = `<br><br>📈 <strong>Корректировка плана на следующую неделю:</strong><br>• Шаги: +10% → ${newTargetSteps.toLocaleString()} в неделю<br>• Кардио: +1 сессия → ${newTargetCardio} в неделю`;
+            adjustmentText = `<br><br>📈 <strong>Корректировка плана на следующую неделю:</strong><br>• Кардио: +1 сессия → ${newTargetCardio} в неделю`;
         }
         
         messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥${adjustmentText}`;
@@ -781,16 +777,7 @@ async function updateWeeklyMessage() {
         let adjustmentText = '';
         
         if (weightChange !== null && (weightChange >= -0.2 || weightChange > 0)) {
-            const newTargetSteps = Math.min(Math.round(targetSteps * 1.05), 100000);
-            
-            await sb
-                .from('profiles')
-                .update({
-                    target_steps_weekly: newTargetSteps
-                })
-                .eq('id', currentUser.id);
-            
-            adjustmentText = `<br><br>📈 <strong>Мягкая корректировка:</strong> шаги +5% → ${newTargetSteps.toLocaleString()} в неделю. Организм адаптируется, дадим ему время.`;
+            adjustmentText = `<br><br>📈 <strong>Мягкая корректировка:</strong> продолжаем в том же ритме. Организм адаптируется, дадим ему время.`;
         }
         
         messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌${adjustmentText}`;
@@ -1256,11 +1243,6 @@ async function showClientDetails(client) {
             </div>
             
             <div style="margin-bottom: 10px;">
-                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Норма шагов в неделю</label>
-                <input type="number" id="edit-target-steps" value="${client.target_steps_weekly || 70000}" placeholder="например: 70000" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
-            </div>
-            
-            <div style="margin-bottom: 10px;">
                 <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Норма силовых в неделю</label>
                 <input type="number" id="edit-target-strength" value="${client.target_strength_weekly || 3}" placeholder="например: 3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
@@ -1327,7 +1309,6 @@ async function showClientDetails(client) {
         if (weight) updateData.weight = parseFloat(weight);
         if (subscriptionUntil) updateData.subscription_until = subscriptionUntil;
         if (minSteps) updateData.min_steps = parseInt(minSteps);
-        if (targetStepsWeekly) updateData.target_steps_weekly = parseInt(targetStepsWeekly);
         if (targetStrengthWeekly) updateData.target_strength_weekly = parseInt(targetStrengthWeekly);
         if (targetCardioWeekly) updateData.target_cardio_weekly = parseInt(targetCardioWeekly);
         
