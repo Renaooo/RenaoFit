@@ -2,6 +2,30 @@
 // МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ (с московским временем)
 // ============================================
 
+// ============================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ МОСКОВСКОГО ВРЕМЕНИ
+// ============================================
+
+function getMoscowDate(date = new Date()) {
+    const mskDate = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    return mskDate;
+}
+
+function getMoscowDateString(date = new Date()) {
+    const mskDate = getMoscowDate(date);
+    return mskDate.toISOString().split('T')[0];
+}
+
+function getMoscowStartOfWeek(date = new Date()) {
+    const mskDate = getMoscowDate(date);
+    const day = mskDate.getDay();
+    const daysToMonday = (day === 0 ? 6 : day - 1);
+    mskDate.setDate(mskDate.getDate() - daysToMonday);
+    mskDate.setHours(0, 0, 0, 0);
+    return mskDate;
+}
+
+// --- Переменные состояния отчета ---
 let currentTrainingType = '';
 let currentTrainingTime = '';
 let currentSocialEvent = false;
@@ -157,7 +181,7 @@ function setPostMeal(value) {
     if (postMealInput) postMealInput.value = value;
 }
 
-// --- Сохранение отчета (с московским временем) ---
+// --- Сохранение отчета ---
 window.app.saveDailyReport = async function() {
     console.log('saveDailyReport вызвана');
     
@@ -176,8 +200,7 @@ window.app.saveDailyReport = async function() {
     const postMeal = currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null);
     const notes = document.getElementById('daily-notes')?.value || '';
     
-    // Используем московскую дату
-    const today = window.app.getMoscowDateString();
+    const today = getMoscowDateString();
     
     console.log('Сохраняем отчет за дату (МСК):', today);
     
@@ -212,20 +235,20 @@ window.app.saveDailyReport = async function() {
     }
 };
 
-// --- Загрузка прогресса за неделю (с московским временем) ---
+// --- Загрузка прогресса за неделю ---
 window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress START ===');
     
     if (!window.app.currentUser) return;
     
-    const today = window.app.getMoscowDate();
-    const startOfWeek = window.app.getMoscowStartOfWeek(today);
+    const today = getMoscowDate();
+    const startOfWeek = getMoscowStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     
     const startDateStr = startOfWeek.toISOString().split('T')[0];
     const endDateStr = endOfWeek.toISOString().split('T')[0];
-    const todayStr = window.app.getMoscowDateString();
+    const todayStr = getMoscowDateString();
     
     console.log('Неделя (МСК):', startDateStr, '-', endDateStr);
     console.log('Сегодня (МСК):', todayStr);
@@ -349,10 +372,10 @@ window.app.openDailyReport = async function() {
     
     if (!window.app.currentUser) return;
     
-    const today = window.app.getMoscowDateString();
+    const today = getMoscowDateString();
     const dateEl = document.getElementById('daily-report-date');
     if (dateEl) {
-        const mskDate = window.app.getMoscowDate();
+        const mskDate = getMoscowDate();
         dateEl.innerHTML = `📅 ${mskDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
     }
     
