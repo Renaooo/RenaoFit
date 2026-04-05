@@ -96,7 +96,7 @@ window.app.saveWeight = async function(weight) {
         return false;
     }
     
-    const weighDate = today.toISOString().split('T')[0];
+    const weighDate = window.app.getMoscowDateString();
     
     // Получаем текущие цели пользователя
     const { data: profile } = await window.app.sb
