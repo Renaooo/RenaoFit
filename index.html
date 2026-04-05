@@ -173,19 +173,23 @@
                 <button class="btn back-btn">← Назад</button>
                 <h2>Управление</h2>
                 
+                <!-- Вкладки -->
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                     <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #007aff;">📅 Слоты</button>
                     <button id="admin-clients-tab" class="btn secondary" style="flex: 1; background: #e9ecef; color: #1e1e1e;">👥 Клиенты</button>
                 </div>
                 
+                <!-- Панель слотов -->
                 <div id="admin-slots-panel" style="display: block;">
                     <div id="admin-slots"></div>
                 </div>
                 
+                <!-- Панель клиентов -->
                 <div id="admin-clients-panel" style="display: none;">
                     <div id="admin-clients-list"></div>
                 </div>
                 
+                <!-- Форма добавления слота -->
                 <div class="admin-form">
                     <h3>Добавить новый слот (1 час)</h3>
                     <input type="datetime-local" id="admin-start">
@@ -193,6 +197,7 @@
                     <p style="font-size: 12px; color: #666; margin-top: 8px;">* Конец слота автоматически ставится +1 час</p>
                 </div>
                 
+                <!-- Все записи -->
                 <div id="admin-bookings"></div>
             </div>
         </div>
@@ -218,8 +223,15 @@
         </div>
     </div>
 
+    <!-- Подключение модулей -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="app.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/slots.js"></script>
+    <script src="js/daily-report.js"></script>
+    <script src="js/profile.js"></script>
+    <script src="js/admin-clients.js"></script>
+    <script src="js/main.js"></script>
 </body>
 </html>
