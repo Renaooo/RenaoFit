@@ -96,7 +96,7 @@ window.app.saveWeight = async function(weight) {
         return false;
     }
     
-    const weighDate = window.app.getMoscowDateString();
+    const weighDate = today.toISOString().split('T')[0];
     
     // Получаем текущие цели пользователя
     const { data: profile } = await window.app.sb
@@ -108,7 +108,8 @@ window.app.saveWeight = async function(weight) {
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
     
-    const { error } = await window.app.sb
+    // 1. Сохраняем в историю весов
+    const { error: historyError } = await window.app.sb
         .from('weight_history')
         .insert({
             user_id: window.app.currentUser.id,
@@ -118,10 +119,20 @@ window.app.saveWeight = async function(weight) {
             target_cardio_weekly: targetCardio
         });
     
-    if (error) {
-        console.error('Ошибка сохранения веса:', error);
-        alert('Ошибка сохранения: ' + error.message);
+    if (historyError) {
+        console.error('Ошибка сохранения в историю:', historyError);
+        alert('Ошибка сохранения: ' + historyError.message);
         return false;
+    }
+    
+    // 2. Обновляем текущий вес в профиле
+    const { error: profileError } = await window.app.sb
+        .from('profiles')
+        .update({ weight: parseFloat(weight) })
+        .eq('id', window.app.currentUser.id);
+    
+    if (profileError) {
+        console.error('Ошибка обновления профиля:', profileError);
     }
     
     return true;
@@ -222,23 +233,18 @@ window.app.openWeightModal = async function() {
     modal.addEventListener('click', handleClickOutside);
 };
 
-
 // --- Отрисовка графика веса ---
 window.app.renderWeightChart = async function() {
     const history = await window.app.loadWeightHistory();
     const container = document.getElementById('weight-chart-container');
     const totalLossEl = document.getElementById('total-loss');
     
-    if (!container) return;
-    
-    // Всегда показываем контейнер, даже если нет данных
-    container.style.display = 'block';
-    
     if (!history || history.length < 2) {
-        totalLossEl.innerHTML = '📊 Добавьте вес в понедельник, чтобы увидеть динамику';
-        totalLossEl.style.color = '#999';
+        if (container) container.style.display = 'none';
         return;
     }
+    
+    if (container) container.style.display = 'block';
     
     const ctx = document.getElementById('weight-chart')?.getContext('2d');
     if (!ctx) return;
@@ -262,7 +268,8 @@ window.app.renderWeightChart = async function() {
                 pointBackgroundColor: '#36B647',
                 pointBorderColor: '#fff',
                 pointBorderWidth: 2,
-                pointRadius: 4
+                pointRadius: 4,
+                pointHoverRadius: 6
             }]
         },
         options: {
@@ -276,6 +283,16 @@ window.app.renderWeightChart = async function() {
                             return `${context.raw} кг`;
                         }
                     }
+                }
+            },
+            scales: {
+                y: {
+                    title: { display: true, text: 'кг', font: { size: 12 } },
+                    min: Math.floor(Math.min(...weights) - 2),
+                    max: Math.ceil(Math.max(...weights) + 2)
+                },
+                x: {
+                    title: { display: true, text: 'Дата', font: { size: 12 } }
                 }
             }
         }
@@ -292,7 +309,7 @@ window.app.renderWeightChart = async function() {
         totalLossEl.innerHTML = `📈 Общий набор: ${Math.abs(loss)} кг`;
         totalLossEl.style.color = '#dc3545';
     } else {
-        totalLossEl.innerHTML = `⚖️ Вес стабилен`;
+        totalLossEl.innerHTML = `⚖️ Вес стабилен: ${loss} кг`;
         totalLossEl.style.color = '#666';
     }
 };
@@ -320,7 +337,6 @@ window.app.updateWeeklyMessage = async function() {
         .limit(2);
     
     if (weightsError || !weights || weights.length < 2) {
-        // Нет двух взвешиваний — не показываем сообщение
         const messageDiv = document.getElementById('weekly-message');
         if (messageDiv) messageDiv.style.display = 'none';
         return;
@@ -352,7 +368,6 @@ window.app.updateWeeklyMessage = async function() {
     
     const dailyNorm = profile?.min_steps || 10000;
     
-    // Подсчитываем выполнение
     let actualStrength = 0, actualCardio = 0, socialDays = 0;
     let lowStepsDays = 0;
     let totalDays = 0;
@@ -376,14 +391,12 @@ window.app.updateWeeklyMessage = async function() {
     
     if (!messageDiv || !messageText) return;
     
-    // Сценарий 1: есть отвес
     if (weightChange < -0.2) {
         messageDiv.style.background = '#e8f5e9';
-        messageDiv.style.borderLeftColor = '#34c759';
+        messageDiv.style.borderLeftColor = '#36B647';
         messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел${weightChange > 0 ? 'а' : ''} на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
         messageDiv.style.display = 'block';
     } 
-    // Сценарий 2: нет отвеса и есть нарушения
     else if (!allCompliant) {
         let failures = [];
         if (!stepsOk && totalDays > 0) failures.push(`👣 Шаги: в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()}`);
@@ -413,10 +426,9 @@ window.app.updateWeeklyMessage = async function() {
         messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥${adjustmentText}`;
         messageDiv.style.display = 'block';
     } 
-    // Сценарий 3: нет отвеса, но всё выполнено
     else {
         messageDiv.style.background = '#e3f2fd';
-        messageDiv.style.borderLeftColor = '#007aff';
+        messageDiv.style.borderLeftColor = '#36B647';
         
         let adjustmentText = '';
         
