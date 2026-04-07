@@ -550,7 +550,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
 
 // --- Админ-панель: отображение слотов и записей ---
 window.app.loadAdminData = async function() {
-    await window.app.ensureWeeklySchedule();
+    await window.app.ensureWeeklySchedule(false);
     
     const adminSlotsDiv = document.getElementById('admin-slots');
     const adminBookingsDiv = document.getElementById('admin-bookings');
