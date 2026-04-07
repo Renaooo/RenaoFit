@@ -126,63 +126,6 @@ async function getBlockedSlotIds() {
     return blockedIds;
 }
 
-    
-    function findSlotId(dayKey, hour) {
-        return slotsByDay[dayKey]?.find(s => s.hour === hour)?.id;
-    }
-    
-    for (let [dayKey, booked] of Object.entries(bookedByDay)) {
-        const bookedHours = booked.map(b => b.hour);
-        const date = new Date(dayKey);
-        const dayOfWeek = date.getDay();
-        const isSaturday = dayOfWeek === 6;
-        const isTuesdayOrThursday = (dayOfWeek === 2 || dayOfWeek === 4);
-        
-        // Парные блокировки 17 ↔ 21
-        if (bookedHours.includes(17)) {
-            const slot21 = findSlotId(dayKey, 21);
-            if (slot21) blockedIds.add(slot21);
-        }
-        if (bookedHours.includes(21)) {
-            const slot17 = findSlotId(dayKey, 17);
-            if (slot17) blockedIds.add(slot17);
-        }
-        
-        // Суббота: 10 ↔ 14
-        if (isSaturday) {
-            if (bookedHours.includes(10)) {
-                const slot14 = findSlotId(dayKey, 14);
-                if (slot14) blockedIds.add(slot14);
-            }
-            if (bookedHours.includes(14)) {
-                const slot10 = findSlotId(dayKey, 10);
-                if (slot10) blockedIds.add(slot10);
-            }
-        }
-        
-        // Вторник и четверг: утро ↔ вечер
-        if (isTuesdayOrThursday) {
-            const hasMorning = bookedHours.some(h => h >= 8 && h <= 11);
-            const hasEvening = bookedHours.some(h => h >= 17 && h <= 21);
-            
-            if (hasMorning && !hasEvening) {
-                [17, 18, 19, 20, 21].forEach(hour => {
-                    const slotId = findSlotId(dayKey, hour);
-                    if (slotId) blockedIds.add(slotId);
-                });
-            }
-            if (hasEvening && !hasMorning) {
-                [8, 9, 10, 11].forEach(hour => {
-                    const slotId = findSlotId(dayKey, hour);
-                    if (slotId) blockedIds.add(slotId);
-                });
-            }
-        }
-    }
-    
-    return blockedIds;
-}
-
 // --- Загрузка свободных слотов для клиента ---
 window.app.loadSlots = async function() {
     const today = new Date();
