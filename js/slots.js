@@ -439,7 +439,27 @@ window.app.loadMyBookings = async function() {
 };
 
 // --- Автоматическое обновление расписания на 8 дней ---
-window.app.ensureWeeklySchedule = async function() {
+window.app.ensureWeeklySchedule = async function(force = false) {
+    // Проверяем, есть ли уже слоты на ближайшие дни
+    const today = new Date();
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 8);
+    
+    const { data: existingSlots } = await window.app.sb
+        .from('slots')
+        .select('id')
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString())
+        .limit(1);
+    
+    // Если слоты уже есть и не force, то ничего не делаем
+    if (!force && existingSlots && existingSlots.length > 0) {
+        console.log('Слоты уже существуют, пропускаем генерацию');
+        return;
+    }
+    
+    console.log('Генерируем расписание...');
+    
     const schedule = {
         1: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
         2: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
@@ -450,52 +470,41 @@ window.app.ensureWeeklySchedule = async function() {
         0: []
     };
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Очищаем старые слоты (только если force)
+    if (force) {
+        await window.app.sb.from('bookings').delete().neq('id', 0);
+        await window.app.sb.from('slots').delete().neq('id', 0);
+    }
     
-    // Удаляем старые слоты (старше 8 дней)
-    const oldDate = new Date(today);
-    oldDate.setDate(today.getDate() - 1);
-    await window.app.sb.from('slots').delete().lt('start_time', oldDate.toISOString());
+    const startDate = new Date(today);
+    startDate.setHours(0, 0, 0, 0);
     
     for (let day = 0; day < 8; day++) {
-        const currentDate = new Date(today);
-        currentDate.setDate(today.getDate() + day);
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + day);
         const dayOfWeek = currentDate.getDay();
         
         const times = schedule[dayOfWeek];
         if (!times || times.length === 0) continue;
         
-        const startOfDay = new Date(currentDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(currentDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        
-        const { data: existingSlots } = await window.app.sb
-            .from('slots')
-            .select('id, start_time')
-            .gte('start_time', startOfDay.toISOString())
-            .lte('start_time', endOfDay.toISOString());
-        
-        const existingTimes = new Set();
-        existingSlots?.forEach(slot => {
-            const d = new Date(slot.start_time);
-            const hour = d.getHours();
-            const minute = d.getMinutes();
-            existingTimes.add(`${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`);
-        });
-        
         for (let time of times) {
-            if (!existingTimes.has(time)) {
-                const [hours, minutes] = time.split(':');
-                const startTime = new Date(currentDate);
-                startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                
-                if (startTime < new Date()) continue;
-                
-                const endTime = new Date(startTime);
-                endTime.setHours(startTime.getHours() + 1);
-                
+            const [hours, minutes] = time.split(':');
+            const startTime = new Date(currentDate);
+            startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            
+            if (startTime < new Date()) continue;
+            
+            const endTime = new Date(startTime);
+            endTime.setHours(startTime.getHours() + 1);
+            
+            // Проверяем, нет ли уже такого слота
+            const { data: existing } = await window.app.sb
+                .from('slots')
+                .select('id')
+                .eq('start_time', startTime.toISOString())
+                .maybeSingle();
+            
+            if (!existing) {
                 await window.app.sb.from('slots').insert({
                     start_time: startTime.toISOString(),
                     end_time: endTime.toISOString(),
@@ -505,8 +514,10 @@ window.app.ensureWeeklySchedule = async function() {
         }
     }
     
-    console.log('Расписание обновлено');
+    console.log('Расписание готово');
 };
+
+
 // --- Вспомогательная функция для отображения слота в админке ---
 window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     const start = new Date(slot.start_time);
