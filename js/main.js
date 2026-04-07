@@ -150,16 +150,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Добавление слота в админ-панели ---
+    // --- Добавление слота в админ-панели (с корректным преобразованием времени) ---
     const adminAddSlotBtn = document.getElementById('admin-add-slot');
     if (adminAddSlotBtn) {
         adminAddSlotBtn.addEventListener('click', async () => {
-            const start = document.getElementById('admin-start').value;
-            if (!start) return alert('Выберите начало слота');
+            const startLocal = document.getElementById('admin-start').value;
+            if (!startLocal) return alert('Выберите начало слота');
             
-            const startDate = new Date(start);
-            const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-            const end = endDate.toISOString().slice(0, 16);
+            // Преобразуем локальное время (МСК) в UTC для сохранения в БД
+            const startDate = new Date(startLocal);
+            // Создаем UTC дату из локальных компонентов
+            const startUTC = new Date(Date.UTC(
+                startDate.getFullYear(),
+                startDate.getMonth(),
+                startDate.getDate(),
+                startDate.getHours(),
+                startDate.getMinutes()
+            ));
+            const start = startUTC.toISOString().slice(0, 16);
+            
+            const endDate = new Date(startLocal);
+            endDate.setHours(startDate.getHours() + 1);
+            const endUTC = new Date(Date.UTC(
+                endDate.getFullYear(),
+                endDate.getMonth(),
+                endDate.getDate(),
+                endDate.getHours(),
+                endDate.getMinutes()
+            ));
+            const end = endUTC.toISOString().slice(0, 16);
+            
+            console.log('Добавление слота:', { startLocal, start, end });
             
             const { error } = await window.app.sb.from('slots').insert({ 
                 start_time: start, 
