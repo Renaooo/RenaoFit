@@ -45,7 +45,6 @@ window.app.renderClientsList = async function() {
     container.innerHTML = '';
     
     for (let client of clients) {
-        // Получаем количество записей клиента
         const { count } = await window.app.sb
             .from('bookings')
             .select('*', { count: 'exact', head: true })
@@ -61,30 +60,27 @@ window.app.renderClientsList = async function() {
                 <div style="flex: 1;">
                     <strong style="font-size: 16px;">👤 ${escapeHtml(client.name) || 'Без имени'}</strong><br>
                     <span style="color: #666; font-size: 14px;">📞 ${escapeHtml(client.phone) || 'нет телефона'}</span>
+                    ${client.weight ? `<br><span style="color: #36B647; font-size: 13px;">⚖️ ${client.weight} кг</span>` : ''}
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <span style="background: #007aff; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px;">${count || 0} записей</span>
-                    <button class="delete-client-btn" data-id="${client.id}" data-name="${escapeHtml(client.name || client.phone || 'клиента')}" style="background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
+                    <span style="background: #36B647; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px;">${count || 0} записей</span>
+                    <button class="delete-client-btn" data-id="${client.id}" data-name="${escapeHtml(client.name || client.phone || 'клиента')}" style="background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
                 </div>
             </div>
         `;
         
-        // Клик по карточке (не по кнопке) открывает детали
         const clientInfoDiv = clientCard.querySelector('div:first-child');
         clientInfoDiv.addEventListener('click', (e) => {
             e.stopPropagation();
             window.app.showClientDetails(client);
         });
         
-        // Кнопка удаления
         const deleteBtn = clientCard.querySelector('.delete-client-btn');
         deleteBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const clientName = client.name || client.phone || 'клиента';
             if (confirm(`⚠️ Удалить клиента "${clientName}"?\n\nЭто действие удалит все записи клиента и его профиль.`)) {
-                // Удаляем бронирования
                 await window.app.sb.from('bookings').delete().eq('user_id', client.id);
-                // Удаляем профиль
                 await window.app.sb.from('profiles').delete().eq('id', client.id);
                 alert(`✅ Клиент "${clientName}" удален`);
                 await window.app.renderClientsList();
@@ -137,8 +133,16 @@ window.app.showClientDetails = async function(client) {
         .from('daily_reports')
         .select('*')
         .eq('user_id', client.id)
-        .gte('report_date', startOfWeek.toLocaleDateString('fr-CA'))
-        .lte('report_date', endOfWeek.toLocaleDateString('fr-CA'));
+        .gte('report_date', startOfWeek.toISOString().split('T')[0])
+        .lte('report_date', endOfWeek.toISOString().split('T')[0]);
+    
+    // Получаем историю весов клиента
+    const { data: weightHistory } = await window.app.sb
+        .from('weight_history')
+        .select('weight, weigh_date')
+        .eq('user_id', client.id)
+        .order('weigh_date', { ascending: false })
+        .limit(5);
     
     const targetStrength = client.target_strength_weekly || 3;
     const targetCardio = client.target_cardio_weekly || 1;
@@ -161,7 +165,7 @@ window.app.showClientDetails = async function(client) {
     for (let i = 0; i < 7; i++) {
         const dayDate = new Date(startOfWeek);
         dayDate.setDate(startOfWeek.getDate() + i);
-        const dateStr = dayDate.toLocaleDateString('fr-CA');
+        const dateStr = dayDate.toISOString().split('T')[0];
         const report = weeklyReports?.find(r => r.report_date === dateStr);
         const steps = report?.steps || 0;
         const isOk = steps >= dailyNorm;
@@ -169,7 +173,7 @@ window.app.showClientDetails = async function(client) {
         
         stepsCirclesHtml += `
             <div style="text-align: center; width: 40px;">
-                <div style="width: 36px; height: 36px; border-radius: 50%; background: ${hasData ? (isOk ? '#34c759' : '#ff3b30') : '#e0e0e0'}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 50%; background: ${hasData ? (isOk ? '#36B647' : '#dc3545') : '#e0e0e0'}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">
                     ${hasData ? (isOk ? '✓' : '✗') : '?'}
                 </div>
                 <div style="font-size: 10px; color: #666; margin-top: 4px;">${daysOfWeek[i]}</div>
@@ -178,7 +182,22 @@ window.app.showClientDetails = async function(client) {
     }
     stepsCirclesHtml += '</div>';
     
-    // Формируем HTML для записей
+    // История весов HTML
+    let weightHistoryHtml = '';
+    if (weightHistory && weightHistory.length > 0) {
+        weightHistoryHtml = `
+            <div style="background: #f8f9fa; border-radius: 12px; padding: 12px; margin: 15px 0;">
+                <strong>📊 История весов:</strong>
+                <div style="margin-top: 8px;">
+        `;
+        for (let w of weightHistory) {
+            const date = new Date(w.weigh_date).toLocaleDateString();
+            weightHistoryHtml += `<div style="font-size: 14px; padding: 4px 0;">${date}: <strong>${w.weight} кг</strong></div>`;
+        }
+        weightHistoryHtml += `</div></div>`;
+    }
+    
+    // Формируем HTML для записей с разделением на утро/вечер
     let bookingsHtml = '';
     if (bookings && bookings.length > 0) {
         const groupedByDay = {};
@@ -190,17 +209,38 @@ window.app.showClientDetails = async function(client) {
         });
         
         for (let [day, dayBookings] of Object.entries(groupedByDay)) {
-            bookingsHtml += `<div style="margin-top: 10px;"><strong style="font-size: 13px; color: #007aff;">📅 ${escapeHtml(day)}</strong></div>`;
-            dayBookings.forEach(booking => {
-                const start = new Date(booking.slots.start_time);
-                const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-                bookingsHtml += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
-                        <span>🕐 ${timeStr}</span>
-                        <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #ff3b30; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">✖</button>
-                    </div>
-                `;
-            });
+            bookingsHtml += `<div style="margin-top: 10px;"><strong style="font-size: 13px; color: #36B647;">📅 ${escapeHtml(day)}</strong></div>`;
+            
+            const morning = dayBookings.filter(b => new Date(b.slots.start_time).getHours() < 15);
+            const evening = dayBookings.filter(b => new Date(b.slots.start_time).getHours() >= 15);
+            
+            if (morning.length > 0) {
+                bookingsHtml += '<div style="margin-top: 5px; margin-left: 8px;"><span style="font-size: 12px; color: #666;">☀️ Утро</span></div>';
+                morning.forEach(booking => {
+                    const start = new Date(booking.slots.start_time);
+                    const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                    bookingsHtml += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0 6px 16px; border-bottom: 1px solid #f0f0f0;">
+                            <span>🕐 ${timeStr}</span>
+                            <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">✖</button>
+                        </div>
+                    `;
+                });
+            }
+            
+            if (evening.length > 0) {
+                bookingsHtml += '<div style="margin-top: 8px; margin-left: 8px;"><span style="font-size: 12px; color: #666;">🌙 Вечер</span></div>';
+                evening.forEach(booking => {
+                    const start = new Date(booking.slots.start_time);
+                    const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                    bookingsHtml += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0 6px 16px; border-bottom: 1px solid #f0f0f0;">
+                            <span>🕐 ${timeStr}</span>
+                            <button class="delete-booking-from-client" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">✖</button>
+                        </div>
+                    `;
+                });
+            }
         }
     } else {
         bookingsHtml = '<p style="text-align: center; padding: 20px;">Нет записей</p>';
@@ -240,7 +280,10 @@ window.app.showClientDetails = async function(client) {
         
         <div style="margin-bottom: 20px;">
             <p><strong>📞 Телефон:</strong> ${escapeHtml(client.phone) || 'не указан'}</p>
+            <p><strong>⚖️ Текущий вес:</strong> ${client.weight ? client.weight + ' кг' : 'не указан'}</p>
         </div>
+        
+        ${weightHistoryHtml}
         
         <!-- Блок протокола за неделю с кружочками -->
         <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;">
@@ -261,7 +304,7 @@ window.app.showClientDetails = async function(client) {
             </div>
             <div style="display: flex; justify-content: space-between;">
                 <span>🎉 Нарушения (СПП):</span>
-                <span><strong>${socialDays} дней</strong> ${socialOk ? '✅' : '⚠️'}</span>
+                <span><strong>${socialDays} дней</strong> ${socialDays > 0 ? '⚠️' : '✅'}</span>
             </div>
         </div>
         
@@ -297,7 +340,7 @@ window.app.showClientDetails = async function(client) {
                 <input type="number" id="edit-target-cardio" value="${client.target_cardio_weekly || 1}" placeholder="например: 1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
             </div>
             
-            <button id="save-profile-btn" style="background: #007aff; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 5px;">💾 Сохранить</button>
+            <button id="save-profile-btn" style="background: #36B647; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 5px;">💾 Сохранить</button>
         </div>
         
         <!-- Записи клиента -->
@@ -321,7 +364,7 @@ window.app.showClientDetails = async function(client) {
             for (let r of reportsWithComments) {
                 const date = new Date(r.report_date).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
                 commentsHtml += `
-                    <div style="margin-bottom: 12px; padding: 8px; background: white; border-radius: 8px; border-left: 3px solid #007aff;">
+                    <div style="margin-bottom: 12px; padding: 8px; background: white; border-radius: 8px; border-left: 3px solid #36B647;">
                         <div style="font-size: 12px; color: #666; margin-bottom: 4px;">📅 ${date}</div>
                         <div style="font-size: 14px;">${escapeHtml(r.notes)}</div>
                     </div>
@@ -355,6 +398,15 @@ window.app.showClientDetails = async function(client) {
         if (minSteps && minSteps !== '') updateData.min_steps = parseInt(minSteps);
         if (targetStrengthWeekly && targetStrengthWeekly !== '') updateData.target_strength_weekly = parseInt(targetStrengthWeekly);
         if (targetCardioWeekly && targetCardioWeekly !== '') updateData.target_cardio_weekly = parseInt(targetCardioWeekly);
+        
+        // Если вес изменился, добавляем запись в историю
+        if (weight && weight !== client.weight) {
+            await window.app.sb.from('weight_history').insert({
+                user_id: client.id,
+                weight: parseFloat(weight),
+                weigh_date: new Date().toISOString().split('T')[0]
+            });
+        }
         
         const { error: updateError } = await window.app.sb
             .from('profiles')
