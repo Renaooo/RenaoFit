@@ -10,6 +10,7 @@ async function getBlockedSlotIds() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 8);
     
+    // Получаем все занятые слоты
     const { data: bookedSlots, error: bookedError } = await window.app.sb
         .from('slots')
         .select('id, start_time')
@@ -19,6 +20,7 @@ async function getBlockedSlotIds() {
     
     if (bookedError || !bookedSlots || bookedSlots.length === 0) return blockedIds;
     
+    // Группируем занятые слоты по дням и часам
     const bookedByDay = {};
     bookedSlots.forEach(slot => {
         const date = new Date(slot.start_time);
@@ -28,6 +30,7 @@ async function getBlockedSlotIds() {
         bookedByDay[dayKey].push({ id: slot.id, hour });
     });
     
+    // Получаем все слоты для поиска ID
     const { data: allSlots } = await window.app.sb
         .from('slots')
         .select('id, start_time')
@@ -44,6 +47,85 @@ async function getBlockedSlotIds() {
         if (!slotsByDay[dayKey]) slotsByDay[dayKey] = [];
         slotsByDay[dayKey].push({ id: slot.id, hour });
     });
+    
+    function findSlotId(dayKey, hour) {
+        return slotsByDay[dayKey]?.find(s => s.hour === hour)?.id;
+    }
+    
+    // Анализируем каждый день
+    for (let [dayKey, booked] of Object.entries(bookedByDay)) {
+        const bookedHours = booked.map(b => b.hour);
+        const date = new Date(dayKey);
+        const dayOfWeek = date.getDay(); // 0=вс, 1=пн, 2=вт, 3=ср, 4=чт, 5=пт, 6=сб
+        const isSaturday = dayOfWeek === 6;
+        const isTuesdayOrThursday = (dayOfWeek === 2 || dayOfWeek === 4);
+        
+        console.log(`Анализ дня ${dayKey} (${dayOfWeek}), занятые часы:`, bookedHours);
+        
+        // === 1. Парные блокировки 17:00 ↔ 21:00 ===
+        if (bookedHours.includes(17)) {
+            const slot21 = findSlotId(dayKey, 21);
+            if (slot21) {
+                console.log(`Блокируем 21:00 из-за 17:00 в ${dayKey}`);
+                blockedIds.add(slot21);
+            }
+        }
+        if (bookedHours.includes(21)) {
+            const slot17 = findSlotId(dayKey, 17);
+            if (slot17) {
+                console.log(`Блокируем 17:00 из-за 21:00 в ${dayKey}`);
+                blockedIds.add(slot17);
+            }
+        }
+        
+        // === 2. Субботние парные блокировки 10:00 ↔ 14:00 ===
+        if (isSaturday) {
+            if (bookedHours.includes(10)) {
+                const slot14 = findSlotId(dayKey, 14);
+                if (slot14) {
+                    console.log(`Блокируем 14:00 из-за 10:00 в субботу ${dayKey}`);
+                    blockedIds.add(slot14);
+                }
+            }
+            if (bookedHours.includes(14)) {
+                const slot10 = findSlotId(dayKey, 10);
+                if (slot10) {
+                    console.log(`Блокируем 10:00 из-за 14:00 в субботу ${dayKey}`);
+                    blockedIds.add(slot10);
+                }
+            }
+        }
+        
+        // === 3. Вторник и четверг: блокировка утро ↔ вечер ===
+        if (isTuesdayOrThursday) {
+            const hasMorning = bookedHours.some(h => h >= 8 && h <= 11);
+            const hasEvening = bookedHours.some(h => h >= 17 && h <= 21);
+            
+            console.log(`Вторник/Четверг ${dayKey}: hasMorning=${hasMorning}, hasEvening=${hasEvening}`);
+            
+            if (hasMorning && !hasEvening) {
+                // Блокируем все вечерние слоты (17,18,19,20,21)
+                console.log(`Блокируем вечерние слоты в ${dayKey} из-за утренней записи`);
+                [17, 18, 19, 20, 21].forEach(hour => {
+                    const slotId = findSlotId(dayKey, hour);
+                    if (slotId) blockedIds.add(slotId);
+                });
+            }
+            if (hasEvening && !hasMorning) {
+                // Блокируем все утренние слоты (8,9,10,11)
+                console.log(`Блокируем утренние слоты в ${dayKey} из-за вечерней записи`);
+                [8, 9, 10, 11].forEach(hour => {
+                    const slotId = findSlotId(dayKey, hour);
+                    if (slotId) blockedIds.add(slotId);
+                });
+            }
+        }
+    }
+    
+    console.log('Итоговые заблокированные слоты:', Array.from(blockedIds));
+    return blockedIds;
+}
+
     
     function findSlotId(dayKey, hour) {
         return slotsByDay[dayKey]?.find(s => s.hour === hour)?.id;
