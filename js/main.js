@@ -149,6 +149,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.app.showScreen('auth');
         });
     }
+
+    document.getElementById('reset-schedule-btn')?.addEventListener('click', async () => {
+    if (confirm('Сбросить расписание? Это удалит ВСЕ слоты и создаст новые.')) {
+        await window.app.ensureWeeklySchedule(true);
+        await window.app.loadAdminData();
+        alert('Расписание обновлено');
+    }
+});
     
     // --- Добавление слота в админ-панели (с корректным преобразованием времени) ---
     const adminAddSlotBtn = document.getElementById('admin-add-slot');
