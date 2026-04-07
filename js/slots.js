@@ -121,7 +121,7 @@ window.app.loadSlots = async function() {
     return slots.filter(slot => !blockedIds.has(slot.id));
 };
 
-// --- Отображение слотов ---
+// --- Отображение слотов с подсветкой рекомендуемых ---
 window.app.renderSlots = async function(slots) {
     const container = document.getElementById('slots-list');
     if (!container) return;
@@ -275,7 +275,7 @@ window.app.renderSlots = async function(slots) {
     }
 };
 
-// --- Подтверждение записи (упрощённая версия) ---
+// --- Подтверждение записи клиентом ---
 window.app.confirmBooking = async function() {
     if (!window.app.currentUser) return;
     
@@ -354,29 +354,61 @@ window.app.loadMyBookings = async function() {
         dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
         dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
         
-        for (let booking of dayBookings) {
-            const start = new Date(booking.slots.start_time);
-            const formatted = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            
-            const div = document.createElement('div');
-            div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
-            div.innerHTML = `
-                <span style="font-weight: 500;">${formatted}</span>
-                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
-            `;
-            
-            const cancelBtn = div.querySelector('.cancel-btn');
-            cancelBtn.addEventListener('click', async () => {
-                if (confirm('Отменить запись?')) {
-                    await window.app.sb.from('bookings').delete().eq('id', booking.id);
-                    await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
-                    alert('Запись отменена');
-                    await window.app.loadMyBookings();
-                }
+        const morning = dayBookings.filter(b => new Date(b.slots.start_time).getHours() < 15);
+        const evening = dayBookings.filter(b => new Date(b.slots.start_time).getHours() >= 15);
+        
+        if (morning.length > 0) {
+            const morningDiv = document.createElement('div');
+            morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
+            morning.forEach(booking => {
+                const start = new Date(booking.slots.start_time);
+                const formatted = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                const div = document.createElement('div');
+                div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
+                div.innerHTML = `
+                    <span style="font-weight: 500;">${formatted}</span>
+                    <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
+                `;
+                const cancelBtn = div.querySelector('.cancel-btn');
+                cancelBtn.addEventListener('click', async () => {
+                    if (confirm('Отменить запись?')) {
+                        await window.app.sb.from('bookings').delete().eq('id', booking.id);
+                        await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
+                        alert('Запись отменена');
+                        await window.app.loadMyBookings();
+                    }
+                });
+                morningDiv.appendChild(div);
             });
-            
-            dayDiv.appendChild(div);
+            dayDiv.appendChild(morningDiv);
         }
+        
+        if (evening.length > 0) {
+            const eveningDiv = document.createElement('div');
+            eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
+            evening.forEach(booking => {
+                const start = new Date(booking.slots.start_time);
+                const formatted = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                const div = document.createElement('div');
+                div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
+                div.innerHTML = `
+                    <span style="font-weight: 500;">${formatted}</span>
+                    <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
+                `;
+                const cancelBtn = div.querySelector('.cancel-btn');
+                cancelBtn.addEventListener('click', async () => {
+                    if (confirm('Отменить запись?')) {
+                        await window.app.sb.from('bookings').delete().eq('id', booking.id);
+                        await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
+                        alert('Запись отменена');
+                        await window.app.loadMyBookings();
+                    }
+                });
+                eveningDiv.appendChild(div);
+            });
+            dayDiv.appendChild(eveningDiv);
+        }
+        
         container.appendChild(dayDiv);
     }
 };
@@ -395,6 +427,14 @@ window.app.ensureWeeklySchedule = async function() {
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
+    // Очищаем старые слоты старше 8 дней
+    const oldDate = new Date(today);
+    oldDate.setDate(today.getDate() - 1);
+    await window.app.sb
+        .from('slots')
+        .delete()
+        .lt('start_time', oldDate.toISOString());
     
     for (let day = 0; day < 8; day++) {
         const currentDate = new Date(today);
@@ -422,6 +462,7 @@ window.app.ensureWeeklySchedule = async function() {
             existingTimesSet.add(timeStr);
         });
         
+        // Удаляем слоты, которых нет в расписании
         for (let slot of existingSlots || []) {
             const d = new Date(slot.start_time);
             const timeStr = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -431,6 +472,7 @@ window.app.ensureWeeklySchedule = async function() {
             }
         }
         
+        // Добавляем недостающие слоты
         for (let time of requiredTimes) {
             if (!existingTimesSet.has(time)) {
                 const [hours, minutes] = time.split(':');
@@ -453,21 +495,22 @@ window.app.ensureWeeklySchedule = async function() {
 };
 
 // --- Вспомогательная функция для отображения слота в админке ---
-window.app.addSlotElement = function(container, slot) {
+window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     const start = new Date(slot.start_time);
     const isAvailable = slot.is_available;
+    const isBlocked = !isAvailable || isBlockedByRule;
     
     const div = document.createElement('div');
-    div.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: ${isAvailable ? '#fff' : '#f0f0f0'}; border-radius: 8px; border: 1px solid ${isAvailable ? '#e0e0e0' : '#ffcccc'};`;
+    div.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: ${isBlocked ? '#f0f0f0' : '#fff'}; border-radius: 8px; border: 1px solid ${isBlocked ? '#ffcccc' : '#e0e0e0'};`;
     div.innerHTML = `
-        <span style="${isAvailable ? '' : 'text-decoration: line-through; color: #999;'}">
+        <span style="${isBlocked ? 'text-decoration: line-through; color: #999;' : ''}">
             ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
-            ${!isAvailable ? ' ❌ занят' : ''}
+            ${!isAvailable ? ' ❌ занят' : (isBlockedByRule ? ' 🔒 заблокирован правилами' : '')}
         </span>
-        ${isAvailable ? '<button class="delete-slot-btn" data-id="' + slot.id + '" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>' : ''}
+        ${(!isBlocked && isAvailable) ? '<button class="delete-slot-btn" data-id="' + slot.id + '" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>' : ''}
     `;
     
-    if (isAvailable) {
+    if (!isBlocked && isAvailable) {
         const deleteBtn = div.querySelector('.delete-slot-btn');
         deleteBtn.addEventListener('click', async () => {
             if (confirm('Удалить этот слот?')) {
@@ -502,6 +545,9 @@ window.app.loadAdminData = async function() {
         .lte('start_time', endDate.toISOString())
         .order('start_time');
     
+    // Получаем заблокированные правилами слоты
+    const blockedIds = await getBlockedSlotIds();
+    
     if (adminSlotsDiv && slots) {
         const groupedByDay = {};
         slots.forEach(slot => {
@@ -525,14 +571,20 @@ window.app.loadAdminData = async function() {
                 if (morning.length > 0) {
                     const morningDiv = document.createElement('div');
                     morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
-                    morning.forEach(slot => window.app.addSlotElement(morningDiv, slot));
+                    morning.forEach(slot => {
+                        const isBlockedByRule = blockedIds.has(slot.id);
+                        window.app.addSlotElement(morningDiv, slot, isBlockedByRule);
+                    });
                     dayDiv.appendChild(morningDiv);
                 }
                 
                 if (evening.length > 0) {
                     const eveningDiv = document.createElement('div');
                     eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
-                    evening.forEach(slot => window.app.addSlotElement(eveningDiv, slot));
+                    evening.forEach(slot => {
+                        const isBlockedByRule = blockedIds.has(slot.id);
+                        window.app.addSlotElement(eveningDiv, slot, isBlockedByRule);
+                    });
                     dayDiv.appendChild(eveningDiv);
                 }
                 
