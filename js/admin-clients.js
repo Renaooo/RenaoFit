@@ -124,18 +124,41 @@ window.app.showClientDetails = async function(client) {
         return;
     }
     
-    // Получаем отчеты клиента за текущую неделю
+    // Функция форматирования локальной даты
+    function formatLocalDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    
+    // Функция определения понедельника
+    function getStartOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = (day === 0 ? 6 : day - 1);
+        d.setDate(d.getDate() - diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+    
+    // Получаем отчеты клиента за текущую неделю (локальная дата)
     const today = new Date();
-    const startOfWeek = getStartOfWeekForClient(today);
+    const startOfWeek = getStartOfWeek(today);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
+    
+    const startDateStr = formatLocalDate(startOfWeek);
+    const endDateStr = formatLocalDate(endOfWeek);
+    
+    console.log('Админ: неделя для клиента', startDateStr, '-', endDateStr);
     
     const { data: weeklyReports } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', client.id)
-        .gte('report_date', startOfWeek.toISOString().split('T')[0])
-        .lte('report_date', endOfWeek.toISOString().split('T')[0]);
+        .gte('report_date', startDateStr)
+        .lte('report_date', endDateStr);
     
     // Получаем историю весов клиента
     const { data: weightHistory } = await window.app.sb
@@ -160,13 +183,13 @@ window.app.showClientDetails = async function(client) {
     const cardioOk = actualCardio >= targetCardio;
     const socialOk = socialDays <= 1;
     
-    // Формируем HTML для кружочков шагов
+    // Формируем HTML для кружочков шагов (с локальными датами)
     let stepsCirclesHtml = '<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">';
     const daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
     for (let i = 0; i < 7; i++) {
         const dayDate = new Date(startOfWeek);
         dayDate.setDate(startOfWeek.getDate() + i);
-        const dateStr = dayDate.toISOString().split('T')[0];
+        const dateStr = formatLocalDate(dayDate);
         const report = weeklyReports?.find(r => r.report_date === dateStr);
         const steps = report?.steps || 0;
         const isOk = steps >= dailyNorm;
