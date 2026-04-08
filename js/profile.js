@@ -233,20 +233,38 @@ window.app.openWeightModal = async function() {
     modal.addEventListener('click', handleClickOutside);
 };
 
-// --- Отрисовка графика веса ---
+// --- Отрисовка графика веса (всегда виден, даже пустой) ---
 window.app.renderWeightChart = async function() {
     const history = await window.app.loadWeightHistory();
     const container = document.getElementById('weight-chart-container');
     const totalLossEl = document.getElementById('total-loss');
+    const canvas = document.getElementById('weight-chart');
+    
+    if (!container) return;
+    
+    // Всегда показываем контейнер
+    container.style.display = 'block';
     
     if (!history || history.length < 2) {
-        if (container) container.style.display = 'none';
+        // Показываем плейсхолдер вместо графика
+        totalLossEl.innerHTML = '📊 Добавьте вес в понедельник, чтобы увидеть динамику';
+        totalLossEl.style.color = '#999';
+        
+        // Очищаем canvas и показываем сообщение
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#999';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Нет данных для графика', canvas.width / 2, canvas.height / 2);
+        }
         return;
     }
     
-    if (container) container.style.display = 'block';
-    
-    const ctx = document.getElementById('weight-chart')?.getContext('2d');
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
     
     const labels = history.map(h => new Date(h.weigh_date).toLocaleDateString());
