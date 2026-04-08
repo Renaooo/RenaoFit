@@ -96,12 +96,13 @@ window.app.renderClientsList = async function() {
 
 // --- Определение начала недели (понедельник) для клиента ---
 function getStartOfWeekForClient(date) {
-    const day = date.getDay();
+    const d = new Date(date);
+    const day = d.getDay(); // 0 = воскресенье, 1 = понедельник
+    // Вычисляем разницу до понедельника
     const diff = (day === 0 ? 6 : day - 1);
-    const start = new Date(date);
-    start.setDate(date.getDate() - diff);
-    start.setHours(0, 0, 0, 0);
-    return start;
+    d.setDate(d.getDate() - diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
 }
 
 // --- Отображение карточки клиента с протоколом, комментариями и редактированием ---
