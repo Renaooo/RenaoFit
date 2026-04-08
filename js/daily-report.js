@@ -229,7 +229,21 @@ window.app.saveDailyReport = async function() {
     
     const today = getMoscowDateString();
     
+    // Получаем текущую норму шагов из профиля (для заморозки)
+    const { data: profile, error: profileError } = await window.app.sb
+        .from('profiles')
+        .select('min_steps')
+        .eq('id', window.app.currentUser.id)
+        .single();
+    
+    if (profileError) {
+        console.error('Ошибка получения нормы шагов:', profileError);
+    }
+    
+    const currentNorm = profile?.min_steps || 10000;
+    
     console.log('Сохраняем отчет за дату (МСК):', today);
+    console.log('Норма шагов на момент сохранения:', currentNorm);
     
     const { error } = await window.app.sb
         .from('daily_reports')
@@ -242,7 +256,8 @@ window.app.saveDailyReport = async function() {
             social_event: socialEvent,
             pre_meal_compliant: preMeal,
             post_meal_compliant: postMeal,
-            notes: notes
+            notes: notes,
+            norm_steps: currentNorm  // ← замораживаем норму
         }, { onConflict: 'user_id,report_date' });
     
     if (error) {
