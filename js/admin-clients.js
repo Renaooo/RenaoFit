@@ -97,8 +97,7 @@ window.app.renderClientsList = async function() {
 // --- Определение начала недели (понедельник) для клиента ---
 function getStartOfWeekForClient(date) {
     const d = new Date(date);
-    const day = d.getDay(); // 0 = воскресенье, 1 = понедельник
-    // Вычисляем разницу до понедельника
+    const day = d.getDay();
     const diff = (day === 0 ? 6 : day - 1);
     d.setDate(d.getDate() - diff);
     d.setHours(0, 0, 0, 0);
@@ -170,7 +169,6 @@ window.app.showClientDetails = async function(client) {
     
     const targetStrength = client.target_strength_weekly || 3;
     const targetCardio = client.target_cardio_weekly || 1;
-    const dailyNorm = client.min_steps || 10000;
     
     let actualStrength = 0, actualCardio = 0, socialDays = 0;
     weeklyReports?.forEach(r => {
@@ -183,7 +181,7 @@ window.app.showClientDetails = async function(client) {
     const cardioOk = actualCardio >= targetCardio;
     const socialOk = socialDays <= 1;
     
-    // Формируем HTML для кружочков шагов (с локальными датами)
+    // Формируем HTML для кружочков шагов (с использованием norm_steps из отчёта)
     let stepsCirclesHtml = '<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">';
     const daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
     for (let i = 0; i < 7; i++) {
@@ -192,7 +190,8 @@ window.app.showClientDetails = async function(client) {
         const dateStr = formatLocalDate(dayDate);
         const report = weeklyReports?.find(r => r.report_date === dateStr);
         const steps = report?.steps || 0;
-        const isOk = steps >= dailyNorm;
+        const normForThisDay = report?.norm_steps || 10000;
+        const isOk = steps >= normForThisDay;
         const hasData = !!report;
         
         stepsCirclesHtml += `
@@ -314,7 +313,7 @@ window.app.showClientDetails = async function(client) {
             <h3 style="margin: 0 0 12px 0; font-size: 16px;">📋 Протокол за эту неделю</h3>
             
             <div style="margin-bottom: 15px;">
-                <div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги (норма ${dailyNorm.toLocaleString()})</div>
+                <div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги</div>
                 ${stepsCirclesHtml}
             </div>
             
