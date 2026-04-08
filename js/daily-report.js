@@ -17,29 +17,12 @@ function getMoscowDateString(date = new Date()) {
 }
 
 function getMoscowStartOfWeek(date = new Date()) {
-    // Получаем московскую дату
     const mskDate = getMoscowDate(date);
-    
-    // Создаём UTC дату из компонентов (год, месяц, день)
-    const year = mskDate.getFullYear();
-    const month = mskDate.getMonth();
-    const day = mskDate.getDate();
-    const utcDate = new Date(Date.UTC(year, month, day));
-    
-    // Определяем день недели в UTC
-    const utcDay = utcDate.getUTCDay();
-    
-    // Вычисляем сколько дней до понедельника
-    // 0 = воскресенье -> 6 дней назад
-    // 1 = понедельник -> 0
-    // 2 = вторник -> 1
-    // и т.д.
-    const daysToMonday = (utcDay === 0 ? 6 : utcDay - 1);
-    
-    // Вычитаем нужное количество дней
-    utcDate.setUTCDate(utcDate.getUTCDate() - daysToMonday);
-    
-    return utcDate;
+    const day = mskDate.getDay();
+    const daysToMonday = (day === 0 ? 6 : day - 1);
+    mskDate.setDate(mskDate.getDate() - daysToMonday);
+    mskDate.setHours(0, 0, 0, 0);
+    return mskDate;
 }
 
 // --- Переменные состояния отчета ---
@@ -90,16 +73,6 @@ window.app.initDailyReportUI = function() {
     const saveBtn = document.getElementById('save-daily-report-btn');
     if (saveBtn) saveBtn.addEventListener('click', window.app.saveDailyReport);
 };
-
-// --- Определение начала недели (понедельник) ---
-function getStartOfWeek(date) {
-    const d = new Date(date);
-    const day = d.getDay(); // 0 = воскресенье, 1 = понедельник
-    const diff = (day === 0 ? 6 : day - 1);
-    d.setDate(d.getDate() - diff);
-    d.setHours(0, 0, 0, 0);
-    return d;
-}
 
 // --- Установка типа тренировки ---
 function setTrainingType(type) {
@@ -208,7 +181,7 @@ function setPostMeal(value) {
     if (postMealInput) postMealInput.value = value;
 }
 
-// --- Сохранение отчета ---
+// --- Сохранение отчета (с заморозкой нормы шагов) ---
 window.app.saveDailyReport = async function() {
     console.log('saveDailyReport вызвана');
     
@@ -257,7 +230,7 @@ window.app.saveDailyReport = async function() {
             pre_meal_compliant: preMeal,
             post_meal_compliant: postMeal,
             notes: notes,
-            norm_steps: currentNorm  // ← замораживаем норму
+            norm_steps: currentNorm
         }, { onConflict: 'user_id,report_date' });
     
     if (error) {
@@ -277,7 +250,7 @@ window.app.saveDailyReport = async function() {
     }
 };
 
-// --- Загрузка прогресса за неделю ---
+// --- Загрузка и отображение прогресса за неделю ---
 window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress START ===');
     
@@ -331,16 +304,22 @@ window.app.loadWeeklyProgress = async function() {
     
     console.log('Найдено отчетов:', reports?.length || 0);
     
-    // Получаем профиль пользователя
+    // Получаем профиль пользователя (только цели, без min_steps для отображения)
     const { data: profile } = await window.app.sb
         .from('profiles')
-        .select('target_strength_weekly, target_cardio_weekly, min_steps')
+        .select('target_strength_weekly, target_cardio_weekly')
         .eq('id', window.app.currentUser.id)
         .single();
     
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
-    const dailyNorm = profile?.min_steps || 10000;
+    
+    // Для отображения нормы используем последнюю сохраненную норму из отчета или 10000
+    let displayNorm = 10000;
+    if (reports && reports.length > 0) {
+        const lastReport = reports[reports.length - 1];
+        displayNorm = lastReport.norm_steps || 10000;
+    }
     
     const container = document.getElementById('weekly-progress');
     if (!container) return;
@@ -351,7 +330,7 @@ window.app.loadWeeklyProgress = async function() {
                 <div style="margin-bottom: 15px;">
                     <div style="display: flex; justify-content: space-between;">
                         <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
-                        <span><strong style="color: #36B647;">${dailyNorm.toLocaleString()}</strong> шагов</span>
+                        <span><strong style="color: #36B647;">${displayNorm.toLocaleString()}</strong> шагов</span>
                     </div>
                 </div>
                 <p style="text-align: center;">Нет данных за эту неделю</p>
@@ -381,7 +360,8 @@ window.app.loadWeeklyProgress = async function() {
         
         if (report) {
             const steps = report.steps || 0;
-            const stepsOk = steps >= dailyNorm;
+            const normForThisDay = report.norm_steps || 10000;
+            const stepsOk = steps >= normForThisDay;
             if (!stepsOk) lowStepsDays++;
             
             let trainingIcon = '';
@@ -433,7 +413,7 @@ window.app.loadWeeklyProgress = async function() {
             <div style="margin-bottom: 15px;">
                 <div style="display: flex; justify-content: space-between;">
                     <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
-                    <span><strong style="color: #36B647;">${dailyNorm.toLocaleString()}</strong> шагов</span>
+                    <span><strong style="color: #36B647;">${displayNorm.toLocaleString()}</strong> шагов</span>
                 </div>
             </div>
             
@@ -463,7 +443,7 @@ window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress END ===');
 };
 
-// --- Открытие экрана отчета ---
+// --- Открытие экрана ежедневного отчета ---
 window.app.openDailyReport = async function() {
     console.log('openDailyReport вызвана');
     
@@ -476,12 +456,16 @@ window.app.openDailyReport = async function() {
         dateEl.innerHTML = `📅 ${mskDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
     }
     
-    const { data: existing } = await window.app.sb
+    const { data: existing, error } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
         .eq('report_date', today)
         .maybeSingle();
+    
+    if (error) {
+        console.error('Ошибка загрузки существующего отчета:', error);
+    }
     
     if (existing) {
         const stepsInput = document.getElementById('daily-steps');
