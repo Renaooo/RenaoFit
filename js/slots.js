@@ -56,73 +56,32 @@ async function getBlockedSlotIds() {
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
         const bookedHours = booked.map(b => b.hour);
         const date = new Date(dayKey);
-        const dayOfWeek = date.getDay(); // 0=вс, 1=пн, 2=вт, 3=ср, 4=чт, 5=пт, 6=сб
+        const dayOfWeek = date.getDay();
         const isSaturday = dayOfWeek === 6;
-        const isTuesdayOrThursday = (dayOfWeek === 2 || dayOfWeek === 4);
-        
-        console.log(`Анализ дня ${dayKey} (${dayOfWeek}), занятые часы:`, bookedHours);
         
         // === 1. Парные блокировки 17:00 ↔ 21:00 ===
         if (bookedHours.includes(17)) {
             const slot21 = findSlotId(dayKey, 21);
-            if (slot21) {
-                console.log(`Блокируем 21:00 из-за 17:00 в ${dayKey}`);
-                blockedIds.add(slot21);
-            }
+            if (slot21) blockedIds.add(slot21);
         }
         if (bookedHours.includes(21)) {
             const slot17 = findSlotId(dayKey, 17);
-            if (slot17) {
-                console.log(`Блокируем 17:00 из-за 21:00 в ${dayKey}`);
-                blockedIds.add(slot17);
-            }
+            if (slot17) blockedIds.add(slot17);
         }
         
         // === 2. Субботние парные блокировки 10:00 ↔ 14:00 ===
         if (isSaturday) {
             if (bookedHours.includes(10)) {
                 const slot14 = findSlotId(dayKey, 14);
-                if (slot14) {
-                    console.log(`Блокируем 14:00 из-за 10:00 в субботу ${dayKey}`);
-                    blockedIds.add(slot14);
-                }
+                if (slot14) blockedIds.add(slot14);
             }
             if (bookedHours.includes(14)) {
                 const slot10 = findSlotId(dayKey, 10);
-                if (slot10) {
-                    console.log(`Блокируем 10:00 из-за 14:00 в субботу ${dayKey}`);
-                    blockedIds.add(slot10);
-                }
-            }
-        }
-        
-        // === 3. Вторник и четверг: блокировка утро ↔ вечер ===
-        if (isTuesdayOrThursday) {
-            const hasMorning = bookedHours.some(h => h >= 8 && h <= 11);
-            const hasEvening = bookedHours.some(h => h >= 17 && h <= 21);
-            
-            console.log(`Вторник/Четверг ${dayKey}: hasMorning=${hasMorning}, hasEvening=${hasEvening}`);
-            
-            if (hasMorning && !hasEvening) {
-                // Блокируем все вечерние слоты (17,18,19,20,21)
-                console.log(`Блокируем вечерние слоты в ${dayKey} из-за утренней записи`);
-                [17, 18, 19, 20, 21].forEach(hour => {
-                    const slotId = findSlotId(dayKey, hour);
-                    if (slotId) blockedIds.add(slotId);
-                });
-            }
-            if (hasEvening && !hasMorning) {
-                // Блокируем все утренние слоты (8,9,10,11)
-                console.log(`Блокируем утренние слоты в ${dayKey} из-за вечерней записи`);
-                [8, 9, 10, 11].forEach(hour => {
-                    const slotId = findSlotId(dayKey, hour);
-                    if (slotId) blockedIds.add(slotId);
-                });
+                if (slot10) blockedIds.add(slot10);
             }
         }
     }
     
-    console.log('Итоговые заблокированные слоты:', Array.from(blockedIds));
     return blockedIds;
 }
 
@@ -517,7 +476,6 @@ window.app.ensureWeeklySchedule = async function(force = false) {
     console.log('Расписание готово');
 };
 
-
 // --- Вспомогательная функция для отображения слота в админке ---
 window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     const start = new Date(slot.start_time);
@@ -531,11 +489,11 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
             ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
             ${!isAvailable ? ' ❌ занят' : (isBlockedByRule ? ' 🔒 заблокирован правилами' : '')}
         </span>
-        ${(!isBlocked && isAvailable) ? '<button class="delete-slot-btn" data-id="' + slot.id + '" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>' : ''}
+        <button class="delete-slot-btn" data-id="${slot.id}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>
     `;
     
-    if (!isBlocked && isAvailable) {
-        const deleteBtn = div.querySelector('.delete-slot-btn');
+    const deleteBtn = div.querySelector('.delete-slot-btn');
+    if (deleteBtn) {
         deleteBtn.addEventListener('click', async () => {
             if (confirm('Удалить этот слот?')) {
                 await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
@@ -587,7 +545,20 @@ window.app.loadAdminData = async function() {
             for (let [day, daySlots] of Object.entries(groupedByDay)) {
                 const dayDiv = document.createElement('div');
                 dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
-                dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
+                
+                // Получаем дату дня для кнопок удаления
+                const firstSlotDate = daySlots[0]?.start_time ? new Date(daySlots[0].start_time) : new Date();
+                const dayDateStr = firstSlotDate.toISOString().split('T')[0];
+                
+                dayDiv.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h3 style="margin: 0; font-size: 16px;">📅 ${day}</h3>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="delete-morning-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;">🗑️ Утро</button>
+                            <button class="delete-evening-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;">🗑️ Вечер</button>
+                        </div>
+                    </div>
+                `;
                 
                 const morning = daySlots.filter(s => new Date(s.start_time).getHours() < 15);
                 const evening = daySlots.filter(s => new Date(s.start_time).getHours() >= 15);
@@ -613,6 +584,40 @@ window.app.loadAdminData = async function() {
                 }
                 
                 adminSlotsDiv.appendChild(dayDiv);
+                
+                // Обработчики кнопок удаления утра/вечера
+                const morningDeleteBtn = dayDiv.querySelector('.delete-morning-btn');
+                const eveningDeleteBtn = dayDiv.querySelector('.delete-evening-btn');
+                
+                if (morningDeleteBtn) {
+                    morningDeleteBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Удалить все УТРЕННИЕ слоты на ${day}?`)) {
+                            const dayDateStr = e.target.dataset.day;
+                            await window.app.sb
+                                .from('slots')
+                                .delete()
+                                .gte('start_time', `${dayDateStr}T00:00:00.000Z`)
+                                .lt('start_time', `${dayDateStr}T12:00:00.000Z`);
+                            await window.app.loadAdminData();
+                        }
+                    });
+                }
+                
+                if (eveningDeleteBtn) {
+                    eveningDeleteBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Удалить все ВЕЧЕРНИЕ слоты на ${day}?`)) {
+                            const dayDateStr = e.target.dataset.day;
+                            await window.app.sb
+                                .from('slots')
+                                .delete()
+                                .gte('start_time', `${dayDateStr}T12:00:00.000Z`)
+                                .lt('start_time', `${dayDateStr}T23:59:59.999Z`);
+                            await window.app.loadAdminData();
+                        }
+                    });
+                }
             }
         }
     }
