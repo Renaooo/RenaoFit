@@ -266,33 +266,39 @@ window.app.saveDailyReport = async function() {
 window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress START ===');
     
-    if (!window.app.currentUser) {
-        console.log('Нет текущего пользователя');
-        return;
+    if (!window.app.currentUser) return;
+    
+    // Получаем локальную дату (МСК)
+    const now = new Date();
+    const mskDate = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    
+    // Функция форматирования локальной даты в YYYY-MM-DD
+    function formatLocalDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
     
-    // --- Определение начала недели (понедельник) ---
-    function getStartOfWeek(date) {
+    // Функция получения понедельника от локальной даты
+    function getMonday(date) {
         const d = new Date(date);
-        const day = d.getDay(); // 0 = воскресенье, 1 = понедельник
+        const day = d.getDay();
         const diff = (day === 0 ? 6 : day - 1);
         d.setDate(d.getDate() - diff);
-        d.setHours(0, 0, 0, 0);
         return d;
     }
     
-    const today = new Date();
-    const startOfWeek = getStartOfWeek(today);
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    const monday = getMonday(mskDate);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
     
-    const startDateStr = startOfWeek.toISOString().split('T')[0];
-    const endDateStr = endOfWeek.toISOString().split('T')[0];
-    const todayStr = today.toISOString().split('T')[0];
+    const startDateStr = formatLocalDate(monday);
+    const endDateStr = formatLocalDate(sunday);
+    const todayStr = formatLocalDate(mskDate);
     
     console.log('Неделя (пн-вс):', startDateStr, '-', endDateStr);
     console.log('Сегодня:', todayStr);
-    console.log('Сегодня в диапазоне?', todayStr >= startDateStr && todayStr <= endDateStr);
     
     // Получаем отчеты за неделю
     const { data: reports, error } = await window.app.sb
@@ -309,12 +315,6 @@ window.app.loadWeeklyProgress = async function() {
     }
     
     console.log('Найдено отчетов:', reports?.length || 0);
-    
-    if (reports && reports.length > 0) {
-        reports.forEach(r => {
-            console.log('  Отчет за:', r.report_date, 'шаги:', r.steps);
-        });
-    }
     
     // Получаем профиль пользователя
     const { data: profile } = await window.app.sb
@@ -341,53 +341,41 @@ window.app.loadWeeklyProgress = async function() {
                 </div>
                 <p style="text-align: center;">Нет данных за эту неделю</p>
                 <p style="text-align: center; font-size: 12px; color: #999;">Неделя: ${startDateStr} - ${endDateStr}</p>
-                <p style="text-align: center; font-size: 12px; color: #999;">Сегодня: ${todayStr}</p>
             </div>
         `;
-        console.log('=== loadWeeklyProgress END (нет данных) ===');
         return;
     }
     
-    // Подсчитываем статистику
+    // Создаем карту отчетов по датам
+    const reportsMap = {};
+    reports.forEach(r => {
+        reportsMap[r.report_date] = r;
+    });
+    
+    // Собираем все дни недели по порядку
     let strengthCount = 0, cardioCount = 0, socialDays = 0, lowStepsDays = 0;
     let dailyTable = '<div style="margin-top: 15px;"><h4 style="margin-bottom: 10px;">📅 По дням</h4>';
     
-    // Создаем массив всех дней недели для правильного порядка
-    const daysOfWeekMap = {};
     for (let i = 0; i < 7; i++) {
-        const dayDate = new Date(startOfWeek);
-        dayDate.setDate(startOfWeek.getDate() + i);
-        const dateStr = dayDate.toISOString().split('T')[0];
-        daysOfWeekMap[dateStr] = {
-            dayName: dayDate.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' }),
-            report: null
-        };
-    }
-    
-    // Заполняем отчеты
-    reports.forEach(r => {
-        if (daysOfWeekMap[r.report_date]) {
-            daysOfWeekMap[r.report_date].report = r;
-        }
-    });
-    
-    // Проходим по дням недели по порядку
-    for (let [dateStr, dayInfo] of Object.entries(daysOfWeekMap)) {
-        const r = dayInfo.report;
-        const dayName = dayInfo.dayName;
+        const currentDay = new Date(monday);
+        currentDay.setDate(monday.getDate() + i);
+        const dateStr = formatLocalDate(currentDay);
+        const dayName = currentDay.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
         
-        if (r) {
-            const steps = r.steps || 0;
+        const report = reportsMap[dateStr];
+        
+        if (report) {
+            const steps = report.steps || 0;
             const stepsOk = steps >= dailyNorm;
             if (!stepsOk) lowStepsDays++;
             
             let trainingIcon = '';
-            if (r.training_type === 'strength') trainingIcon = '💪';
-            else if (r.training_type === 'cardio') trainingIcon = '🏃';
-            else if (r.training_type === 'rest') trainingIcon = '😴';
+            if (report.training_type === 'strength') trainingIcon = '💪';
+            else if (report.training_type === 'cardio') trainingIcon = '🏃';
+            else if (report.training_type === 'rest') trainingIcon = '😴';
             else trainingIcon = '⚪';
             
-            const socialIcon = r.social_event ? '⚠️' : '✅';
+            const socialIcon = report.social_event ? '⚠️' : '✅';
             
             dailyTable += `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
@@ -402,11 +390,10 @@ window.app.loadWeeklyProgress = async function() {
                 </div>
             `;
             
-            if (r.training_type === 'strength') strengthCount++;
-            if (r.training_type === 'cardio') cardioCount++;
-            if (r.social_event) socialDays++;
+            if (report.training_type === 'strength') strengthCount++;
+            if (report.training_type === 'cardio') cardioCount++;
+            if (report.social_event) socialDays++;
         } else {
-            // Нет отчета за этот день
             dailyTable += `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
                     <div style="flex: 1;">
@@ -458,9 +445,8 @@ window.app.loadWeeklyProgress = async function() {
         </div>
     `;
     
-    console.log('=== loadWeeklyProgress END (данные загружены) ===');
+    console.log('=== loadWeeklyProgress END ===');
 };
-
 
 // --- Открытие экрана отчета ---
 window.app.openDailyReport = async function() {
