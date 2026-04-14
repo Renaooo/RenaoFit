@@ -50,18 +50,63 @@
             </div>
         </div>
 
+      <!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Тренировки | Запись</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Экран авторизации -->
+        <div id="auth-screen" class="screen active">
+            <div class="container">
+                <h1>Твой тренер</h1>
+                <input type="text" id="phone-input" placeholder="Телефон" autocomplete="off">
+                <input type="text" id="name-input" placeholder="Имя">
+                <button id="login-btn" class="btn primary">Войти / Зарегистрироваться</button>
+            </div>
+        </div>
+
+        <!-- Главное меню -->
+        <div id="menu-screen" class="screen">
+            <div class="container">
+                <h2>Привет, <span id="user-name"></span></h2>
+                <button id="book-btn" class="btn primary">📅 Записаться</button>
+                <button id="my-bookings-btn" class="btn secondary">📋 Мои записи</button>
+                <button id="daily-report-btn" class="btn secondary">📝 Ежедневный отчет</button>
+                <button id="my-profile-btn" class="btn secondary">👤 Мой профиль</button>
+                <button id="admin-btn" class="btn admin" style="display: none;">⚙️ Админ-панель</button>
+                <button id="logout-btn" class="btn logout">Выйти</button>
+            </div>
+        </div>
+
+        <!-- Экран записи -->
+        <div id="booking-screen" class="screen">
+            <div class="container">
+                <button class="btn back-btn">← Назад</button>
+                <h2>Выбери время</h2>
+                <div id="slots-list" class="slots-grid"></div>
+                <button id="confirm-booking-btn" class="btn primary" style="display: none;">✅ Подтвердить запись</button>
+            </div>
+        </div>
+
+        <!-- Экран моих записей -->
+        <div id="my-bookings-screen" class="screen">
+            <div class="container">
+                <button class="btn back-btn">← Назад</button>
+                <h2>Мои тренировки</h2>
+                <div id="my-bookings-list"></div>
+            </div>
+        </div>
+
         <!-- Экран ежедневного отчета -->
         <div id="daily-report-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
                 <h2>📝 Ежедневный отчет</h2>
-                
-                <!-- Переключатель недель -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <button id="prev-week-btn" class="btn secondary" style="flex: 0 0 auto; padding: 8px 16px;">← Пред. неделя</button>
-                    <div id="weekly-week-title" style="font-weight: 500; text-align: center;">Текущая неделя</div>
-                    <button id="next-week-btn" class="btn secondary" style="flex: 0 0 auto; padding: 8px 16px;">След. неделя →</button>
-                </div>
                 
                 <div id="daily-report-date" style="text-align: center; color: #666; margin-bottom: 15px;"></div>
                 
@@ -135,8 +180,15 @@
                 
                 <!-- Прогресс за неделю -->
                 <div style="margin-top: 20px;">
-                    <h3>📊 Прогресс за неделю</h3>
-                    <div id="weekly-progress" style="margin-top: 10px;"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h3 style="margin: 0;">📊 Прогресс за неделю</h3>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="prev-week-btn" class="btn secondary" style="padding: 6px 12px; font-size: 13px;">← Пред.</button>
+                            <button id="next-week-btn" class="btn secondary" style="padding: 6px 12px; font-size: 13px;">След. →</button>
+                        </div>
+                    </div>
+                    <div id="weekly-week-title" style="font-size: 13px; color: #666; text-align: center; margin-bottom: 10px;">Текущая неделя</div>
+                    <div id="weekly-progress" style="margin-top: 5px;"></div>
                 </div>
             </div>
         </div>
@@ -204,7 +256,7 @@
                     <p style="font-size: 12px; color: #666; margin-top: 8px;">* Конец слота автоматически ставится +1 час</p>
                 </div>
                 
-                <!-- Все записи (с группировкой) -->
+                <!-- Все записи -->
                 <div id="admin-bookings"></div>
             </div>
         </div>
