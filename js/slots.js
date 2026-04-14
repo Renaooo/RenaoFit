@@ -52,14 +52,13 @@ async function getBlockedSlotIds() {
         return slotsByDay[dayKey]?.find(s => s.hour === hour)?.id;
     }
     
-    // Анализируем каждый день
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
         const bookedHours = booked.map(b => b.hour);
         const date = new Date(dayKey);
         const dayOfWeek = date.getDay();
         const isSaturday = dayOfWeek === 6;
         
-        // === 1. Парные блокировки 17:00 ↔ 21:00 ===
+        // Парные блокировки 17:00 ↔ 21:00
         if (bookedHours.includes(17)) {
             const slot21 = findSlotId(dayKey, 21);
             if (slot21) blockedIds.add(slot21);
@@ -69,7 +68,7 @@ async function getBlockedSlotIds() {
             if (slot17) blockedIds.add(slot17);
         }
         
-        // === 2. Субботние парные блокировки 10:00 ↔ 14:00 ===
+        // Субботние парные блокировки 10:00 ↔ 14:00
         if (isSaturday) {
             if (bookedHours.includes(10)) {
                 const slot14 = findSlotId(dayKey, 14);
@@ -398,27 +397,7 @@ window.app.loadMyBookings = async function() {
 };
 
 // --- Автоматическое обновление расписания на 8 дней ---
-window.app.ensureWeeklySchedule = async function(force = false) {
-    // Проверяем, есть ли уже слоты на ближайшие дни
-    const today = new Date();
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 8);
-    
-    const { data: existingSlots } = await window.app.sb
-        .from('slots')
-        .select('id')
-        .gte('start_time', today.toISOString())
-        .lte('start_time', endDate.toISOString())
-        .limit(1);
-    
-    // Если слоты уже есть и не force, то ничего не делаем
-    if (!force && existingSlots && existingSlots.length > 0) {
-        console.log('Слоты уже существуют, пропускаем генерацию');
-        return;
-    }
-    
-    console.log('Генерируем расписание...');
-    
+window.app.ensureWeeklySchedule = async function() {
     const schedule = {
         1: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
         2: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
@@ -429,41 +408,94 @@ window.app.ensureWeeklySchedule = async function(force = false) {
         0: []
     };
     
-    // Очищаем старые слоты (только если force)
-    if (force) {
-        await window.app.sb.from('bookings').delete().neq('id', 0);
-        await window.app.sb.from('slots').delete().neq('id', 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Проверяем, сколько дней вперёд есть слоты
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 8);
+    
+    const { data: existingSlots } = await window.app.sb
+        .from('slots')
+        .select('start_time')
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString());
+    
+    // Считаем уникальные дни, на которые есть слоты
+    const daysWithSlots = new Set();
+    existingSlots?.forEach(slot => {
+        const day = new Date(slot.start_time).toISOString().split('T')[0];
+        daysWithSlots.add(day);
+    });
+    
+    // Если есть слоты на все 8 дней вперёд, пропускаем генерацию
+    const expectedDays = 8;
+    if (daysWithSlots.size >= expectedDays) {
+        console.log('Слоты уже есть на все дни, пропускаем генерацию');
+        return;
     }
     
-    const startDate = new Date(today);
-    startDate.setHours(0, 0, 0, 0);
+    console.log('Генерируем расписание...');
+    
+    // Очищаем старые слоты (старше 8 дней)
+    const oldDate = new Date(today);
+    oldDate.setDate(today.getDate() - 1);
+    await window.app.sb
+        .from('slots')
+        .delete()
+        .lt('start_time', oldDate.toISOString());
     
     for (let day = 0; day < 8; day++) {
-        const currentDate = new Date(startDate);
-        currentDate.setDate(startDate.getDate() + day);
+        const currentDate = new Date(today);
+        currentDate.setDate(today.getDate() + day);
         const dayOfWeek = currentDate.getDay();
         
         const times = schedule[dayOfWeek];
         if (!times || times.length === 0) continue;
         
+        const startOfDay = new Date(currentDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(currentDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        const { data: existingDaySlots } = await window.app.sb
+            .from('slots')
+            .select('id, start_time')
+            .gte('start_time', startOfDay.toISOString())
+            .lte('start_time', endOfDay.toISOString());
+        
+        const existingTimesSet = new Set();
+        existingDaySlots?.forEach(slot => {
+            const d = new Date(slot.start_time);
+            const hour = d.getHours();
+            const minute = d.getMinutes();
+            existingTimesSet.add(`${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`);
+        });
+        
+        // Удаляем слоты, которых нет в расписании
+        for (let slot of existingDaySlots || []) {
+            const d = new Date(slot.start_time);
+            const hour = d.getHours();
+            const minute = d.getMinutes();
+            const timeStr = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
+            if (!times.includes(timeStr)) {
+                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
+                await window.app.sb.from('slots').delete().eq('id', slot.id);
+            }
+        }
+        
+        // Добавляем недостающие слоты
         for (let time of times) {
-            const [hours, minutes] = time.split(':');
-            const startTime = new Date(currentDate);
-            startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-            
-            if (startTime < new Date()) continue;
-            
-            const endTime = new Date(startTime);
-            endTime.setHours(startTime.getHours() + 1);
-            
-            // Проверяем, нет ли уже такого слота
-            const { data: existing } = await window.app.sb
-                .from('slots')
-                .select('id')
-                .eq('start_time', startTime.toISOString())
-                .maybeSingle();
-            
-            if (!existing) {
+            if (!existingTimesSet.has(time)) {
+                const [hours, minutes] = time.split(':');
+                const startTime = new Date(currentDate);
+                startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                
+                if (startTime < new Date()) continue;
+                
+                const endTime = new Date(startTime);
+                endTime.setHours(startTime.getHours() + 1);
+                
                 await window.app.sb.from('slots').insert({
                     start_time: startTime.toISOString(),
                     end_time: endTime.toISOString(),
@@ -508,7 +540,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
 
 // --- Админ-панель: отображение слотов и записей ---
 window.app.loadAdminData = async function() {
-    await window.app.ensureWeeklySchedule(false);
+    await window.app.ensureWeeklySchedule();
     
     const adminSlotsDiv = document.getElementById('admin-slots');
     const adminBookingsDiv = document.getElementById('admin-bookings');
@@ -527,7 +559,6 @@ window.app.loadAdminData = async function() {
         .lte('start_time', endDate.toISOString())
         .order('start_time');
     
-    // Получаем заблокированные правилами слоты
     const blockedIds = await getBlockedSlotIds();
     
     if (adminSlotsDiv && slots) {
@@ -546,7 +577,6 @@ window.app.loadAdminData = async function() {
                 const dayDiv = document.createElement('div');
                 dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
                 
-                // Получаем дату дня для кнопок удаления
                 const firstSlotDate = daySlots[0]?.start_time ? new Date(daySlots[0].start_time) : new Date();
                 const dayDateStr = firstSlotDate.toISOString().split('T')[0];
                 
@@ -585,7 +615,6 @@ window.app.loadAdminData = async function() {
                 
                 adminSlotsDiv.appendChild(dayDiv);
                 
-                // Обработчики кнопок удаления утра/вечера
                 const morningDeleteBtn = dayDiv.querySelector('.delete-morning-btn');
                 const eveningDeleteBtn = dayDiv.querySelector('.delete-evening-btn');
                 
@@ -622,6 +651,7 @@ window.app.loadAdminData = async function() {
         }
     }
     
+    // === ГРУППИРОВКА "ВСЕ ЗАПИСИ" ПО ДНЯМ И УТРО/ВЕЧЕР ===
     const { data: bookings } = await window.app.sb.rpc('get_bookings_with_profiles');
     
     if (adminBookingsDiv) {
@@ -630,29 +660,73 @@ window.app.loadAdminData = async function() {
         adminBookingsDiv.appendChild(title);
         
         if (bookings && bookings.length > 0) {
-            for (let booking of bookings) {
-                const div = document.createElement('div');
-                div.style.cssText = 'border:1px solid #ddd; margin:10px 0; padding:12px; border-radius:8px; background:#f9f9f9; display: flex; justify-content: space-between; align-items: center;';
-                div.innerHTML = `
-                    <div>
-                        <strong>${booking.name || 'Неизвестно'}</strong><br>
-                        📞 ${booking.phone || 'нет телефона'}<br>
-                        🕐 ${new Date(booking.start_time).toLocaleString()}
-                    </div>
-                    <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
-                `;
+            // Группируем по дням
+            const groupedByDay = {};
+            bookings.forEach(booking => {
+                const date = new Date(booking.start_time);
+                const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+                if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+                groupedByDay[dayKey].push(booking);
+            });
+            
+            // Сортируем дни по дате
+            const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
+                const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
+                const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
+                return dateA - dateB;
+            });
+            
+            for (let day of sortedDays) {
+                const dayBookings = groupedByDay[day];
+                const dayDiv = document.createElement('div');
+                dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
+                dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
                 
-                const deleteBtn = div.querySelector('.delete-booking-btn');
-                deleteBtn.addEventListener('click', async () => {
-                    if (confirm('Удалить эту запись? Слот снова станет доступным.')) {
-                        await window.app.sb.from('bookings').delete().eq('id', booking.id);
-                        await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
-                        alert('Запись удалена, слот свободен');
-                        await window.app.loadAdminData();
-                    }
-                });
+                // Разделяем на утро и вечер
+                const morning = dayBookings.filter(b => new Date(b.start_time).getHours() < 15);
+                const evening = dayBookings.filter(b => new Date(b.start_time).getHours() >= 15);
                 
-                adminBookingsDiv.appendChild(div);
+                if (morning.length > 0) {
+                    const morningDiv = document.createElement('div');
+                    morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
+                    morning.forEach(booking => {
+                        const timeStr = new Date(booking.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                        const bookingDiv = document.createElement('div');
+                        bookingDiv.style.cssText = 'border:1px solid #ddd; margin:8px 0; padding:10px; border-radius:8px; background:#f9f9f9; display: flex; justify-content: space-between; align-items: center;';
+                        bookingDiv.innerHTML = `
+                            <div>
+                                <strong>${booking.name || 'Неизвестно'}</strong><br>
+                                📞 ${booking.phone || 'нет телефона'}<br>
+                                🕐 ${timeStr}
+                            </div>
+                            <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
+                        `;
+                        morningDiv.appendChild(bookingDiv);
+                    });
+                    dayDiv.appendChild(morningDiv);
+                }
+                
+                if (evening.length > 0) {
+                    const eveningDiv = document.createElement('div');
+                    eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
+                    evening.forEach(booking => {
+                        const timeStr = new Date(booking.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                        const bookingDiv = document.createElement('div');
+                        bookingDiv.style.cssText = 'border:1px solid #ddd; margin:8px 0; padding:10px; border-radius:8px; background:#f9f9f9; display: flex; justify-content: space-between; align-items: center;';
+                        bookingDiv.innerHTML = `
+                            <div>
+                                <strong>${booking.name || 'Неизвестно'}</strong><br>
+                                📞 ${booking.phone || 'нет телефона'}<br>
+                                🕐 ${timeStr}
+                            </div>
+                            <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
+                        `;
+                        eveningDiv.appendChild(bookingDiv);
+                    });
+                    dayDiv.appendChild(eveningDiv);
+                }
+                
+                adminBookingsDiv.appendChild(dayDiv);
             }
         } else {
             const noBookings = document.createElement('p');
