@@ -56,6 +56,13 @@
                 <button class="btn back-btn">← Назад</button>
                 <h2>📝 Ежедневный отчет</h2>
                 
+                <!-- Переключатель недель -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <button id="prev-week-btn" class="btn secondary" style="flex: 0 0 auto; padding: 8px 16px;">← Пред. неделя</button>
+                    <div id="weekly-week-title" style="font-weight: 500; text-align: center;">Текущая неделя</div>
+                    <button id="next-week-btn" class="btn secondary" style="flex: 0 0 auto; padding: 8px 16px;">След. неделя →</button>
+                </div>
+                
                 <div id="daily-report-date" style="text-align: center; color: #666; margin-bottom: 15px;"></div>
                 
                 <div style="background: #f8f9fa; border-radius: 16px; padding: 20px;">
@@ -154,14 +161,14 @@
                         <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">Вес</label>
                         <div style="font-size: 18px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;" id="profile-weight-container">
                             <span id="profile-weight">—</span>
-                            <span style="font-size: 14px; color: #007aff;">✎</span>
+                            <span style="font-size: 14px; color: #36B647;">✎</span>
                         </div>
                     </div>
                 </div>
                 
                 <!-- График веса -->
-                <div id="weight-chart-container" style="margin-top: 20px; display: none;">
-                    <canvas id="weight-chart" style="width: 100%; max-height: 300px;"></canvas>
+                <div id="weight-chart-container" style="margin-top: 20px;">
+                    <canvas id="weight-chart" style="width: 100%; max-height: 300px; background: #f8f9fa; border-radius: 12px;"></canvas>
                     <div id="total-loss" style="text-align: center; margin-top: 10px; font-weight: 500;"></div>
                 </div>
             </div>
@@ -175,8 +182,8 @@
                 
                 <!-- Вкладки -->
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #007aff;">📅 Слоты</button>
-                    <button id="admin-clients-tab" class="btn secondary" style="flex: 1; background: #e9ecef; color: #1e1e1e;">👥 Клиенты</button>
+                    <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #36B647;">📅 Слоты</button>
+                    <button id="admin-clients-tab" class="btn secondary" style="flex: 1; background: #f0f0f0; color: #323338;">👥 Клиенты</button>
                 </div>
                 
                 <!-- Панель слотов -->
@@ -196,10 +203,8 @@
                     <button id="admin-add-slot" class="btn primary">➕ Добавить слот</button>
                     <p style="font-size: 12px; color: #666; margin-top: 8px;">* Конец слота автоматически ставится +1 час</p>
                 </div>
-
-                <button id="reset-schedule-btn" class="btn secondary" style="background: #dc3545; color: white; margin-bottom: 10px;">🗑️ Сбросить расписание</button>
                 
-                <!-- Все записи -->
+                <!-- Все записи (с группировкой) -->
                 <div id="admin-bookings"></div>
             </div>
         </div>
@@ -225,16 +230,14 @@
         </div>
     </div>
 
-    <!-- Подключение модулей -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="js/globals.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/slots.js"></script>
-<script src="js/daily-report.js"></script>
-<script src="js/profile.js"></script>
-<script src="js/admin-clients.js"></script>
-<script src="js/main.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="js/globals.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/slots.js"></script>
+    <script src="js/daily-report.js"></script>
+    <script src="js/profile.js"></script>
+    <script src="js/admin-clients.js"></script>
+    <script src="js/main.js"></script>
 </body>
 </html>
