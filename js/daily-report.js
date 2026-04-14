@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ (с московским временем)
+// МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ (с московским временем и переключателем недель)
 // ============================================
 
 // ============================================
@@ -31,6 +31,7 @@ let currentTrainingTime = '';
 let currentSocialEvent = false;
 let currentPreMeal = '';
 let currentPostMeal = '';
+let currentWeekOffset = 0; // 0 = текущая неделя, -1 = прошлая, -2 = позапрошлая
 
 // --- Инициализация UI ---
 window.app.initDailyReportUI = function() {
@@ -72,6 +73,24 @@ window.app.initDailyReportUI = function() {
     
     const saveBtn = document.getElementById('save-daily-report-btn');
     if (saveBtn) saveBtn.addEventListener('click', window.app.saveDailyReport);
+    
+    // Кнопки переключения недель
+    const prevWeekBtn = document.getElementById('prev-week-btn');
+    const nextWeekBtn = document.getElementById('next-week-btn');
+    
+    if (prevWeekBtn) prevWeekBtn.addEventListener('click', () => {
+        if (currentWeekOffset > -2) {
+            currentWeekOffset--;
+            window.app.loadWeeklyProgress();
+        }
+    });
+    
+    if (nextWeekBtn) nextWeekBtn.addEventListener('click', () => {
+        if (currentWeekOffset < 0) {
+            currentWeekOffset++;
+            window.app.loadWeeklyProgress();
+        }
+    });
 };
 
 // --- Установка типа тренировки ---
@@ -250,7 +269,7 @@ window.app.saveDailyReport = async function() {
     }
 };
 
-// --- Загрузка и отображение прогресса за неделю ---
+// --- Загрузка и отображение прогресса за неделю (с поддержкой переключения недель) ---
 window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress START ===');
     
@@ -258,7 +277,7 @@ window.app.loadWeeklyProgress = async function() {
     
     // Получаем локальную дату (МСК)
     const now = new Date();
-    const mskDate = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    const mskDate = getMoscowDate(now);
     
     // Функция форматирования локальной даты в YYYY-MM-DD
     function formatLocalDate(date) {
@@ -277,16 +296,33 @@ window.app.loadWeeklyProgress = async function() {
         return d;
     }
     
-    const monday = getMonday(mskDate);
+    // Вычисляем дату с учётом смещения недели
+    const targetDate = new Date(mskDate);
+    targetDate.setDate(mskDate.getDate() + (currentWeekOffset * 7));
+    
+    const monday = getMonday(targetDate);
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     
     const startDateStr = formatLocalDate(monday);
     const endDateStr = formatLocalDate(sunday);
-    const todayStr = formatLocalDate(mskDate);
+    
+    // Форматируем заголовок недели
+    const weekStartFormatted = monday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
+    const weekEndFormatted = sunday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
+    const weekTitle = currentWeekOffset === 0 ? 'Текущая неделя' : `${weekStartFormatted} - ${weekEndFormatted}`;
+    
+    // Обновляем заголовок в интерфейсе
+    const weekTitleEl = document.getElementById('weekly-week-title');
+    const prevBtn = document.getElementById('prev-week-btn');
+    const nextBtn = document.getElementById('next-week-btn');
+    
+    if (weekTitleEl) weekTitleEl.textContent = weekTitle;
+    if (prevBtn) prevBtn.disabled = currentWeekOffset <= -2;
+    if (nextBtn) nextBtn.disabled = currentWeekOffset >= 0;
     
     console.log('Неделя (пн-вс):', startDateStr, '-', endDateStr);
-    console.log('Сегодня:', todayStr);
+    console.log('Смещение недели:', currentWeekOffset);
     
     // Получаем отчеты за неделю
     const { data: reports, error } = await window.app.sb
@@ -304,7 +340,7 @@ window.app.loadWeeklyProgress = async function() {
     
     console.log('Найдено отчетов:', reports?.length || 0);
     
-    // Получаем профиль пользователя (только цели, без min_steps для отображения)
+    // Получаем профиль пользователя
     const { data: profile } = await window.app.sb
         .from('profiles')
         .select('target_strength_weekly, target_cardio_weekly')
@@ -448,6 +484,9 @@ window.app.openDailyReport = async function() {
     console.log('openDailyReport вызвана');
     
     if (!window.app.currentUser) return;
+    
+    // Сбрасываем смещение недели на текущую
+    currentWeekOffset = 0;
     
     const today = getMoscowDateString();
     const dateEl = document.getElementById('daily-report-date');
