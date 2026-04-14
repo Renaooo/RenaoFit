@@ -141,25 +141,132 @@ window.app.showClientDetails = async function(client) {
         return d;
     }
     
-    // Получаем отчеты клиента за текущую неделю (локальная дата)
-    const today = new Date();
-    const startOfWeek = getStartOfWeek(today);
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    // Переменная для смещения недели (0 = текущая, -1 = прошлая, -2 = позапрошлая)
+    let currentWeekOffset = 0;
     
-    const startDateStr = formatLocalDate(startOfWeek);
-    const endDateStr = formatLocalDate(endOfWeek);
+    // Создаем модальное окно
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    `;
     
-    console.log('Админ: неделя для клиента', startDateStr, '-', endDateStr);
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+        background: white;
+        border-radius: 16px;
+        max-width: 550px;
+        width: 90%;
+        max-height: 85vh;
+        overflow-y: auto;
+        padding: 20px;
+    `;
     
-    const { data: weeklyReports } = await window.app.sb
-        .from('daily_reports')
-        .select('*')
-        .eq('user_id', client.id)
-        .gte('report_date', startDateStr)
-        .lte('report_date', endDateStr);
+    // Функция загрузки протокола для выбранной недели
+    async function loadProtocolForWeek(offset) {
+        const today = new Date();
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + (offset * 7));
+        const startOfWeek = getStartOfWeek(targetDate);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        
+        const startDateStr = formatLocalDate(startOfWeek);
+        const endDateStr = formatLocalDate(endOfWeek);
+        
+        const weekStartFormatted = startOfWeek.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
+        const weekEndFormatted = endOfWeek.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
+        const weekTitle = offset === 0 ? 'Текущая неделя' : `${weekStartFormatted} - ${weekEndFormatted}`;
+        
+        const { data: weeklyReports } = await window.app.sb
+            .from('daily_reports')
+            .select('*')
+            .eq('user_id', client.id)
+            .gte('report_date', startDateStr)
+            .lte('report_date', endDateStr);
+        
+        const targetStrength = client.target_strength_weekly || 3;
+        const targetCardio = client.target_cardio_weekly || 1;
+        const dailyNorm = client.min_steps || 10000;
+        
+        let actualStrength = 0, actualCardio = 0, socialDays = 0;
+        weeklyReports?.forEach(r => {
+            if (r.training_type === 'strength') actualStrength++;
+            if (r.training_type === 'cardio') actualCardio++;
+            if (r.social_event) socialDays++;
+        });
+        
+        const strengthOk = actualStrength >= targetStrength;
+        const cardioOk = actualCardio >= targetCardio;
+        const socialOk = socialDays <= 1;
+        
+        // Формируем HTML для кружочков шагов
+        let stepsCirclesHtml = '<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">';
+        const daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+        for (let i = 0; i < 7; i++) {
+            const dayDate = new Date(startOfWeek);
+            dayDate.setDate(startOfWeek.getDate() + i);
+            const dateStr = formatLocalDate(dayDate);
+            const report = weeklyReports?.find(r => r.report_date === dateStr);
+            const steps = report?.steps || 0;
+            const normForThisDay = report?.norm_steps || dailyNorm;
+            const isOk = steps >= normForThisDay;
+            const hasData = !!report;
+            
+            stepsCirclesHtml += `
+                <div style="text-align: center; width: 40px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: ${hasData ? (isOk ? '#36B647' : '#dc3545') : '#e0e0e0'}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">
+                        ${hasData ? (isOk ? '✓' : '✗') : '?'}
+                    </div>
+                    <div style="font-size: 10px; color: #666; margin-top: 4px;">${daysOfWeek[i]}</div>
+                </div>
+            `;
+        }
+        stepsCirclesHtml += '</div>';
+        
+        return { html: `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <button class="protocol-prev-week" style="background: #36B647; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; ${offset <= -2 ? 'opacity: 0.5; pointer-events: none;' : ''}">← Пред. неделя</button>
+                <div style="font-weight: 500;">${weekTitle}</div>
+                <button class="protocol-next-week" style="background: #36B647; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; ${offset >= 0 ? 'opacity: 0.5; pointer-events: none;' : ''}">След. неделя →</button>
+            </div>
+            
+            <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;">
+                <h3 style="margin: 0 0 12px 0; font-size: 16px;">📋 Протокол за эту неделю</h3>
+                
+                <div style="margin-bottom: 15px;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги (норма ${dailyNorm.toLocaleString()})</div>
+                    ${stepsCirclesHtml}
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>💪 Силовые:</span>
+                    <span><strong>${actualStrength} / ${targetStrength}</strong> ${strengthOk ? '✅' : '⚠️'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span>🏃 Кардио:</span>
+                    <span><strong>${actualCardio} / ${targetCardio}</strong> ${cardioOk ? '✅' : '⚠️'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>🎉 Нарушения (СПП):</span>
+                    <span><strong>${socialDays} дней</strong> ${socialDays > 0 ? '⚠️' : '✅'}</span>
+                </div>
+            </div>
+            
+            <!-- Комментарии клиента -->
+            <div id="client-comments-section" style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;"></div>
+        `, reports: weeklyReports };
+    }
     
-    // Получаем историю весов клиента
+    // Загружаем историю весов клиента (один раз, не зависит от недели)
     const { data: weightHistory } = await window.app.sb
         .from('weight_history')
         .select('weight, weigh_date')
@@ -167,45 +274,6 @@ window.app.showClientDetails = async function(client) {
         .order('weigh_date', { ascending: false })
         .limit(5);
     
-    const targetStrength = client.target_strength_weekly || 3;
-    const targetCardio = client.target_cardio_weekly || 1;
-    
-    let actualStrength = 0, actualCardio = 0, socialDays = 0;
-    weeklyReports?.forEach(r => {
-        if (r.training_type === 'strength') actualStrength++;
-        if (r.training_type === 'cardio') actualCardio++;
-        if (r.social_event) socialDays++;
-    });
-    
-    const strengthOk = actualStrength >= targetStrength;
-    const cardioOk = actualCardio >= targetCardio;
-    const socialOk = socialDays <= 1;
-    
-    // Формируем HTML для кружочков шагов (с использованием norm_steps из отчёта)
-    let stepsCirclesHtml = '<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">';
-    const daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
-    for (let i = 0; i < 7; i++) {
-        const dayDate = new Date(startOfWeek);
-        dayDate.setDate(startOfWeek.getDate() + i);
-        const dateStr = formatLocalDate(dayDate);
-        const report = weeklyReports?.find(r => r.report_date === dateStr);
-        const steps = report?.steps || 0;
-        const normForThisDay = report?.norm_steps || 10000;
-        const isOk = steps >= normForThisDay;
-        const hasData = !!report;
-        
-        stepsCirclesHtml += `
-            <div style="text-align: center; width: 40px;">
-                <div style="width: 36px; height: 36px; border-radius: 50%; background: ${hasData ? (isOk ? '#36B647' : '#dc3545') : '#e0e0e0'}; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px;">
-                    ${hasData ? (isOk ? '✓' : '✗') : '?'}
-                </div>
-                <div style="font-size: 10px; color: #666; margin-top: 4px;">${daysOfWeek[i]}</div>
-            </div>
-        `;
-    }
-    stepsCirclesHtml += '</div>';
-    
-    // История весов HTML
     let weightHistoryHtml = '';
     if (weightHistory && weightHistory.length > 0) {
         weightHistoryHtml = `
@@ -269,31 +337,9 @@ window.app.showClientDetails = async function(client) {
         bookingsHtml = '<p style="text-align: center; padding: 20px;">Нет записей</p>';
     }
     
-    // Создаем модальное окно
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0,0,0,0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    `;
-    
-    const modalContent = document.createElement('div');
-    modalContent.style.cssText = `
-        background: white;
-        border-radius: 16px;
-        max-width: 500px;
-        width: 90%;
-        max-height: 85vh;
-        overflow-y: auto;
-        padding: 20px;
-    `;
+    // Загружаем начальный протокол
+    let currentOffset = 0;
+    let protocolData = await loadProtocolForWeek(currentOffset);
     
     modalContent.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -308,30 +354,10 @@ window.app.showClientDetails = async function(client) {
         
         ${weightHistoryHtml}
         
-        <!-- Блок протокола за неделю с кружочками -->
-        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;">
-            <h3 style="margin: 0 0 12px 0; font-size: 16px;">📋 Протокол за эту неделю</h3>
-            
-            <div style="margin-bottom: 15px;">
-                <div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги</div>
-                ${stepsCirclesHtml}
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span>💪 Силовые:</span>
-                <span><strong>${actualStrength} / ${targetStrength}</strong> ${strengthOk ? '✅' : '⚠️'}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span>🏃 Кардио:</span>
-                <span><strong>${actualCardio} / ${targetCardio}</strong> ${cardioOk ? '✅' : '⚠️'}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-                <span>🎉 Нарушения (СПП):</span>
-                <span><strong>${socialDays} дней</strong> ${socialDays > 0 ? '⚠️' : '✅'}</span>
-            </div>
+        <div id="protocol-container">
+            ${protocolData.html}
         </div>
         
-        <!-- Комментарии клиента -->
         <div id="client-comments-section" style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;"></div>
         
         <!-- Редактирование профиля -->
@@ -378,28 +404,71 @@ window.app.showClientDetails = async function(client) {
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
     
-    // Загружаем и отображаем комментарии
-    const commentsSection = document.getElementById('client-comments-section');
-    if (weeklyReports && weeklyReports.length > 0) {
-        const reportsWithComments = weeklyReports.filter(r => r.notes && r.notes.trim());
-        if (reportsWithComments.length > 0) {
-            let commentsHtml = '<h3 style="margin: 0 0 12px 0; font-size: 16px;">💬 Комментарии клиента</h3>';
-            for (let r of reportsWithComments) {
-                const date = new Date(r.report_date).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
-                commentsHtml += `
-                    <div style="margin-bottom: 12px; padding: 8px; background: white; border-radius: 8px; border-left: 3px solid #36B647;">
-                        <div style="font-size: 12px; color: #666; margin-bottom: 4px;">📅 ${date}</div>
-                        <div style="font-size: 14px;">${escapeHtml(r.notes)}</div>
-                    </div>
-                `;
+    // Загружаем комментарии для текущей недели
+    async function loadComments(weekOffset) {
+        const today = new Date();
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + (weekOffset * 7));
+        const startOfWeek = getStartOfWeek(targetDate);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        
+        const startDateStr = formatLocalDate(startOfWeek);
+        const endDateStr = formatLocalDate(endOfWeek);
+        
+        const { data: weeklyReports } = await window.app.sb
+            .from('daily_reports')
+            .select('*')
+            .eq('user_id', client.id)
+            .gte('report_date', startDateStr)
+            .lte('report_date', endDateStr);
+        
+        const commentsSection = document.getElementById('client-comments-section');
+        if (weeklyReports && weeklyReports.length > 0) {
+            const reportsWithComments = weeklyReports.filter(r => r.notes && r.notes.trim());
+            if (reportsWithComments.length > 0) {
+                let commentsHtml = '<h3 style="margin: 0 0 12px 0; font-size: 16px;">💬 Комментарии клиента</h3>';
+                for (let r of reportsWithComments) {
+                    const date = new Date(r.report_date).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
+                    commentsHtml += `
+                        <div style="margin-bottom: 12px; padding: 8px; background: white; border-radius: 8px; border-left: 3px solid #36B647;">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">📅 ${date}</div>
+                            <div style="font-size: 14px;">${escapeHtml(r.notes)}</div>
+                        </div>
+                    `;
+                }
+                commentsSection.innerHTML = commentsHtml;
+            } else {
+                commentsSection.innerHTML = '';
             }
-            commentsSection.innerHTML = commentsHtml;
         } else {
             commentsSection.innerHTML = '';
         }
-    } else {
-        commentsSection.innerHTML = '';
     }
+    
+    // Загружаем комментарии для начальной недели
+    await loadComments(0);
+    
+    // Обработчики переключения недель в протоколе
+    const protocolContainer = document.getElementById('protocol-container');
+    
+    protocolContainer.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('protocol-prev-week')) {
+            if (currentOffset > -2) {
+                currentOffset--;
+                const newProtocol = await loadProtocolForWeek(currentOffset);
+                protocolContainer.innerHTML = newProtocol.html;
+                await loadComments(currentOffset);
+            }
+        } else if (e.target.classList.contains('protocol-next-week')) {
+            if (currentOffset < 0) {
+                currentOffset++;
+                const newProtocol = await loadProtocolForWeek(currentOffset);
+                protocolContainer.innerHTML = newProtocol.html;
+                await loadComments(currentOffset);
+            }
+        }
+    });
     
     // Закрытие модального окна
     const closeBtn = modalContent.querySelector('#close-client-modal');
