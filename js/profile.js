@@ -246,11 +246,9 @@ window.app.renderWeightChart = async function() {
     container.style.display = 'block';
     
     if (!history || history.length < 2) {
-        // Показываем плейсхолдер вместо графика
         totalLossEl.innerHTML = '📊 Добавьте вес в понедельник, чтобы увидеть динамику';
         totalLossEl.style.color = '#999';
         
-        // Очищаем canvas и показываем сообщение
         if (canvas) {
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -342,7 +340,7 @@ function getWeekStartForMessage(date) {
     return start;
 }
 
-// --- Обновление мотивационного сообщения ---
+// --- Обновление мотивационного сообщения (исправлен знак) ---
 window.app.updateWeeklyMessage = async function() {
     const today = new Date();
     
@@ -360,16 +358,20 @@ window.app.updateWeeklyMessage = async function() {
         return;
     }
     
-    const currentWeight = weights[0];
-    const prevWeight = weights[1];
+    const currentWeight = weights[0].weight;
+    const prevWeight = weights[1].weight;
     
-    const weightChange = prevWeight.weight - currentWeight.weight;
-    const targetStrength = prevWeight.target_strength_weekly || 3;
-    const targetCardio = prevWeight.target_cardio_weekly || 1;
+    // ИСПРАВЛЕНО: weightChange = текущий вес - прошлый вес
+    // Если похудел → отрицательное значение → поздравительное сообщение
+    // Если набрал → положительное значение → утешительное сообщение
+    const weightChange = currentWeight - prevWeight;
+    
+    const targetStrength = weights[1].target_strength_weekly || 3;
+    const targetCardio = weights[1].target_cardio_weekly || 1;
     
     // Получаем данные за неделю между этими взвешиваниями
-    const startDate = prevWeight.weigh_date;
-    const endDate = currentWeight.weigh_date;
+    const startDate = weights[1].weigh_date;
+    const endDate = weights[0].weigh_date;
     
     const { data: reports } = await window.app.sb
         .from('daily_reports')
@@ -409,10 +411,11 @@ window.app.updateWeeklyMessage = async function() {
     
     if (!messageDiv || !messageText) return;
     
+    // ИСПРАВЛЕНО: weightChange < 0 — потеря веса (поздравление)
     if (weightChange < -0.2) {
         messageDiv.style.background = '#e8f5e9';
         messageDiv.style.borderLeftColor = '#36B647';
-        messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел${weightChange > 0 ? 'а' : ''} на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
+        messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел(а) на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
         messageDiv.style.display = 'block';
     } 
     else if (!allCompliant) {
