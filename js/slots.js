@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (РАБОЧАЯ ВЕРСИЯ + ПРАВИЛО "11 ПОЛОВИНОК")
+// МОДУЛЬ СЛОТОВ (ЗАПИСЬ, ОТМЕНА, АДМИН-ПАНЕЛЬ СЛОТОВ)
 // ============================================
 
 // --- Кэш для правила "последних 2 половинок" ---
@@ -18,7 +18,6 @@ function getHalfDayKey(date) {
 async function getFreeHalfDaysCount() {
     const now = Date.now();
     
-    // Используем кэш
     if (cachedHalfDaysToBlock !== null && (now - lastCacheUpdate) < CACHE_TTL) {
         return { freeCount: 0, halfDaysToBlock: cachedHalfDaysToBlock };
     }
@@ -26,28 +25,24 @@ async function getFreeHalfDaysCount() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Получаем все занятые слоты
     const { data: bookedSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
         .eq('is_available', false)
         .gte('start_time', today.toISOString());
     
-    // Собираем ближайшие 11 половинок
     const allHalfDays = [];
     let currentDate = new Date(today);
     
     while (allHalfDays.length < 11) {
         const dayOfWeek = currentDate.getDay();
         
-        if (dayOfWeek !== 0) { // не воскресенье
+        if (dayOfWeek !== 0) {
             const dayKey = currentDate.toISOString().split('T')[0];
             
-            // Утро (все дни)
             if (dayOfWeek !== 6) {
                 allHalfDays.push(`${dayKey}_morning`);
             }
-            // Вечер (только будни)
             if (dayOfWeek >= 1 && dayOfWeek <= 5) {
                 allHalfDays.push(`${dayKey}_evening`);
             }
@@ -55,7 +50,6 @@ async function getFreeHalfDaysCount() {
         currentDate.setDate(currentDate.getDate() + 1);
     }
     
-    // Множество занятых половинок
     const occupiedHalfDays = new Set();
     bookedSlots?.forEach(slot => {
         const date = new Date(slot.start_time);
@@ -64,7 +58,6 @@ async function getFreeHalfDaysCount() {
         occupiedHalfDays.add(`${dayKey}_${halfDay}`);
     });
     
-    // Находим свободные половинки
     const freeHalfDays = [];
     for (let halfDay of allHalfDays) {
         if (!occupiedHalfDays.has(halfDay)) {
@@ -79,7 +72,6 @@ async function getFreeHalfDaysCount() {
         freeHalfDays.forEach(h => halfDaysToBlock.add(h));
     }
     
-    // Обновляем кэш
     cachedHalfDaysToBlock = halfDaysToBlock;
     lastCacheUpdate = now;
     
@@ -92,19 +84,17 @@ async function getBlockedSlotIds() {
     
     const today = new Date();
     const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 8);
+    endDate.setDate(today.getDate() + 14);
     
-    const { data: bookedSlots, error: bookedError } = await window.app.sb
+    const { data: bookedSlots } = await window.app.sb
         .from('slots')
         .select('id, start_time')
         .eq('is_available', false)
         .gte('start_time', today.toISOString())
         .lte('start_time', endDate.toISOString());
     
-    // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
     const { halfDaysToBlock } = await getFreeHalfDaysCount();
     
-    // Получаем все слоты для поиска ID
     const { data: allSlots } = await window.app.sb
         .from('slots')
         .select('id, start_time')
@@ -113,17 +103,16 @@ async function getBlockedSlotIds() {
     
     if (!allSlots) return blockedIds;
     
-    // Группируем слоты по дням
     const slotsByDay = {};
     allSlots.forEach(slot => {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
         const hour = date.getHours();
+        const minute = date.getMinutes();
         if (!slotsByDay[dayKey]) slotsByDay[dayKey] = [];
-        slotsByDay[dayKey].push({ id: slot.id, hour });
+        slotsByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
-    // Блокируем слоты в заблокированных половинках
     for (let [dayKey, slots] of Object.entries(slotsByDay)) {
         const morningKey = `${dayKey}_morning`;
         const eveningKey = `${dayKey}_evening`;
@@ -138,44 +127,57 @@ async function getBlockedSlotIds() {
     
     if (!bookedSlots || bookedSlots.length === 0) return blockedIds;
     
-    // Группируем занятые слоты по дням
     const bookedByDay = {};
     bookedSlots.forEach(slot => {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
         const hour = date.getHours();
+        const minute = date.getMinutes();
         if (!bookedByDay[dayKey]) bookedByDay[dayKey] = [];
-        bookedByDay[dayKey].push({ id: slot.id, hour });
+        bookedByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
-    function findSlotId(dayKey, hour) {
-        return slotsByDay[dayKey]?.find(s => s.hour === hour)?.id;
+    function findSlotId(dayKey, targetHour, targetMinute) {
+        return slotsByDay[dayKey]?.find(s => s.hour === targetHour && s.minute === targetMinute)?.id;
     }
     
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
-        const bookedHours = booked.map(b => b.hour);
         const date = new Date(dayKey);
         const dayOfWeek = date.getDay();
         const isSaturday = dayOfWeek === 6;
         
+        // === ПРАВИЛО "ПЕРЕСЕЧЕНИЕ СЛОТОВ" (4 часа в клубе) ===
+        for (let bookedSlot of booked) {
+            const startMinutes = bookedSlot.timeValue * 60;
+            
+            slotsByDay[dayKey]?.forEach(slot => {
+                const slotMinutes = slot.timeValue * 60;
+                // Если слот пересекается с занятым (разница меньше 60 минут и не является самим слотом)
+                if (Math.abs(slotMinutes - startMinutes) < 60 && slot.id !== bookedSlot.id) {
+                    blockedIds.add(slot.id);
+                }
+            });
+        }
+        
         // === ПАРНЫЕ БЛОКИРОВКИ 17:00 ↔ 21:00 ===
-        if (bookedHours.includes(17)) {
-            const slot21 = findSlotId(dayKey, 21);
+        const bookedHoursMinutes = booked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`);
+        if (bookedHoursMinutes.includes('17:00')) {
+            const slot21 = findSlotId(dayKey, 21, 0);
             if (slot21) blockedIds.add(slot21);
         }
-        if (bookedHours.includes(21)) {
-            const slot17 = findSlotId(dayKey, 17);
+        if (bookedHoursMinutes.includes('21:00')) {
+            const slot17 = findSlotId(dayKey, 17, 0);
             if (slot17) blockedIds.add(slot17);
         }
         
         // === СУББОТНИЕ ПАРНЫЕ БЛОКИРОВКИ 10:00 ↔ 14:00 ===
         if (isSaturday) {
-            if (bookedHours.includes(10)) {
-                const slot14 = findSlotId(dayKey, 14);
+            if (bookedHoursMinutes.includes('10:00')) {
+                const slot14 = findSlotId(dayKey, 14, 0);
                 if (slot14) blockedIds.add(slot14);
             }
-            if (bookedHours.includes(14)) {
-                const slot10 = findSlotId(dayKey, 10);
+            if (bookedHoursMinutes.includes('14:00')) {
+                const slot10 = findSlotId(dayKey, 10, 0);
                 if (slot10) blockedIds.add(slot10);
             }
         }
@@ -507,12 +509,18 @@ window.app.loadMyBookings = async function() {
 // --- Автоматическое обновление расписания на 8 дней ---
 window.app.ensureWeeklySchedule = async function() {
     const schedule = {
-        1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '20:00', '21:00', '21:30'] },
-        2: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '20:00', '21:00', '21:30'] },
-        3: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '20:00', '21:00', '21:30'] },
-        4: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '20:00', '21:00', '21:30'] },
-        5: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '20:00', '21:00', '21:30'] },
-        6: { morning: ['10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00'], evening: [] },
+        1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        2: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        3: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        4: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        5: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        6: { morning: ['10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00'], 
+             evening: [] },
         0: { morning: [], evening: [] }
     };
     
