@@ -225,30 +225,29 @@ window.app.renderSlots = async function(slots) {
     });
     
     function hasAdjacentBooking(dayKey, timeStr) {
-        const [hours, minutes] = timeStr.split(':').map(Number);
-        const currentMinutes = hours * 60 + minutes;
-        
-        const adjacentMinutes = [
-            currentMinutes - 60,
-            currentMinutes + 60,
-            currentMinutes - 30,
-            currentMinutes + 30
-        ];
-        
-        const bookedTimes = bookedTimesByDay[dayKey] || [];
-        
-        for (let adjMin of adjacentMinutes) {
-            if (adjMin < 0) continue;
-            const adjHour = Math.floor(adjMin / 60);
-            const adjMinute = adjMin % 60;
-            if (adjHour > 23) continue;
-            const adjTimeStr = `${adjHour.toString().padStart(2,'0')}:${adjMinute.toString().padStart(2,'0')}`;
-            if (bookedTimes.includes(adjTimeStr)) {
-                return true;
-            }
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const currentMinutes = hours * 60 + minutes;
+    
+    // Только соседние через 1 час (60 минут)
+    const adjacentMinutes = [
+        currentMinutes - 60,
+        currentMinutes + 60
+    ];
+    
+    const bookedTimes = bookedTimesByDay[dayKey] || [];
+    
+    for (let adjMin of adjacentMinutes) {
+        if (adjMin < 0) continue;
+        const adjHour = Math.floor(adjMin / 60);
+        const adjMinute = adjMin % 60;
+        if (adjHour > 23) continue;
+        const adjTimeStr = `${adjHour.toString().padStart(2,'0')}:${adjMinute.toString().padStart(2,'0')}`;
+        if (bookedTimes.includes(adjTimeStr)) {
+            return true;
         }
-        return false;
     }
+    return false;
+}
     
     const groupedByDay = {};
     slots.forEach(slot => {
