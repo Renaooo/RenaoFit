@@ -120,6 +120,11 @@ async function getFreeHalfDaysCount() {
     lastCacheUpdate = now;
     
     return { freeCount: 11 - occupiedCount, halfDaysToBlock };
+
+    console.log('=== getFreeHalfDaysCount ===');
+console.log('Всего половинок в allHalfDays:', allHalfDays.length);
+console.log('Из них имеют записи (occupiedCount):', occupiedCount);
+console.log('Блокируем половинки:', Array.from(halfDaysToBlock));
 }
 
 // --- Получение списка заблокированных слотов ---
