@@ -2,7 +2,45 @@
 // МОДУЛЬ СЛОТОВ (ЗАПИСЬ, ОТМЕНА, АДМИН-ПАНЕЛЬ СЛОТОВ)
 // ============================================
 
-// --- Получение списка заблокированных слотов на основе занятых ---
+// --- Вспомогательная функция для получения ключа половинки дня ---
+function getHalfDayKey(date) {
+    const hours = date.getHours();
+    if (hours < 15) return 'morning';
+    return 'evening';
+}
+
+// --- Подсчёт свободных половинок для правила "последних 2" ---
+async function getFreeHalfDaysCount() {
+    const today = new Date();
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 8);
+    
+    // Получаем все занятые слоты
+    const { data: bookedSlots } = await window.app.sb
+        .from('slots')
+        .select('start_time')
+        .eq('is_available', false)
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString());
+    
+    // Множество половинок, в которых есть хотя бы одна запись
+    const occupiedHalfDays = new Set();
+    bookedSlots?.forEach(slot => {
+        const date = new Date(slot.start_time);
+        const dayKey = date.toISOString().split('T')[0];
+        const halfDay = getHalfDayKey(date);
+        occupiedHalfDays.add(`${dayKey}_${halfDay}`);
+    });
+    
+    // Всего половинок: 11
+    const totalHalfDays = 11;
+    const occupiedCount = occupiedHalfDays.size;
+    const freeCount = totalHalfDays - occupiedCount;
+    
+    return { freeCount, occupiedHalfDays };
+}
+
+// --- Получение списка заблокированных слотов (правила "4 часа" и "последних 2 половинок") ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
     
@@ -20,14 +58,46 @@ async function getBlockedSlotIds() {
     
     if (bookedError || !bookedSlots || bookedSlots.length === 0) return blockedIds;
     
+    // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
+    const { freeCount, occupiedHalfDays } = await getFreeHalfDaysCount();
+    let halfDaysToBlock = new Set();
+    
+    if (freeCount === 2) {
+        // Находим все половинки в ближайшие 8 дней
+        const allHalfDays = [];
+        for (let i = 0; i < 8; i++) {
+            const currentDate = new Date(today);
+            currentDate.setDate(today.getDate() + i);
+            const dayOfWeek = currentDate.getDay();
+            if (dayOfWeek === 0) continue; // воскресенье
+            
+            const dayKey = currentDate.toISOString().split('T')[0];
+            // Утро
+            if (dayOfWeek !== 6) { // не суббота (у субботы только утро)
+                allHalfDays.push(`${dayKey}_morning`);
+            }
+            // Вечер (будни)
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                allHalfDays.push(`${dayKey}_evening`);
+            }
+        }
+        
+        // Находим свободные половинки (которые не в occupiedHalfDays)
+        const freeHalfDays = allHalfDays.filter(h => !occupiedHalfDays.has(h));
+        if (freeHalfDays.length === 2) {
+            halfDaysToBlock = new Set(freeHalfDays);
+        }
+    }
+    
     // Группируем занятые слоты по дням и часам
     const bookedByDay = {};
     bookedSlots.forEach(slot => {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
         const hour = date.getHours();
+        const minute = date.getMinutes();
         if (!bookedByDay[dayKey]) bookedByDay[dayKey] = [];
-        bookedByDay[dayKey].push({ id: slot.id, hour });
+        bookedByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
     // Получаем все слоты для поиска ID
@@ -44,38 +114,86 @@ async function getBlockedSlotIds() {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
         const hour = date.getHours();
+        const minute = date.getMinutes();
         if (!slotsByDay[dayKey]) slotsByDay[dayKey] = [];
-        slotsByDay[dayKey].push({ id: slot.id, hour });
+        slotsByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
-    function findSlotId(dayKey, hour) {
-        return slotsByDay[dayKey]?.find(s => s.hour === hour)?.id;
+    function findSlotId(dayKey, targetHour, targetMinute) {
+        return slotsByDay[dayKey]?.find(s => s.hour === targetHour && s.minute === targetMinute)?.id;
     }
     
+    // Анализируем каждый день
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
-        const bookedHours = booked.map(b => b.hour);
+        const bookedTimes = booked.map(b => b.timeValue);
         const date = new Date(dayKey);
         const dayOfWeek = date.getDay();
         const isSaturday = dayOfWeek === 6;
         
-        // Парные блокировки 17:00 ↔ 21:00
-        if (bookedHours.includes(17)) {
-            const slot21 = findSlotId(dayKey, 21);
+        // === ПРАВИЛО "4 ЧАСА" ===
+        // Для каждой записи блокируем слоты, которые начинаются через 4 часа или позже
+        for (let bookedSlot of booked) {
+            const startHour = bookedSlot.hour;
+            const startMinute = bookedSlot.minute;
+            const startTimeValue = bookedSlot.timeValue;
+            
+            // Блокируем слоты, начинающиеся на 4 часа позже
+            const blockFromTime = startTimeValue + 4;
+            
+            // Ищем слоты в том же дне и той же половинке
+            const sameHalfDaySlots = slotsByDay[dayKey]?.filter(slot => {
+                const isSameHalfDay = (startHour < 15) === (slot.hour < 15);
+                return isSameHalfDay && slot.timeValue >= blockFromTime;
+            });
+            
+            sameHalfDaySlots?.forEach(slot => {
+                blockedIds.add(slot.id);
+            });
+            
+            // Блокируем слоты, начинающиеся на 4 часа раньше (обратная сторона)
+            const blockUntilTime = startTimeValue - 4;
+            const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
+                const isSameHalfDay = (startHour < 15) === (slot.hour < 15);
+                return isSameHalfDay && slot.timeValue <= blockUntilTime;
+            });
+            
+            earlierSlots?.forEach(slot => {
+                blockedIds.add(slot.id);
+            });
+        }
+        
+        // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
+        const morningKey = `${dayKey}_morning`;
+        const eveningKey = `${dayKey}_evening`;
+        
+        if (halfDaysToBlock.has(morningKey)) {
+            // Блокируем все утренние слоты
+            slotsByDay[dayKey]?.filter(s => s.hour < 15).forEach(s => blockedIds.add(s.id));
+        }
+        if (halfDaysToBlock.has(eveningKey)) {
+            // Блокируем все вечерние слоты
+            slotsByDay[dayKey]?.filter(s => s.hour >= 15).forEach(s => blockedIds.add(s.id));
+        }
+        
+        // === ПАРНЫЕ БЛОКИРОВКИ 17:00 ↔ 21:00 (оставляем как было) ===
+        const bookedHoursMinutes = booked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`);
+        if (bookedHoursMinutes.includes('17:00')) {
+            const slot21 = findSlotId(dayKey, 21, 0);
             if (slot21) blockedIds.add(slot21);
         }
-        if (bookedHours.includes(21)) {
-            const slot17 = findSlotId(dayKey, 17);
+        if (bookedHoursMinutes.includes('21:00')) {
+            const slot17 = findSlotId(dayKey, 17, 0);
             if (slot17) blockedIds.add(slot17);
         }
         
-        // Субботние парные блокировки 10:00 ↔ 14:00
+        // === СУББОТНИЕ ПАРНЫЕ БЛОКИРОВКИ 10:00 ↔ 14:00 ===
         if (isSaturday) {
-            if (bookedHours.includes(10)) {
-                const slot14 = findSlotId(dayKey, 14);
+            if (bookedHoursMinutes.includes('10:00')) {
+                const slot14 = findSlotId(dayKey, 14, 0);
                 if (slot14) blockedIds.add(slot14);
             }
-            if (bookedHours.includes(14)) {
-                const slot10 = findSlotId(dayKey, 10);
+            if (bookedHoursMinutes.includes('14:00')) {
+                const slot10 = findSlotId(dayKey, 10, 0);
                 if (slot10) blockedIds.add(slot10);
             }
         }
@@ -104,7 +222,7 @@ window.app.loadSlots = async function() {
     return slots.filter(slot => !blockedIds.has(slot.id));
 };
 
-// --- Отображение слотов с подсветкой рекомендуемых ---
+// --- Отображение слотов с подсветкой рекомендуемых (адаптировано для 30-минутной сетки) ---
 window.app.renderSlots = async function(slots) {
     const container = document.getElementById('slots-list');
     if (!container) return;
@@ -115,6 +233,7 @@ window.app.renderSlots = async function(slots) {
         return;
     }
     
+    // Получаем все занятые слоты для определения соседних (для рекомендаций)
     const { data: allSlots } = await window.app.sb
         .from('slots')
         .select('start_time, is_available')
@@ -132,8 +251,10 @@ window.app.renderSlots = async function(slots) {
         }
     });
     
+    // Функция проверки соседней записи (соседний = через 1 час, не 30 минут)
     function hasAdjacentBooking(dayKey, timeStr) {
-        const [hours] = timeStr.split(':').map(Number);
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        // Соседние часы (на час раньше и на час позже)
         const prevHour = `${(hours - 1).toString().padStart(2,'0')}:00`;
         const nextHour = `${(hours + 1).toString().padStart(2,'0')}:00`;
         const bookedTimes = bookedTimesByDay[dayKey] || [];
@@ -270,6 +391,17 @@ window.app.confirmBooking = async function() {
     const selectedIds = Array.from(window.app.selectedSlotIds);
     console.log('Бронирую слоты:', selectedIds);
     
+    // Проверяем, не заблокированы ли выбранные слоты правилами
+    const blockedIds = await getBlockedSlotIds();
+    const hasBlocked = selectedIds.some(id => blockedIds.has(id));
+    if (hasBlocked) {
+        alert('Некоторые выбранные слоты стали недоступны. Обновите страницу.');
+        window.app.selectedSlotIds.clear();
+        const slots = await window.app.loadSlots();
+        await window.app.renderSlots(slots);
+        return;
+    }
+    
     // Сначала создаём бронирования
     const bookingsToInsert = selectedIds.map(slotId => ({
         slot_id: slotId,
@@ -396,16 +528,22 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- Автоматическое обновление расписания на 8 дней ---
+// --- Автоматическое обновление расписания на 8 дней (новые 30-минутные интервалы) ---
 window.app.ensureWeeklySchedule = async function() {
     const schedule = {
-        1: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
-        2: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
-        3: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
-        4: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
-        5: ['08:00', '09:00', '10:00', '11:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
-        6: ['10:00', '11:00', '12:00', '13:00', '14:00'],
-        0: []
+        1: { // Пн-Пт
+            morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'],
+            evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30']
+        },
+        2: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        3: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        4: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        5: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        6: { // Суббота
+            morning: ['10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00'],
+            evening: []
+        },
+        0: { morning: [], evening: [] } // Воскресенье
     };
     
     const today = new Date();
@@ -421,14 +559,12 @@ window.app.ensureWeeklySchedule = async function() {
         .gte('start_time', today.toISOString())
         .lte('start_time', endDate.toISOString());
     
-    // Считаем уникальные дни, на которые есть слоты
     const daysWithSlots = new Set();
     existingSlots?.forEach(slot => {
         const day = new Date(slot.start_time).toISOString().split('T')[0];
         daysWithSlots.add(day);
     });
     
-    // Если есть слоты на все 8 дней вперёд, пропускаем генерацию
     const expectedDays = 8;
     if (daysWithSlots.size >= expectedDays) {
         console.log('Слоты уже есть на все дни, пропускаем генерацию');
@@ -450,8 +586,10 @@ window.app.ensureWeeklySchedule = async function() {
         currentDate.setDate(today.getDate() + day);
         const dayOfWeek = currentDate.getDay();
         
-        const times = schedule[dayOfWeek];
-        if (!times || times.length === 0) continue;
+        const daySchedule = schedule[dayOfWeek] || schedule[1];
+        const requiredTimes = [...daySchedule.morning, ...daySchedule.evening];
+        
+        if (requiredTimes.length === 0) continue;
         
         const startOfDay = new Date(currentDate);
         startOfDay.setHours(0, 0, 0, 0);
@@ -478,14 +616,14 @@ window.app.ensureWeeklySchedule = async function() {
             const hour = d.getHours();
             const minute = d.getMinutes();
             const timeStr = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
-            if (!times.includes(timeStr)) {
+            if (!requiredTimes.includes(timeStr)) {
                 await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
                 await window.app.sb.from('slots').delete().eq('id', slot.id);
             }
         }
         
         // Добавляем недостающие слоты
-        for (let time of times) {
+        for (let time of requiredTimes) {
             if (!existingTimesSet.has(time)) {
                 const [hours, minutes] = time.split(':');
                 const startTime = new Date(currentDate);
@@ -660,7 +798,6 @@ window.app.loadAdminData = async function() {
         adminBookingsDiv.appendChild(title);
         
         if (bookings && bookings.length > 0) {
-            // Группируем по дням
             const groupedByDay = {};
             bookings.forEach(booking => {
                 const date = new Date(booking.start_time);
@@ -669,7 +806,6 @@ window.app.loadAdminData = async function() {
                 groupedByDay[dayKey].push(booking);
             });
             
-            // Сортируем дни по дате
             const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
                 const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
                 const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
@@ -682,7 +818,6 @@ window.app.loadAdminData = async function() {
                 dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
                 dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
                 
-                // Разделяем на утро и вечер
                 const morning = dayBookings.filter(b => new Date(b.start_time).getHours() < 15);
                 const evening = dayBookings.filter(b => new Date(b.start_time).getHours() >= 15);
                 
