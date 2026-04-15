@@ -137,6 +137,25 @@ async function getBlockedSlotIds() {
             });
             earlierSlots?.forEach(slot => blockedIds.add(slot.id));
         }
+
+        // === ПРАВИЛО "ПЕРЕСЕЧЕНИЕ СЛОТОВ" ===
+// Если есть запись на время X, блокируем все слоты, которые начинаются в (X - 1 час, X + 1 час)
+for (let bookedSlot of booked) {
+    const startHour = bookedSlot.hour;
+    const startMinute = bookedSlot.minute;
+    const startMinutes = startHour * 60 + startMinute;
+    
+    // Блокируем слоты, которые начинаются в интервале [startMinutes - 60 + 1, startMinutes + 60 - 1]
+    const minStart = startMinutes - 60 + 1; // +1 чтобы не блокировать граничный слот (19:00 при записи на 20:00)
+    const maxStart = startMinutes + 60 - 1; // -1 чтобы не блокировать граничный слот (21:00 при записи на 20:00)
+    
+    slotsByDay[dayKey]?.forEach(slot => {
+        const slotMinutes = slot.hour * 60 + slot.minute;
+        if (slotMinutes > minStart && slotMinutes < maxStart) {
+            blockedIds.add(slot.id);
+        }
+    });
+}
         
         // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
         const morningKey = `${dayKey}_morning`;
