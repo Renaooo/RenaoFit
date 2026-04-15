@@ -16,6 +16,12 @@ function getHalfDayKey(date) {
 
 // --- Получение списка ближайших 11 половинок (только будущие) ---
 async function getFreeHalfDaysCount() {
+
+console.log('=== getFreeHalfDaysCount ===');
+console.log('Всего половинок в allHalfDays:', allHalfDays.length);
+console.log('Из них имеют записи (occupiedCount):', occupiedCount);
+console.log('Блокируем половинки:', Array.from(halfDaysToBlock));
+    
     const now = Date.now();
     
     if (cachedHalfDaysToBlock !== null && (now - lastCacheUpdate) < CACHE_TTL) {
@@ -121,10 +127,6 @@ async function getFreeHalfDaysCount() {
     
     return { freeCount: 11 - occupiedCount, halfDaysToBlock };
 
-    console.log('=== getFreeHalfDaysCount ===');
-console.log('Всего половинок в allHalfDays:', allHalfDays.length);
-console.log('Из них имеют записи (occupiedCount):', occupiedCount);
-console.log('Блокируем половинки:', Array.from(halfDaysToBlock));
 }
 
 // --- Получение списка заблокированных слотов ---
