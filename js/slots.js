@@ -13,8 +13,9 @@ function getHalfDayKey(date) {
 async function getFreeHalfDaysCount() {
     const today = new Date();
     const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 8);
+    endDate.setDate(today.getDate() + 14); // увеличиваем запас, чтобы точно набрать 11 половинок
     
+    // Получаем все занятые слоты
     const { data: bookedSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
@@ -22,6 +23,32 @@ async function getFreeHalfDaysCount() {
         .gte('start_time', today.toISOString())
         .lte('start_time', endDate.toISOString());
     
+    // Собираем все будущие половинки (идём вперёд, пока не наберём 11)
+    const allHalfDays = [];
+    let currentDate = new Date(today);
+    currentDate.setHours(0, 0, 0, 0);
+    
+    while (allHalfDays.length < 11) {
+        const dayOfWeek = currentDate.getDay();
+        
+        if (dayOfWeek !== 0) { // не воскресенье
+            const dayKey = currentDate.toISOString().split('T')[0];
+            
+            // Утро
+            if (dayOfWeek !== 6) { // не суббота (у субботы только утро)
+                allHalfDays.push(`${dayKey}_morning`);
+            }
+            // Вечер (будни)
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                allHalfDays.push(`${dayKey}_evening`);
+            }
+        }
+        
+        // Переходим к следующему дню
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Множество половинок, в которых есть хотя бы одна запись
     const occupiedHalfDays = new Set();
     bookedSlots?.forEach(slot => {
         const date = new Date(slot.start_time);
@@ -30,20 +57,36 @@ async function getFreeHalfDaysCount() {
         occupiedHalfDays.add(`${dayKey}_${halfDay}`);
     });
     
-    const totalHalfDays = 11;
-    const occupiedCount = occupiedHalfDays.size;
-    const freeCount = totalHalfDays - occupiedCount;
+    // Считаем свободные половинки среди первых 11
+    let freeCount = 0;
+    for (let halfDay of allHalfDays) {
+        if (!occupiedHalfDays.has(halfDay)) {
+            freeCount++;
+        }
+    }
     
-    return { freeCount, occupiedHalfDays };
+    // Находим последние 2 свободные половинки (которые нужно заблокировать)
+    const freeHalfDays = [];
+    for (let halfDay of allHalfDays) {
+        if (!occupiedHalfDays.has(halfDay)) {
+            freeHalfDays.push(halfDay);
+        }
+    }
+    
+    const halfDaysToBlock = new Set();
+    if (freeCount === 2) {
+        freeHalfDays.forEach(h => halfDaysToBlock.add(h));
+    }
+    
+    return { freeCount, halfDaysToBlock };
 }
-
 // --- Получение списка заблокированных слотов (правила "4 часа" и "последних 2 половинок") ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
     
     const today = new Date();
     const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 8);
+    endDate.setDate(today.getDate() + 14);
     
     const { data: bookedSlots, error: bookedError } = await window.app.sb
         .from('slots')
@@ -53,6 +96,46 @@ async function getBlockedSlotIds() {
         .lte('start_time', endDate.toISOString());
     
     if (bookedError || !bookedSlots || bookedSlots.length === 0) return blockedIds;
+    
+    // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
+    const { freeCount, halfDaysToBlock } = await getFreeHalfDaysCount();
+    
+    const { data: allSlots } = await window.app.sb
+        .from('slots')
+        .select('id, start_time')
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString());
+    
+    if (!allSlots) return blockedIds;
+    
+    // Группируем слоты по дням для быстрого доступа
+    const slotsByDay = {};
+    allSlots.forEach(slot => {
+        const date = new Date(slot.start_time);
+        const dayKey = date.toISOString().split('T')[0];
+        const hour = date.getHours();
+        const minute = date.getMinutes();
+        if (!slotsByDay[dayKey]) slotsByDay[dayKey] = [];
+        slotsByDay[dayKey].push({ id: slot.id, hour, minute });
+    });
+    
+    // Блокируем слоты в заблокированных половинках
+    for (let [dayKey, slots] of Object.entries(slotsByDay)) {
+        const morningKey = `${dayKey}_morning`;
+        const eveningKey = `${dayKey}_evening`;
+        
+        if (halfDaysToBlock.has(morningKey)) {
+            slots.filter(s => s.hour < 15).forEach(s => blockedIds.add(s.id));
+        }
+        if (halfDaysToBlock.has(eveningKey)) {
+            slots.filter(s => s.hour >= 15).forEach(s => blockedIds.add(s.id));
+        }
+    }
+    
+    // ... остальные правила (4 часа, парные блокировки) остаются без изменений
+    
+    return blockedIds;
+}
     
     // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
     const { freeCount, occupiedHalfDays } = await getFreeHalfDaysCount();
