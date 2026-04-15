@@ -113,6 +113,7 @@ async function getBlockedSlotIds() {
         slotsByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
+    // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
     for (let [dayKey, slots] of Object.entries(slotsByDay)) {
         const morningKey = `${dayKey}_morning`;
         const eveningKey = `${dayKey}_evening`;
@@ -137,49 +138,43 @@ async function getBlockedSlotIds() {
         bookedByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
-    function findSlotId(dayKey, targetHour, targetMinute) {
-        return slotsByDay[dayKey]?.find(s => s.hour === targetHour && s.minute === targetMinute)?.id;
-    }
-    
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
-        const date = new Date(dayKey);
-        const dayOfWeek = date.getDay();
-        const isSaturday = dayOfWeek === 6;
+        const isMorning = booked[0].hour < 15;
         
-        // === ПРАВИЛО "ПЕРЕСЕЧЕНИЕ СЛОТОВ" (4 часа в клубе) ===
+        // === ПРАВИЛО "4 ЧАСА" (внутри половинки) ===
         for (let bookedSlot of booked) {
             const startMinutes = bookedSlot.timeValue * 60;
             
+            // Блокируем слоты через 4 часа позже
+            const blockFromMinutes = startMinutes + 240;
+            const laterSlots = slotsByDay[dayKey]?.filter(slot => {
+                const isSameHalfDay = isMorning === (slot.hour < 15);
+                const slotMinutes = slot.timeValue * 60;
+                return isSameHalfDay && slotMinutes >= blockFromMinutes;
+            });
+            laterSlots?.forEach(slot => blockedIds.add(slot.id));
+            
+            // Блокируем слоты через 4 часа раньше
+            const blockUntilMinutes = startMinutes - 240;
+            const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
+                const isSameHalfDay = isMorning === (slot.hour < 15);
+                const slotMinutes = slot.timeValue * 60;
+                return isSameHalfDay && slotMinutes <= blockUntilMinutes;
+            });
+            earlierSlots?.forEach(slot => blockedIds.add(slot.id));
+        }
+        
+        // === ПРАВИЛО "СОСЕДНИЕ СЛОТЫ" (пересечение) ===
+        for (let bookedSlot of booked) {
+            const startMinutes = bookedSlot.timeValue * 60;
+            
+            // Блокируем слоты, которые начинаются в интервале (start-60, start+60) и не являются самим слотом
             slotsByDay[dayKey]?.forEach(slot => {
                 const slotMinutes = slot.timeValue * 60;
-                // Если слот пересекается с занятым (разница меньше 60 минут и не является самим слотом)
                 if (Math.abs(slotMinutes - startMinutes) < 60 && slot.id !== bookedSlot.id) {
                     blockedIds.add(slot.id);
                 }
             });
-        }
-        
-        // === ПАРНЫЕ БЛОКИРОВКИ 17:00 ↔ 21:00 ===
-        const bookedHoursMinutes = booked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`);
-        if (bookedHoursMinutes.includes('17:00')) {
-            const slot21 = findSlotId(dayKey, 21, 0);
-            if (slot21) blockedIds.add(slot21);
-        }
-        if (bookedHoursMinutes.includes('21:00')) {
-            const slot17 = findSlotId(dayKey, 17, 0);
-            if (slot17) blockedIds.add(slot17);
-        }
-        
-        // === СУББОТНИЕ ПАРНЫЕ БЛОКИРОВКИ 10:00 ↔ 14:00 ===
-        if (isSaturday) {
-            if (bookedHoursMinutes.includes('10:00')) {
-                const slot14 = findSlotId(dayKey, 14, 0);
-                if (slot14) blockedIds.add(slot14);
-            }
-            if (bookedHoursMinutes.includes('14:00')) {
-                const slot10 = findSlotId(dayKey, 10, 0);
-                if (slot10) blockedIds.add(slot10);
-            }
         }
     }
     
@@ -234,30 +229,30 @@ window.app.renderSlots = async function(slots) {
         }
     });
     
-   function hasAdjacentBooking(dayKey, timeStr) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const currentMinutes = hours * 60 + minutes;
-    
-    // Соседние слоты — те, которые начинаются ровно на 60 минут раньше или позже
-    const adjacentMinutes = [
-        currentMinutes - 60,
-        currentMinutes + 60
-    ];
-    
-    const bookedTimes = bookedTimesByDay[dayKey] || [];
-    
-    for (let adjMin of adjacentMinutes) {
-        if (adjMin < 0) continue;
-        const adjHour = Math.floor(adjMin / 60);
-        const adjMinute = adjMin % 60;
-        if (adjHour > 23) continue;
-        const adjTimeStr = `${adjHour.toString().padStart(2,'0')}:${adjMinute.toString().padStart(2,'0')}`;
-        if (bookedTimes.includes(adjTimeStr)) {
-            return true;
+    function hasAdjacentBooking(dayKey, timeStr) {
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        const currentMinutes = hours * 60 + minutes;
+        
+        // Соседние через 60 минут (ровно)
+        const adjacentMinutes = [
+            currentMinutes - 60,
+            currentMinutes + 60
+        ];
+        
+        const bookedTimes = bookedTimesByDay[dayKey] || [];
+        
+        for (let adjMin of adjacentMinutes) {
+            if (adjMin < 0) continue;
+            const adjHour = Math.floor(adjMin / 60);
+            const adjMinute = adjMin % 60;
+            if (adjHour > 23) continue;
+            const adjTimeStr = `${adjHour.toString().padStart(2,'0')}:${adjMinute.toString().padStart(2,'0')}`;
+            if (bookedTimes.includes(adjTimeStr)) {
+                return true;
+            }
         }
+        return false;
     }
-    return false;
-}
     
     const groupedByDay = {};
     slots.forEach(slot => {
