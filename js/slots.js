@@ -157,6 +157,9 @@ async function getBlockedSlotIds() {
         const minute = date.getMinutes();
         if (!slotsByDay[dayKey]) slotsByDay[dayKey] = [];
         slotsByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
+
+
+        console.log(`Правило 4 часа: день ${dayKey}, запись на ${bookedSlot.hour}:${bookedSlot.minute}, блокируем ${laterSlots?.length} слотов позже и ${earlierSlots?.length} слотов раньше`);
     });
     
     // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
