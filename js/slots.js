@@ -14,12 +14,16 @@ async function getFreeHalfDaysCount() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Получаем все занятые слоты
+    // Получаем все занятые слоты за ближайшие 14 дней
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 14);
+    
     const { data: bookedSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
         .eq('is_available', false)
-        .gte('start_time', today.toISOString());
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString());
     
     // Собираем ближайшие 11 половинок
     const allHalfDays = [];
@@ -28,7 +32,7 @@ async function getFreeHalfDaysCount() {
     while (allHalfDays.length < 11) {
         const dayOfWeek = currentDate.getDay();
         
-        if (dayOfWeek !== 0) { // не воскресенье
+        if (dayOfWeek !== 0) {
             const dayKey = currentDate.toISOString().split('T')[0];
             
             // Утро (все дни, кроме субботы? у субботы тоже есть утро)
@@ -48,7 +52,8 @@ async function getFreeHalfDaysCount() {
     bookedSlots?.forEach(slot => {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
-        const halfDay = getHalfDayKey(date);
+        const hours = date.getHours();
+        const halfDay = hours < 15 ? 'morning' : 'evening';
         occupiedHalfDays.add(`${dayKey}_${halfDay}`);
     });
     
@@ -63,7 +68,6 @@ async function getFreeHalfDaysCount() {
     const freeCount = freeHalfDays.length;
     const halfDaysToBlock = new Set();
     
-    // Если осталось 2 свободных половинки, блокируем их
     if (freeCount === 2) {
         freeHalfDays.forEach(h => halfDaysToBlock.add(h));
     }
