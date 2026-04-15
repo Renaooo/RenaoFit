@@ -27,11 +27,13 @@ async function getFreeHalfDaysCount() {
     const currentMinute = today.getMinutes();
     const currentMinutes = currentHour * 60 + currentMinute;
     
+    // Получаем ВСЕ занятые слоты
     const { data: bookedSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
         .eq('is_available', false);
     
+    // Множество половинок, в которых есть хотя бы одна запись
     const occupiedHalfDays = new Set();
     bookedSlots?.forEach(slot => {
         const date = new Date(slot.start_time);
@@ -40,13 +42,16 @@ async function getFreeHalfDaysCount() {
         occupiedHalfDays.add(`${dayKey}_${halfDay}`);
     });
     
+    // Собираем БУДУЩИЕ половинки (начиная с текущего момента)
     const allHalfDays = [];
     let currentDate = new Date(today);
     currentDate.setHours(0, 0, 0, 0);
     
+    // Определяем, нужно ли включать сегодняшнюю половинку
     const currentHalfDay = currentHour < 15 ? 'morning' : 'evening';
     const currentHalfDayKey = `${currentDate.toISOString().split('T')[0]}_${currentHalfDay}`;
     
+    // Проверяем, не прошла ли уже сегодняшняя половинка
     let includeCurrentHalfDay = true;
     if (currentHalfDay === 'morning' && currentMinutes >= 12 * 60) {
         includeCurrentHalfDay = false;
@@ -54,6 +59,7 @@ async function getFreeHalfDaysCount() {
         includeCurrentHalfDay = false;
     }
     
+    // Начинаем собирать половинки
     let daysAdded = 0;
     while (allHalfDays.length < 11) {
         const dayOfWeek = currentDate.getDay();
@@ -80,6 +86,7 @@ async function getFreeHalfDaysCount() {
         daysAdded++;
     }
     
+    // Среди первых 11 половинок считаем, сколько имеют записи
     let occupiedCount = 0;
     for (let halfDay of allHalfDays) {
         if (occupiedHalfDays.has(halfDay)) {
@@ -89,6 +96,7 @@ async function getFreeHalfDaysCount() {
     
     const halfDaysToBlock = new Set();
     
+    // ТОЛЬКО если среди первых 11 половинок 9 имеют записи, блокируем оставшиеся 2
     if (occupiedCount === 9) {
         for (let halfDay of allHalfDays) {
             if (!occupiedHalfDays.has(halfDay)) {
