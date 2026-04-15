@@ -14,7 +14,7 @@ function getHalfDayKey(date) {
     return 'evening';
 }
 
-// --- Получение списка ближайших 11 половинок и подсчёт свободных ---
+// --- Получение списка ближайших 11 половинок (только будущие) ---
 async function getFreeHalfDaysCount() {
     const now = Date.now();
     
@@ -23,33 +23,17 @@ async function getFreeHalfDaysCount() {
     }
     
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const currentHour = today.getHours();
+    const currentMinute = today.getMinutes();
+    const currentMinutes = currentHour * 60 + currentMinute;
     
+    // Получаем ВСЕ занятые слоты
     const { data: bookedSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
-        .eq('is_available', false)
-        .gte('start_time', today.toISOString());
+        .eq('is_available', false);
     
-    const allHalfDays = [];
-    let currentDate = new Date(today);
-    
-    while (allHalfDays.length < 11) {
-        const dayOfWeek = currentDate.getDay();
-        
-        if (dayOfWeek !== 0) {
-            const dayKey = currentDate.toISOString().split('T')[0];
-            
-            if (dayOfWeek !== 6) {
-                allHalfDays.push(`${dayKey}_morning`);
-            }
-            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                allHalfDays.push(`${dayKey}_evening`);
-            }
-        }
-        currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
+    // Множество половинок, в которых есть хотя бы одна запись
     const occupiedHalfDays = new Set();
     bookedSlots?.forEach(slot => {
         const date = new Date(slot.start_time);
@@ -58,24 +42,84 @@ async function getFreeHalfDaysCount() {
         occupiedHalfDays.add(`${dayKey}_${halfDay}`);
     });
     
-    const freeHalfDays = [];
+    // Собираем БУДУЩИЕ половинки (начиная с текущего момента)
+    const allHalfDays = [];
+    let currentDate = new Date(today);
+    currentDate.setHours(0, 0, 0, 0);
+    
+    // Определяем, нужно ли включать сегодняшнюю половинку
+    const currentHalfDay = currentHour < 15 ? 'morning' : 'evening';
+    const currentHalfDayKey = `${currentDate.toISOString().split('T')[0]}_${currentHalfDay}`;
+    
+    // Проверяем, не прошла ли уже сегодняшняя половинка
+    let includeCurrentHalfDay = true;
+    if (currentHalfDay === 'morning' && currentMinutes >= 12 * 60) {
+        // Утро закончилось в 12:00
+        includeCurrentHalfDay = false;
+    } else if (currentHalfDay === 'evening' && currentMinutes >= 21.5 * 60) {
+        // Вечер закончился в 21:30
+        includeCurrentHalfDay = false;
+    }
+    
+    // Начинаем собирать половинки
+    let daysAdded = 0;
+    while (allHalfDays.length < 11) {
+        const dayOfWeek = currentDate.getDay();
+        
+        if (dayOfWeek !== 0) { // не воскресенье
+            const dayKey = currentDate.toISOString().split('T')[0];
+            
+            // Утро
+            if (dayOfWeek !== 6) {
+                const halfDayKey = `${dayKey}_morning`;
+                const isCurrent = (daysAdded === 0 && halfDayKey === currentHalfDayKey);
+                
+                if (isCurrent && !includeCurrentHalfDay) {
+                    // Пропускаем текущую половинку, если она уже прошла
+                } else {
+                    allHalfDays.push(halfDayKey);
+                }
+            }
+            
+            // Вечер (только будни)
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                const halfDayKey = `${dayKey}_evening`;
+                const isCurrent = (daysAdded === 0 && halfDayKey === currentHalfDayKey);
+                
+                if (isCurrent && !includeCurrentHalfDay) {
+                    // Пропускаем текущую половинку, если она уже прошла
+                } else {
+                    allHalfDays.push(halfDayKey);
+                }
+            }
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+        daysAdded++;
+    }
+    
+    // Среди первых 11 половинок считаем, сколько имеют записи
+    let occupiedCount = 0;
     for (let halfDay of allHalfDays) {
-        if (!occupiedHalfDays.has(halfDay)) {
-            freeHalfDays.push(halfDay);
+        if (occupiedHalfDays.has(halfDay)) {
+            occupiedCount++;
         }
     }
     
-    const freeCount = freeHalfDays.length;
     const halfDaysToBlock = new Set();
     
-    if (freeCount === 2) {
-        freeHalfDays.forEach(h => halfDaysToBlock.add(h));
+    // Если среди первых 11 половинок 9 имеют записи, блокируем оставшиеся 2
+    if (occupiedCount === 9) {
+        for (let halfDay of allHalfDays) {
+            if (!occupiedHalfDays.has(halfDay)) {
+                halfDaysToBlock.add(halfDay);
+            }
+        }
     }
     
     cachedHalfDaysToBlock = halfDaysToBlock;
     lastCacheUpdate = now;
     
-    return { freeCount, halfDaysToBlock };
+    return { freeCount: 11 - occupiedCount, halfDaysToBlock };
 }
 
 // --- Получение списка заблокированных слотов ---
@@ -233,7 +277,6 @@ window.app.renderSlots = async function(slots) {
         const [hours, minutes] = timeStr.split(':').map(Number);
         const currentMinutes = hours * 60 + minutes;
         
-        // Соседние через 60 минут (ровно)
         const adjacentMinutes = [
             currentMinutes - 60,
             currentMinutes + 60
