@@ -150,7 +150,7 @@ window.app.canAddWeight = function(history) {
     return isMonday && daysSinceLast >= 7;
 };
 
-// --- Открытие модального окна для взвешивания ---
+// --- Открытие модального окна для взвешивания (ИСПРАВЛЕНА КНОПКА ОТМЕНА) ---
 window.app.openWeightModal = async function() {
     const history = await window.app.loadWeightHistory();
     const canAdd = window.app.canAddWeight(history);
@@ -163,9 +163,11 @@ window.app.openWeightModal = async function() {
     // Сбрасываем состояние перед показом
     errorDiv.style.display = 'none';
     weightInput.disabled = false;
+    weightInput.value = '';
     saveBtn.disabled = false;
     saveBtn.style.opacity = '1';
-    weightInput.value = '';
+    cancelBtn.disabled = false;
+    cancelBtn.style.opacity = '1';
     
     if (!canAdd) {
         const today = new Date();
@@ -180,6 +182,9 @@ window.app.openWeightModal = async function() {
         weightInput.disabled = true;
         saveBtn.disabled = true;
         saveBtn.style.opacity = '0.5';
+        // Кнопка отмена должна работать всегда
+        cancelBtn.disabled = false;
+        cancelBtn.style.opacity = '1';
     }
     
     modal.style.display = 'flex';
@@ -214,19 +219,24 @@ window.app.openWeightModal = async function() {
         cleanup();
     };
     
-    // Обработчик отмены
+    // Обработчик отмены (упрощённый, без cleanup)
     const handleCancel = () => {
+        console.log('Отмена взвешивания');
         modal.style.display = 'none';
-        cleanup();
+        // Не вызываем cleanup, чтобы не удалять обработчики
     };
     
     // Обработчик клика вне модального окна
     const handleClickOutside = (e) => {
         if (e.target === modal) {
             modal.style.display = 'none';
-            cleanup();
         }
     };
+    
+    // Удаляем старые обработчики, чтобы не было дублей
+    saveBtn.removeEventListener('click', handleSave);
+    cancelBtn.removeEventListener('click', handleCancel);
+    modal.removeEventListener('click', handleClickOutside);
     
     saveBtn.addEventListener('click', handleSave);
     cancelBtn.addEventListener('click', handleCancel);
@@ -340,7 +350,7 @@ function getWeekStartForMessage(date) {
     return start;
 }
 
-// --- Обновление мотивационного сообщения (исправлен знак) ---
+// --- Обновление мотивационного сообщения ---
 window.app.updateWeeklyMessage = async function() {
     const today = new Date();
     
@@ -361,8 +371,8 @@ window.app.updateWeeklyMessage = async function() {
     const currentWeight = weights[0].weight;
     const prevWeight = weights[1].weight;
     
-    // ИСПРАВЛЕНО: weightChange = текущий вес - прошлый вес
-    // Если похудел → отрицательное значение → поздравительное сообщение
+    // weightChange = текущий вес - прошлый вес
+    // Если похудел → отрицательное значение → поздравление
     // Если набрал → положительное значение → утешительное сообщение
     const weightChange = currentWeight - prevWeight;
     
@@ -411,7 +421,6 @@ window.app.updateWeeklyMessage = async function() {
     
     if (!messageDiv || !messageText) return;
     
-    // ИСПРАВЛЕНО: weightChange < 0 — потеря веса (поздравление)
     if (weightChange < -0.2) {
         messageDiv.style.background = '#e8f5e9';
         messageDiv.style.borderLeftColor = '#36B647';
