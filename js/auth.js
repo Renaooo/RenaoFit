@@ -2,20 +2,34 @@
 // МОДУЛЬ АВТОРИЗАЦИИ
 // ============================================
 
+// --- Очистка телефона (8 и +7 равнозначны, приводим к 7XXXXXXXXXX) ---
+window.app.cleanPhone = function(phone) {
+    // Удаляем все символы, кроме цифр
+    let cleaned = phone.replace(/[^0-9]/g, '');
+    
+    // Если номер начинается с 8, заменяем на 7 (для единого формата)
+    if (cleaned.startsWith('8')) {
+        cleaned = '7' + cleaned.substring(1);
+    }
+    
+    return cleaned;
+};
+
 // --- Авторизация / регистрация ---
 window.app.loginWithPhone = async function(phone, name) {
     const cleanPhoneNumber = window.app.cleanPhone(phone);
     const email = `${cleanPhoneNumber}@gmail.com`;
     const password = cleanPhoneNumber + 'simplepass';
     
-    // Сначала пробуем войти
+    console.log('Попытка входа с email:', email);
+    
     let { data, error } = await window.app.sb.auth.signInWithPassword({
         email: email,
         password: password
     });
     
-    // Если пользователь не найден — регистрируем
     if (error && error.message.includes('Invalid login credentials')) {
+        console.log('Пользователь не найден, регистрируем...');
         const { data: signUpData, error: signUpError } = await window.app.sb.auth.signUp({
             email: email,
             password: password,
@@ -30,7 +44,6 @@ window.app.loginWithPhone = async function(phone, name) {
         throw error;
     }
     
-    // Сохраняем/обновляем профиль
     const { error: profileError } = await window.app.sb
         .from('profiles')
         .upsert({ id: data.user.id, phone: phone, name: name });
