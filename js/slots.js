@@ -146,18 +146,18 @@ async function getBlockedSlotIds() {
         slotsByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
-    // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
-    for (let [dayKey, slots] of Object.entries(slotsByDay)) {
-        const morningKey = `${dayKey}_morning`;
-        const eveningKey = `${dayKey}_evening`;
-        
-        if (halfDaysToBlock.has(morningKey)) {
-            slots.filter(s => s.hour < 15).forEach(s => blockedIds.add(s.id));
-        }
-        if (halfDaysToBlock.has(eveningKey)) {
-            slots.filter(s => s.hour >= 15).forEach(s => blockedIds.add(s.id));
-        }
-    }
+  // === ПРАВИЛО "ПОСЛЕДНИХ 2 ПОЛОВИНОК" ===
+// for (let [dayKey, slots] of Object.entries(slotsByDay)) {
+//     const morningKey = `${dayKey}_morning`;
+//     const eveningKey = `${dayKey}_evening`;
+//     
+//     if (halfDaysToBlock.has(morningKey)) {
+//         slots.filter(s => s.hour < 15).forEach(s => blockedIds.add(s.id));
+//     }
+//     if (halfDaysToBlock.has(eveningKey)) {
+//         slots.filter(s => s.hour >= 15).forEach(s => blockedIds.add(s.id));
+//     }
+// }
     
     if (!bookedSlots || bookedSlots.length === 0) return blockedIds;
     
