@@ -430,6 +430,7 @@ window.app.loadMyBookings = async function() {
 };
 
 // --- Автоматическое обновление расписания на 8 дней ---
+
 window.app.ensureWeeklySchedule = async function() {
     const schedule = {
         1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
@@ -447,12 +448,16 @@ window.app.ensureWeeklySchedule = async function() {
         0: { morning: [], evening: [] }
     };
     
-    const today = new Date();
+    // Получаем сегодняшнюю дату в МСК
+    const now = new Date();
+    const mskNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    const today = new Date(mskNow);
     today.setHours(0, 0, 0, 0);
     
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 8);
     
+    // Проверяем существующие слоты
     const { data: existingSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
@@ -472,6 +477,7 @@ window.app.ensureWeeklySchedule = async function() {
     
     console.log('Генерируем расписание...');
     
+    // Удаляем старые слоты
     const oldDate = new Date(today);
     oldDate.setDate(today.getDate() - 1);
     await window.app.sb
@@ -489,6 +495,7 @@ window.app.ensureWeeklySchedule = async function() {
         
         if (requiredTimes.length === 0) continue;
         
+        // Получаем существующие слоты за этот день
         const startOfDay = new Date(currentDate);
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(currentDate);
@@ -508,6 +515,7 @@ window.app.ensureWeeklySchedule = async function() {
             existingTimesSet.add(`${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`);
         });
         
+        // Удаляем слоты, которых нет в расписании
         for (let slot of existingDaySlots || []) {
             const d = new Date(slot.start_time);
             const hour = d.getHours();
@@ -519,6 +527,7 @@ window.app.ensureWeeklySchedule = async function() {
             }
         }
         
+        // Добавляем недостающие слоты (с правильным МСК временем)
         for (let time of requiredTimes) {
             if (!existingTimesSet.has(time)) {
                 const [hours, minutes] = time.split(':');
@@ -530,6 +539,7 @@ window.app.ensureWeeklySchedule = async function() {
                 const endTime = new Date(startTime);
                 endTime.setHours(startTime.getHours() + 1);
                 
+                // Сохраняем в UTC (Supabase автоматически преобразует)
                 await window.app.sb.from('slots').insert({
                     start_time: startTime.toISOString(),
                     end_time: endTime.toISOString(),
