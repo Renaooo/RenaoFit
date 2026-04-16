@@ -1,8 +1,8 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (БЕЗ ПРАВИЛА 9/11)
+// МОДУЛЬ СЛОТОВ (ПРОВЕРЕННАЯ ВЕРСИЯ)
 // ============================================
 
-// --- Получение списка заблокированных слотов (только 4 часа и соседние) ---
+// --- Получение списка заблокированных слотов ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
     
@@ -430,7 +430,6 @@ window.app.loadMyBookings = async function() {
 };
 
 // --- Автоматическое обновление расписания на 8 дней ---
-
 window.app.ensureWeeklySchedule = async function() {
     const schedule = {
         1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
@@ -448,42 +447,24 @@ window.app.ensureWeeklySchedule = async function() {
         0: { morning: [], evening: [] }
     };
     
-    // Получаем сегодняшнюю дату в МСК
-    const now = new Date();
-    const mskNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-    const today = new Date(mskNow);
+    const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 8);
     
-    // Проверяем существующие слоты
     const { data: existingSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
         .gte('start_time', today.toISOString())
         .lte('start_time', endDate.toISOString());
     
-    const daysWithSlots = new Set();
-    existingSlots?.forEach(slot => {
-        const day = new Date(slot.start_time).toISOString().split('T')[0];
-        daysWithSlots.add(day);
-    });
-    
-    if (daysWithSlots.size >= 8) {
-        console.log('Слоты уже есть на все дни, пропускаем генерацию');
+    if (existingSlots && existingSlots.length > 0) {
+        console.log('Слоты уже есть, пропускаем генерацию');
         return;
     }
     
     console.log('Генерируем расписание...');
-    
-    // Удаляем старые слоты
-    const oldDate = new Date(today);
-    oldDate.setDate(today.getDate() - 1);
-    await window.app.sb
-        .from('slots')
-        .delete()
-        .lt('start_time', oldDate.toISOString());
     
     for (let day = 0; day < 8; day++) {
         const currentDate = new Date(today);
@@ -495,57 +476,21 @@ window.app.ensureWeeklySchedule = async function() {
         
         if (requiredTimes.length === 0) continue;
         
-        // Получаем существующие слоты за этот день
-        const startOfDay = new Date(currentDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(currentDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        
-        const { data: existingDaySlots } = await window.app.sb
-            .from('slots')
-            .select('id, start_time')
-            .gte('start_time', startOfDay.toISOString())
-            .lte('start_time', endOfDay.toISOString());
-        
-        const existingTimesSet = new Set();
-        existingDaySlots?.forEach(slot => {
-            const d = new Date(slot.start_time);
-            const hour = d.getHours();
-            const minute = d.getMinutes();
-            existingTimesSet.add(`${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`);
-        });
-        
-        // Удаляем слоты, которых нет в расписании
-        for (let slot of existingDaySlots || []) {
-            const d = new Date(slot.start_time);
-            const hour = d.getHours();
-            const minute = d.getMinutes();
-            const timeStr = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
-            if (!requiredTimes.includes(timeStr)) {
-                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
-                await window.app.sb.from('slots').delete().eq('id', slot.id);
-            }
-        }
-        
-        // Добавляем недостающие слоты (с правильным МСК временем)
         for (let time of requiredTimes) {
-            if (!existingTimesSet.has(time)) {
-                const [hours, minutes] = time.split(':');
-                const startTime = new Date(currentDate);
-                startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                
-                if (startTime < new Date()) continue;
-                
-                const endTime = new Date(startTime);
-                endTime.setHours(startTime.getHours() + 1);
-                
-                // Сохраняем в UTC (Supabase автоматически преобразует)
-                await window.app.sb.from('slots').insert({
-                    start_time: startTime.toISOString(),
-                    end_time: endTime.toISOString(),
-                    is_available: true
-                });
-            }
+            const [hours, minutes] = time.split(':');
+            const startTime = new Date(currentDate);
+            startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            
+            if (startTime < new Date()) continue;
+            
+            const endTime = new Date(startTime);
+            endTime.setHours(startTime.getHours() + 1);
+            
+            await window.app.sb.from('slots').insert({
+                start_time: startTime.toISOString(),
+                end_time: endTime.toISOString(),
+                is_available: true
+            });
         }
     }
     
