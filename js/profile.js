@@ -574,5 +574,52 @@ window.app.saveGoal = async function() {
     }
 };
 
+
+// --- Сохранение цели из профиля ---
+window.app.saveGoal = async function() {
+    if (!window.app.currentUser) {
+        alert('Пользователь не авторизован');
+        return;
+    }
+    
+    const selectedGoal = document.querySelector('input[name="profile-goal"]:checked');
+    if (!selectedGoal) {
+        alert('Выберите цель');
+        return;
+    }
+    
+    const newGoal = selectedGoal.value;
+    
+    const { error } = await window.app.sb
+        .from('profiles')
+        .update({ fitness_goal: newGoal })
+        .eq('id', window.app.currentUser.id);
+    
+    if (error) {
+        console.error('Ошибка сохранения цели:', error);
+        alert('Ошибка сохранения: ' + error.message);
+        return;
+    }
+    
+    alert('✅ Цель сохранена! Страница обновится.');
+    
+    // Обновляем интерфейс в соответствии с новой целью
+    await window.app.loadMyProfile();
+    
+    // Обновляем видимость блоков питания в ежедневном отчёте
+    if (typeof window.app.updateMealBlocksVisibility === 'function') {
+        await window.app.updateMealBlocksVisibility();
+    }
+    
+    // Обновляем сообщение недели
+    if (typeof window.app.updateWeeklyMessage === 'function') {
+        await window.app.updateWeeklyMessage();
+    }
+    
+    // Перезагружаем прогресс за неделю
+    if (typeof window.app.loadWeeklyProgress === 'function') {
+        await window.app.loadWeeklyProgress();
+    }
+};
     
 };
