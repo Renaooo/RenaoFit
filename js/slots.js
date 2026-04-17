@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (ПРОВЕРЕННАЯ ВЕРСИЯ)
+// МОДУЛЬ СЛОТОВ (С ОТЛАДКОЙ)
 // ============================================
 
 // --- Получение списка заблокированных слотов ---
@@ -54,42 +54,70 @@ async function getBlockedSlotIds() {
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
         const isMorning = booked[0]?.hour < 15;
         
-        // === ПРАВИЛО "4 ЧАСА" (внутри половинки) ===
+        console.log(`\n=== ДЕНЬ ${dayKey} ===`);
+        console.log(`Занятые слоты:`, booked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`).join(', '));
+        
+        // === ПРАВИЛО "4 ЧАСА" ===
+        console.log(`\n--- ПРАВИЛО 4 ЧАСА ---`);
         for (let bookedSlot of booked) {
             const startMinutes = bookedSlot.timeValue * 60;
+            const blockFromMinutes = startMinutes + 240;
+            const blockUntilMinutes = startMinutes - 240;
+            
+            const blockFromHour = Math.floor(blockFromMinutes / 60);
+            const blockFromMinute = blockFromMinutes % 60;
+            const blockUntilHour = Math.floor(blockUntilMinutes / 60);
+            const blockUntilMinute = blockUntilMinutes % 60;
+            
+            console.log(`\n  Запись на ${bookedSlot.hour}:${bookedSlot.minute.toString().padStart(2,'0')}`);
+            console.log(`    → блокируем слоты с ${blockFromHour}:${blockFromMinute.toString().padStart(2,'0')} и позже (в той же половинке)`);
+            console.log(`    → блокируем слоты с ${blockUntilHour}:${blockUntilMinute.toString().padStart(2,'0')} и раньше (в той же половинке)`);
             
             // Блокируем слоты через 4 часа позже
-            const blockFromMinutes = startMinutes + 240;
             const laterSlots = slotsByDay[dayKey]?.filter(slot => {
                 const isSameHalfDay = isMorning === (slot.hour < 15);
                 const slotMinutes = slot.timeValue * 60;
                 return isSameHalfDay && slotMinutes >= blockFromMinutes;
             });
-            laterSlots?.forEach(slot => blockedIds.add(slot.id));
+            if (laterSlots && laterSlots.length > 0) {
+                console.log(`    ЗАБЛОКИРОВАНО (позже): ${laterSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
+                laterSlots.forEach(slot => blockedIds.add(slot.id));
+            }
             
             // Блокируем слоты через 4 часа раньше
-            const blockUntilMinutes = startMinutes - 240;
             const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
                 const isSameHalfDay = isMorning === (slot.hour < 15);
                 const slotMinutes = slot.timeValue * 60;
                 return isSameHalfDay && slotMinutes <= blockUntilMinutes;
             });
-            earlierSlots?.forEach(slot => blockedIds.add(slot.id));
+            if (earlierSlots && earlierSlots.length > 0) {
+                console.log(`    ЗАБЛОКИРОВАНО (раньше): ${earlierSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
+                earlierSlots.forEach(slot => blockedIds.add(slot.id));
+            }
         }
         
         // === ПРАВИЛО "СОСЕДНИЕ СЛОТЫ" (пересечение) ===
+        console.log(`\n--- ПРАВИЛО СОСЕДНИЕ СЛОТЫ ---`);
         for (let bookedSlot of booked) {
             const startMinutes = bookedSlot.timeValue * 60;
+            console.log(`\n  Запись на ${bookedSlot.hour}:${bookedSlot.minute.toString().padStart(2,'0')}`);
             
+            const adjacentSlots = [];
             slotsByDay[dayKey]?.forEach(slot => {
                 const slotMinutes = slot.timeValue * 60;
                 if (Math.abs(slotMinutes - startMinutes) < 60 && slot.id !== bookedSlot.id) {
-                    blockedIds.add(slot.id);
+                    adjacentSlots.push(slot);
                 }
             });
+            
+            if (adjacentSlots.length > 0) {
+                console.log(`    ЗАБЛОКИРОВАНО (соседние): ${adjacentSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
+                adjacentSlots.forEach(slot => blockedIds.add(slot.id));
+            }
         }
     }
     
+    console.log(`\n=== ИТОГО ЗАБЛОКИРОВАНО СЛОТОВ: ${blockedIds.size} ===\n`);
     return blockedIds;
 }
 
