@@ -10,7 +10,6 @@ async function getBlockedSlotIds() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 14);
     
-    // Получаем занятые слоты
     const { data: bookedSlots } = await window.app.sb
         .from('slots')
         .select('id, start_time')
@@ -20,7 +19,6 @@ async function getBlockedSlotIds() {
     
     if (!bookedSlots || bookedSlots.length === 0) return blockedIds;
     
-    // Получаем все слоты
     const { data: allSlots } = await window.app.sb
         .from('slots')
         .select('id, start_time')
@@ -29,7 +27,6 @@ async function getBlockedSlotIds() {
     
     if (!allSlots) return blockedIds;
     
-    // Группируем слоты по дням
     const slotsByDay = {};
     allSlots.forEach(slot => {
         const date = new Date(slot.start_time);
@@ -40,7 +37,6 @@ async function getBlockedSlotIds() {
         slotsByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
-    // Группируем занятые слоты по дням
     const bookedByDay = {};
     bookedSlots.forEach(slot => {
         const date = new Date(slot.start_time);
@@ -52,51 +48,93 @@ async function getBlockedSlotIds() {
     });
     
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
-        const isMorning = booked[0]?.hour < 15;
+        // Разделяем утро и вечер
+        const morningBooked = booked.filter(b => b.hour < 15);
+        const eveningBooked = booked.filter(b => b.hour >= 15);
         
         console.log(`\n=== ДЕНЬ ${dayKey} ===`);
-        console.log(`Занятые слоты:`, booked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`).join(', '));
+        console.log(`Утро занятые:`, morningBooked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`).join(', '));
+        console.log(`Вечер занятые:`, eveningBooked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`).join(', '));
         
-        // === ПРАВИЛО "4 ЧАСА" ===
-        console.log(`\n--- ПРАВИЛО 4 ЧАСА ---`);
-        for (let bookedSlot of booked) {
-            const startMinutes = bookedSlot.timeValue * 60;
-            const blockFromMinutes = startMinutes + 240;
-            const blockUntilMinutes = startMinutes - 240;
-            
-            const blockFromHour = Math.floor(blockFromMinutes / 60);
-            const blockFromMinute = blockFromMinutes % 60;
-            const blockUntilHour = Math.floor(blockUntilMinutes / 60);
-            const blockUntilMinute = blockUntilMinutes % 60;
-            
-            console.log(`\n  Запись на ${bookedSlot.hour}:${bookedSlot.minute.toString().padStart(2,'0')}`);
-            console.log(`    → блокируем слоты с ${blockFromHour}:${blockFromMinute.toString().padStart(2,'0')} и позже (в той же половинке)`);
-            console.log(`    → блокируем слоты с ${blockUntilHour}:${blockUntilMinute.toString().padStart(2,'0')} и раньше (в той же половинке)`);
-            
-            // Блокируем слоты через 4 часа позже
-            const laterSlots = slotsByDay[dayKey]?.filter(slot => {
-                const isSameHalfDay = isMorning === (slot.hour < 15);
-                const slotMinutes = slot.timeValue * 60;
-                return isSameHalfDay && slotMinutes >= blockFromMinutes;
-            });
-            if (laterSlots && laterSlots.length > 0) {
-                console.log(`    ЗАБЛОКИРОВАНО (позже): ${laterSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
-                laterSlots.forEach(slot => blockedIds.add(slot.id));
-            }
-            
-            // Блокируем слоты через 4 часа раньше
-            const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
-                const isSameHalfDay = isMorning === (slot.hour < 15);
-                const slotMinutes = slot.timeValue * 60;
-                return isSameHalfDay && slotMinutes <= blockUntilMinutes;
-            });
-            if (earlierSlots && earlierSlots.length > 0) {
-                console.log(`    ЗАБЛОКИРОВАНО (раньше): ${earlierSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
-                earlierSlots.forEach(slot => blockedIds.add(slot.id));
+        // === ПРАВИЛО "4 ЧАСА" ДЛЯ УТРА ===
+        if (morningBooked.length > 0) {
+            console.log(`\n--- ПРАВИЛО 4 ЧАСА (утро) ---`);
+            for (let bookedSlot of morningBooked) {
+                const startMinutes = bookedSlot.timeValue * 60;
+                const blockFromMinutes = startMinutes + 240;
+                const blockUntilMinutes = startMinutes - 240;
+                
+                const blockFromHour = Math.floor(blockFromMinutes / 60);
+                const blockFromMinute = blockFromMinutes % 60;
+                const blockUntilHour = Math.floor(blockUntilMinutes / 60);
+                const blockUntilMinute = blockUntilMinutes % 60;
+                
+                console.log(`\n  Запись на ${bookedSlot.hour}:${bookedSlot.minute.toString().padStart(2,'0')}`);
+                console.log(`    → блокируем слоты с ${blockFromHour}:${blockFromMinute.toString().padStart(2,'0')} и позже (утро)`);
+                console.log(`    → блокируем слоты с ${blockUntilHour}:${blockUntilMinute.toString().padStart(2,'0')} и раньше (утро)`);
+                
+                const laterSlots = slotsByDay[dayKey]?.filter(slot => {
+                    const isMorning = slot.hour < 15;
+                    const slotMinutes = slot.timeValue * 60;
+                    return isMorning && slotMinutes >= blockFromMinutes;
+                });
+                if (laterSlots && laterSlots.length > 0) {
+                    console.log(`    ЗАБЛОКИРОВАНО (позже): ${laterSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
+                    laterSlots.forEach(slot => blockedIds.add(slot.id));
+                }
+                
+                const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
+                    const isMorning = slot.hour < 15;
+                    const slotMinutes = slot.timeValue * 60;
+                    return isMorning && slotMinutes <= blockUntilMinutes;
+                });
+                if (earlierSlots && earlierSlots.length > 0) {
+                    console.log(`    ЗАБЛОКИРОВАНО (раньше): ${earlierSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
+                    earlierSlots.forEach(slot => blockedIds.add(slot.id));
+                }
             }
         }
         
-        // === ПРАВИЛО "СОСЕДНИЕ СЛОТЫ" (пересечение) ===
+        // === ПРАВИЛО "4 ЧАСА" ДЛЯ ВЕЧЕРА ===
+        if (eveningBooked.length > 0) {
+            console.log(`\n--- ПРАВИЛО 4 ЧАСА (вечер) ---`);
+            for (let bookedSlot of eveningBooked) {
+                const startMinutes = bookedSlot.timeValue * 60;
+                const blockFromMinutes = startMinutes + 240;
+                const blockUntilMinutes = startMinutes - 240;
+                
+                const blockFromHour = Math.floor(blockFromMinutes / 60);
+                const blockFromMinute = blockFromMinutes % 60;
+                const blockUntilHour = Math.floor(blockUntilMinutes / 60);
+                const blockUntilMinute = blockUntilMinutes % 60;
+                
+                console.log(`\n  Запись на ${bookedSlot.hour}:${bookedSlot.minute.toString().padStart(2,'0')}`);
+                console.log(`    → блокируем слоты с ${blockFromHour}:${blockFromMinute.toString().padStart(2,'0')} и позже (вечер)`);
+                console.log(`    → блокируем слоты с ${blockUntilHour}:${blockUntilMinute.toString().padStart(2,'0')} и раньше (вечер)`);
+                
+                const laterSlots = slotsByDay[dayKey]?.filter(slot => {
+                    const isEvening = slot.hour >= 15;
+                    const slotMinutes = slot.timeValue * 60;
+                    return isEvening && slotMinutes >= blockFromMinutes;
+                });
+                if (laterSlots && laterSlots.length > 0) {
+                    console.log(`    ЗАБЛОКИРОВАНО (позже): ${laterSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
+                    laterSlots.forEach(slot => blockedIds.add(slot.id));
+                }
+                
+                const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
+                    const isEvening = slot.hour >= 15;
+                    const slotMinutes = slot.timeValue * 60;
+                    return isEvening && slotMinutes <= blockUntilMinutes;
+                });
+                if (earlierSlots && earlierSlots.length > 0) {
+                    console.log(`    ЗАБЛОКИРОВАНО (раньше): ${earlierSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
+                    earlierSlots.forEach(slot => blockedIds.add(slot.id));
+                }
+            }
+        }
+        
+        // === ПРАВИЛО "СОСЕДНИЕ СЛОТЫ" ===
         console.log(`\n--- ПРАВИЛО СОСЕДНИЕ СЛОТЫ ---`);
         for (let bookedSlot of booked) {
             const startMinutes = bookedSlot.timeValue * 60;
