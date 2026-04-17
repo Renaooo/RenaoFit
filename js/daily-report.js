@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ (с московским временем и переключателем недель)
+// МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ (с московским временем и поддержкой цели)
 // ============================================
 
 // ============================================
@@ -31,7 +31,20 @@ let currentTrainingTime = '';
 let currentSocialEvent = false;
 let currentPreMeal = '';
 let currentPostMeal = '';
-let currentWeekOffset = 0; // 0 = текущая неделя, -1 = прошлая, -2 = позапрошлая
+let currentFitnessGoal = 'weight_loss';
+
+// --- Загрузка цели пользователя ---
+async function loadFitnessGoal() {
+    if (!window.app.currentUser) return 'weight_loss';
+    
+    const { data: profile } = await window.app.sb
+        .from('profiles')
+        .select('fitness_goal')
+        .eq('id', window.app.currentUser.id)
+        .single();
+    
+    return profile?.fitness_goal || 'weight_loss';
+}
 
 // --- Инициализация UI ---
 window.app.initDailyReportUI = function() {
@@ -125,8 +138,11 @@ function setTrainingType(type) {
         currentPostMeal = '';
     } else {
         if (timeContainer) timeContainer.style.display = 'block';
-        if (preMealContainer) preMealContainer.style.display = 'block';
-        if (postMealContainer) postMealContainer.style.display = 'block';
+        // Показываем блоки питания только если цель "Активное снижение веса"
+        if (currentFitnessGoal === 'weight_loss') {
+            if (preMealContainer) preMealContainer.style.display = 'block';
+            if (postMealContainer) postMealContainer.style.display = 'block';
+        }
     }
 }
 
@@ -200,7 +216,7 @@ function setPostMeal(value) {
     if (postMealInput) postMealInput.value = value;
 }
 
-// --- Сохранение отчета (с заморозкой нормы шагов) ---
+// --- Сохранение отчета ---
 window.app.saveDailyReport = async function() {
     console.log('saveDailyReport вызвана');
     
@@ -215,27 +231,36 @@ window.app.saveDailyReport = async function() {
     const trainingType = currentTrainingType;
     const trainingTime = currentTrainingTime;
     const socialEvent = currentSocialEvent;
-    const preMeal = currentPreMeal === 'yes' ? true : (currentPreMeal === 'no' ? false : null);
-    const postMeal = currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null);
     const notes = document.getElementById('daily-notes')?.value || '';
     
     const today = getMoscowDateString();
     
-    // Получаем текущую норму шагов из профиля (для заморозки)
+    // Получаем текущую норму шагов из профиля
     const { data: profile, error: profileError } = await window.app.sb
         .from('profiles')
-        .select('min_steps')
+        .select('min_steps, fitness_goal')
         .eq('id', window.app.currentUser.id)
         .single();
     
     if (profileError) {
-        console.error('Ошибка получения нормы шагов:', profileError);
+        console.error('Ошибка получения данных профиля:', profileError);
     }
     
     const currentNorm = profile?.min_steps || 10000;
+    const fitnessGoal = profile?.fitness_goal || 'weight_loss';
+    
+    // Для цели "Здоровье" не сохраняем данные о питании
+    let preMeal = null;
+    let postMeal = null;
+    
+    if (fitnessGoal === 'weight_loss') {
+        preMeal = currentPreMeal === 'yes' ? true : (currentPreMeal === 'no' ? false : null);
+        postMeal = currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null);
+    }
     
     console.log('Сохраняем отчет за дату (МСК):', today);
     console.log('Норма шагов на момент сохранения:', currentNorm);
+    console.log('Цель:', fitnessGoal);
     
     const { error } = await window.app.sb
         .from('daily_reports')
@@ -269,17 +294,23 @@ window.app.saveDailyReport = async function() {
     }
 };
 
-// --- Загрузка и отображение прогресса за неделю (с поддержкой переключения недель) ---
+// --- Переменная для смещения недели ---
+let currentWeekOffset = 0;
+
+// --- Загрузка и отображение прогресса за неделю ---
 window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress START ===');
     
     if (!window.app.currentUser) return;
     
+    // Загружаем цель пользователя
+    currentFitnessGoal = await loadFitnessGoal();
+    const isWeightLossGoal = currentFitnessGoal === 'weight_loss';
+    
     // Получаем локальную дату (МСК)
     const now = new Date();
     const mskDate = getMoscowDate(now);
     
-    // Функция форматирования локальной даты в YYYY-MM-DD
     function formatLocalDate(date) {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -287,7 +318,6 @@ window.app.loadWeeklyProgress = async function() {
         return `${year}-${month}-${day}`;
     }
     
-    // Функция получения понедельника от локальной даты
     function getMonday(date) {
         const d = new Date(date);
         const day = d.getDay();
@@ -296,7 +326,6 @@ window.app.loadWeeklyProgress = async function() {
         return d;
     }
     
-    // Вычисляем дату с учётом смещения недели
     const targetDate = new Date(mskDate);
     targetDate.setDate(mskDate.getDate() + (currentWeekOffset * 7));
     
@@ -307,12 +336,10 @@ window.app.loadWeeklyProgress = async function() {
     const startDateStr = formatLocalDate(monday);
     const endDateStr = formatLocalDate(sunday);
     
-    // Форматируем заголовок недели
     const weekStartFormatted = monday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
     const weekEndFormatted = sunday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
     const weekTitle = currentWeekOffset === 0 ? 'Текущая неделя' : `${weekStartFormatted} - ${weekEndFormatted}`;
     
-    // Обновляем заголовок в интерфейсе
     const weekTitleEl = document.getElementById('weekly-week-title');
     const prevBtn = document.getElementById('prev-week-btn');
     const nextBtn = document.getElementById('next-week-btn');
@@ -323,8 +350,8 @@ window.app.loadWeeklyProgress = async function() {
     
     console.log('Неделя (пн-вс):', startDateStr, '-', endDateStr);
     console.log('Смещение недели:', currentWeekOffset);
+    console.log('Цель пользователя:', currentFitnessGoal);
     
-    // Получаем отчеты за неделю
     const { data: reports, error } = await window.app.sb
         .from('daily_reports')
         .select('*')
@@ -340,7 +367,6 @@ window.app.loadWeeklyProgress = async function() {
     
     console.log('Найдено отчетов:', reports?.length || 0);
     
-    // Получаем профиль пользователя
     const { data: profile } = await window.app.sb
         .from('profiles')
         .select('target_strength_weekly, target_cardio_weekly')
@@ -350,7 +376,6 @@ window.app.loadWeeklyProgress = async function() {
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
     
-    // Для отображения нормы используем последнюю сохраненную норму из отчета или 10000
     let displayNorm = 10000;
     if (reports && reports.length > 0) {
         const lastReport = reports[reports.length - 1];
@@ -376,13 +401,11 @@ window.app.loadWeeklyProgress = async function() {
         return;
     }
     
-    // Создаем карту отчетов по датам
     const reportsMap = {};
     reports.forEach(r => {
         reportsMap[r.report_date] = r;
     });
     
-    // Собираем все дни недели по порядку
     let strengthCount = 0, cardioCount = 0, socialDays = 0, lowStepsDays = 0;
     let dailyTable = '<div style="margin-top: 15px;"><h4 style="margin-bottom: 10px;">📅 По дням</h4>';
     
@@ -408,6 +431,7 @@ window.app.loadWeeklyProgress = async function() {
             
             const socialIcon = report.social_event ? '⚠️' : '✅';
             
+            // Для цели "Здоровье" не показываем иконки питания
             dailyTable += `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
                     <div style="flex: 1;">
@@ -444,6 +468,7 @@ window.app.loadWeeklyProgress = async function() {
     const cardioOk = cardioCount >= targetCardio;
     const socialOk = socialDays <= 1;
     
+    // Для цели "Здоровье" не показываем блок с днями ниже нормы (опционально)
     container.innerHTML = `
         <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
             <div style="margin-bottom: 15px;">
@@ -466,10 +491,12 @@ window.app.loadWeeklyProgress = async function() {
                     <span>🎉 Социальные приемы:</span>
                     <span><strong>${socialDays} дней</strong> ${socialDays > 0 ? '⚠️' : '✅'}</span>
                 </div>
+                ${!isWeightLossGoal ? '' : `
                 <div style="display: flex; justify-content: space-between;">
                     <span>📉 Дней с шагами ниже нормы:</span>
                     <span><strong style="color: ${lowStepsDays > 0 ? '#dc3545' : '#36B647'};">${lowStepsDays} дней</strong></span>
                 </div>
+                `}
             </div>
             
             ${dailyTable}
@@ -484,6 +511,21 @@ window.app.openDailyReport = async function() {
     console.log('openDailyReport вызвана');
     
     if (!window.app.currentUser) return;
+    
+    // Загружаем цель пользователя
+    currentFitnessGoal = await loadFitnessGoal();
+    const isWeightLossGoal = currentFitnessGoal === 'weight_loss';
+    
+    // Скрываем или показываем блоки питания в зависимости от цели
+    const preMealContainer = document.getElementById('pre-meal-container');
+    const postMealContainer = document.getElementById('post-meal-container');
+    
+    if (preMealContainer) {
+        preMealContainer.style.display = isWeightLossGoal ? 'block' : 'none';
+    }
+    if (postMealContainer) {
+        postMealContainer.style.display = isWeightLossGoal ? 'block' : 'none';
+    }
     
     // Сбрасываем смещение недели на текущую
     currentWeekOffset = 0;
@@ -513,8 +555,14 @@ window.app.openDailyReport = async function() {
         setTrainingType(existing.training_type || '');
         setTrainingTime(existing.training_time || '');
         setSocialEvent(existing.social_event || false);
-        setPreMeal(existing.pre_meal_compliant === true ? 'yes' : (existing.pre_meal_compliant === false ? 'no' : ''));
-        setPostMeal(existing.post_meal_compliant === true ? 'yes' : (existing.post_meal_compliant === false ? 'no' : ''));
+        
+        if (isWeightLossGoal) {
+            setPreMeal(existing.pre_meal_compliant === true ? 'yes' : (existing.pre_meal_compliant === false ? 'no' : ''));
+            setPostMeal(existing.post_meal_compliant === true ? 'yes' : (existing.post_meal_compliant === false ? 'no' : ''));
+        } else {
+            setPreMeal('');
+            setPostMeal('');
+        }
         
         const notesInput = document.getElementById('daily-notes');
         if (notesInput) notesInput.value = existing.notes || '';
