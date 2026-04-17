@@ -44,36 +44,36 @@ window.app.loadMyProfile = async function() {
         }
     }
     
-    // Отображаем цель в профиле (добавим новый элемент)
-    let goalEl = document.getElementById('profile-goal');
-    if (!goalEl) {
-        const container = document.querySelector('#profile-screen .container > div:first-child');
-        if (container && subscriptionEl) {
-            const goalDiv = document.createElement('div');
-            goalDiv.style.cssText = 'background: #f8f9fa; border-radius: 16px; padding: 20px; margin-bottom: 20px;';
-            goalDiv.innerHTML = `
-                <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">🎯 Моя цель</label>
-                <div style="font-size: 18px; font-weight: 500;" id="profile-goal"></div>
-            `;
-            container.parentNode.insertBefore(goalDiv, container.nextSibling);
-            goalEl = document.getElementById('profile-goal');
+    // Устанавливаем выбранную радиокнопку цели в профиле
+    const weightLossRadio = document.querySelector('input[name="profile-goal"][value="weight_loss"]');
+    const wellnessRadio = document.querySelector('input[name="profile-goal"][value="wellness"]');
+    
+    if (weightLossRadio && wellnessRadio) {
+        if (profile?.fitness_goal === 'wellness') {
+            wellnessRadio.checked = true;
+        } else {
+            weightLossRadio.checked = true;
         }
     }
     
-    if (goalEl) {
-        const goalText = profile?.fitness_goal === 'wellness' ? '🌿 Здоровье и хорошее самочувствие' : '🔥 Активное снижение веса';
-        goalEl.innerHTML = goalText;
-    }
+    const isWellnessMode = profile?.fitness_goal === 'wellness';
     
-    // Отображаем последний вес из истории (ТОЛЬКО для режима снижения веса)
-    const weightEl = document.getElementById('profile-weight');
-    const weightContainer = document.getElementById('profile-weight-container');
+    // Отображаем или скрываем секцию веса
+    const weightSection = document.getElementById('weight-section');
     const weightChartContainer = document.getElementById('weight-chart-container');
+    const profileWeightContainer = document.getElementById('profile-weight-container');
     
-    const isWeightLossMode = profile?.fitness_goal !== 'wellness';
-    
-    if (isWeightLossMode) {
+    if (isWellnessMode) {
+        if (weightSection) weightSection.style.display = 'none';
+        if (weightChartContainer) weightChartContainer.style.display = 'none';
+    } else {
+        if (weightSection) weightSection.style.display = 'block';
+        if (weightChartContainer) weightChartContainer.style.display = 'block';
+        
+        // Отображаем последний вес из истории
         const weightHistory = await window.app.loadWeightHistory();
+        const weightEl = document.getElementById('profile-weight');
+        
         if (weightEl) {
             if (weightHistory && weightHistory.length > 0) {
                 const lastWeight = weightHistory[weightHistory.length - 1].weight;
@@ -85,25 +85,12 @@ window.app.loadMyProfile = async function() {
             }
         }
         
-        if (weightContainer) {
-            weightContainer.style.cursor = 'pointer';
-            weightContainer.onclick = () => window.app.openWeightModal();
+        if (profileWeightContainer) {
+            profileWeightContainer.style.cursor = 'pointer';
+            profileWeightContainer.onclick = () => window.app.openWeightModal();
         }
         
-        if (weightChartContainer) {
-            weightChartContainer.style.display = 'block';
-            await window.app.renderWeightChart();
-        }
-    } else {
-        // Режим "Здоровье" — скрываем вес и график
-        if (weightEl && weightContainer) {
-            weightEl.innerHTML = '—';
-            weightContainer.style.cursor = 'default';
-            weightContainer.onclick = null;
-        }
-        if (weightChartContainer) {
-            weightChartContainer.style.display = 'none';
-        }
+        await window.app.renderWeightChart();
     }
 };
 
@@ -525,58 +512,12 @@ window.app.updateWeeklyMessage = async function() {
             messageDiv.style.display = 'block';
         }
     }
-
-
-// --- Сохранение цели из профиля ---
-window.app.saveGoal = async function() {
-    if (!window.app.currentUser) {
-        alert('Пользователь не авторизован');
-        return;
-    }
-    
-    const selectedGoal = document.querySelector('input[name="profile-goal"]:checked');
-    if (!selectedGoal) {
-        alert('Выберите цель');
-        return;
-    }
-    
-    const newGoal = selectedGoal.value;
-    
-    const { error } = await window.app.sb
-        .from('profiles')
-        .update({ fitness_goal: newGoal })
-        .eq('id', window.app.currentUser.id);
-    
-    if (error) {
-        console.error('Ошибка сохранения цели:', error);
-        alert('Ошибка сохранения: ' + error.message);
-        return;
-    }
-    
-    alert('✅ Цель сохранена! Страница обновится.');
-    
-    // Обновляем интерфейс в соответствии с новой целью
-    await window.app.loadMyProfile();
-    
-    // Если открыт ежедневный отчёт — обновляем видимость блоков питания
-    if (typeof window.app.updateMealBlocksVisibility === 'function') {
-        await window.app.updateMealBlocksVisibility();
-    }
-    
-    // Обновляем сообщение недели
-    if (typeof window.app.updateWeeklyMessage === 'function') {
-        await window.app.updateWeeklyMessage();
-    }
-    
-    // Перезагружаем прогресс за неделю, если он открыт
-    if (typeof window.app.loadWeeklyProgress === 'function') {
-        await window.app.loadWeeklyProgress();
-    }
 };
 
-
 // --- Сохранение цели из профиля ---
 window.app.saveGoal = async function() {
+    console.log('saveGoal вызвана');
+    
     if (!window.app.currentUser) {
         alert('Пользователь не авторизован');
         return;
@@ -589,6 +530,7 @@ window.app.saveGoal = async function() {
     }
     
     const newGoal = selectedGoal.value;
+    console.log('Сохраняем цель:', newGoal);
     
     const { error } = await window.app.sb
         .from('profiles')
@@ -620,6 +562,4 @@ window.app.saveGoal = async function() {
     if (typeof window.app.loadWeeklyProgress === 'function') {
         await window.app.loadWeeklyProgress();
     }
-};
-    
 };
