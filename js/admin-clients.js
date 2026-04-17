@@ -210,10 +210,16 @@ window.app.showClientDetails = async function(client) {
         const isWellnessMode = client.fitness_goal === 'wellness';
         
         let actualStrength = 0, actualCardio = 0, socialDays = 0;
+        let lowStepsDays = 0;
+        let totalDays = 0;
+        
         weeklyReports?.forEach(r => {
+            totalDays++;
             if (r.training_type === 'strength') actualStrength++;
             if (r.training_type === 'cardio') actualCardio++;
             if (r.social_event) socialDays++;
+            const normForDay = r.norm_steps || dailyNorm;
+            if ((r.steps || 0) < normForDay) lowStepsDays++;
         });
         
         const strengthOk = actualStrength >= targetStrength;
