@@ -37,6 +37,7 @@ window.app.loadClientsList = async function() {
 };
 
 // --- Отображение списка клиентов ---
+// --- Отображение списка клиентов ---
 window.app.renderClientsList = async function() {
     const container = document.getElementById('admin-clients-list');
     if (!container) return;
@@ -50,13 +51,25 @@ window.app.renderClientsList = async function() {
         return;
     }
     
+    // ✅ ОДИН ЗАПРОС для подсчёта записей всех клиентов
+    const { data: allBookings, error } = await window.app.sb
+        .from('bookings')
+        .select('user_id');
+    
+    if (error) {
+        console.error('Ошибка загрузки записей:', error);
+    }
+    
+    // Считаем количество записей для каждого клиента
+    const bookingCounts = {};
+    allBookings?.forEach(booking => {
+        bookingCounts[booking.user_id] = (bookingCounts[booking.user_id] || 0) + 1;
+    });
+    
     container.innerHTML = '';
     
     for (let client of clients) {
-        const { count } = await window.app.sb
-            .from('bookings')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', client.id);
+        const count = bookingCounts[client.id] || 0;
         
         const clientCard = document.createElement('div');
         clientCard.style.cssText = 'border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: #fff; cursor: pointer; transition: all 0.2s;';
@@ -74,7 +87,7 @@ window.app.renderClientsList = async function() {
                     ${client.weight ? `<br><span style="color: #36B647; font-size: 13px;">⚖️ ${client.weight} кг</span>` : ''}
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <span style="background: #36B647; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px;">${count || 0} записей</span>
+                    <span style="background: #36B647; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px;">${count} записей</span>
                     <button class="delete-client-btn" data-id="${client.id}" data-name="${escapeHtml(client.name || client.phone || 'клиента')}" style="background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
                 </div>
             </div>
