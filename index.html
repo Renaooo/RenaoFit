@@ -8,7 +8,7 @@
 </head>
 <body>
     <div id="app">
-        <!-- Экран авторизации -->
+        <!-- ================= ЭКРАН АВТОРИЗАЦИИ ================= -->
         <div id="auth-screen" class="screen active">
             <div class="container">
                 <h1>Твой тренер</h1>
@@ -18,7 +18,7 @@
             </div>
         </div>
 
-        <!-- Главное меню -->
+        <!-- ================= ГЛАВНОЕ МЕНЮ ================= -->
         <div id="menu-screen" class="screen">
             <div class="container">
                 <h2>Привет, <span id="user-name"></span></h2>
@@ -31,7 +31,7 @@
             </div>
         </div>
 
-        <!-- Экран записи -->
+        <!-- ================= ЭКРАН ЗАПИСИ ================= -->
         <div id="booking-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
@@ -41,7 +41,7 @@
             </div>
         </div>
 
-        <!-- Экран моих записей -->
+        <!-- ================= ЭКРАН МОИХ ЗАПИСЕЙ ================= -->
         <div id="my-bookings-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
@@ -50,7 +50,7 @@
             </div>
         </div>
 
-        <!-- Экран ежедневного отчета -->
+        <!-- ================= ЭКРАН ЕЖЕДНЕВНОГО ОТЧЕТА ================= -->
         <div id="daily-report-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
@@ -97,8 +97,8 @@
                         <input type="hidden" id="social-event" value="false">
                     </div>
                     
-                    <!-- Питание до тренировки -->
-                    <div id="pre-meal-container" style="margin-bottom: 20px; display: none;">
+                    <!-- Питание до тренировки (скрывается в режиме Wellness) -->
+                    <div id="pre-meal-container" style="margin-bottom: 20px;">
                         <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">🍽️ Питание до тренировки (5-6 часов воздержания от пищи, только вода или вареная крупа)</label>
                         <div style="display: flex; gap: 10px;">
                             <button id="pre-yes" class="btn secondary" style="flex: 1;">✅ Соблюдено</button>
@@ -107,8 +107,8 @@
                         <input type="hidden" id="pre-meal" value="">
                     </div>
                     
-                    <!-- Питание после тренировки -->
-                    <div id="post-meal-container" style="margin-bottom: 20px; display: none;">
+                    <!-- Питание после тренировки (скрывается в режиме Wellness) -->
+                    <div id="post-meal-container" style="margin-bottom: 20px;">
                         <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">🍽️ Питание после тренировки (кефир/протеин через 40-60 мин)</label>
                         <div style="display: flex; gap: 10px;">
                             <button id="post-yes" class="btn secondary" style="flex: 1;">✅ Соблюдено</button>
@@ -141,7 +141,7 @@
             </div>
         </div>
 
-        <!-- Экран профиля -->
+        <!-- ================= ЭКРАН ПРОФИЛЯ ================= -->
         <div id="profile-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
@@ -151,12 +151,26 @@
                     <div id="weekly-message-text" style="font-size: 14px; line-height: 1.4;"></div>
                 </div>
                 
+                <!-- ⭐ НОВЫЙ БЛОК: ВЫБОР ЦЕЛИ В ПРОФИЛЕ ⭐ -->
+                <div style="background: #f8f9fa; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+                    <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">🎯 Моя цель</label>
+                    <div style="display: flex; gap: 20px; margin-top: 8px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="radio" name="profile-goal" value="weight_loss"> 🔥 Активное снижение веса
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="radio" name="profile-goal" value="wellness"> 🌿 Здоровье и хорошее самочувствие
+                        </label>
+                    </div>
+                    <button id="save-goal-btn" class="btn primary" style="margin-top: 15px; background: #36B647; padding: 10px;">💾 Сохранить цель</button>
+                </div>
+                
                 <div style="background: #f8f9fa; border-radius: 16px; padding: 20px;">
                     <div style="margin-bottom: 20px;">
                         <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">Абонемент</label>
                         <div style="font-size: 18px; font-weight: 500;" id="profile-subscription">—</div>
                     </div>
-                    <div>
+                    <div id="weight-section">
                         <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">Вес</label>
                         <div style="font-size: 18px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;" id="profile-weight-container">
                             <span id="profile-weight">—</span>
@@ -172,7 +186,7 @@
             </div>
         </div>
 
-        <!-- Админ панель -->
+        <!-- ================= АДМИН ПАНЕЛЬ ================= -->
         <div id="admin-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
