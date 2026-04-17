@@ -389,7 +389,18 @@ window.app.renderWeightChart = async function() {
 };
 
 // --- Обновление мотивационного сообщения (адаптировано под цель) ---
+// --- Обновление мотивационного сообщения (только в понедельник за ПРОШЕДШУЮ неделю) ---
 window.app.updateWeeklyMessage = async function() {
+    const today = new Date();
+    const isMonday = today.getDay() === 1;
+    
+    // Если не понедельник — скрываем сообщение
+    if (!isMonday) {
+        const messageDiv = document.getElementById('weekly-message');
+        if (messageDiv) messageDiv.style.display = 'none';
+        return;
+    }
+    
     const { data: profile } = await window.app.sb
         .from('profiles')
         .select('fitness_goal, min_steps, target_strength_weekly, target_cardio_weekly')
@@ -401,27 +412,28 @@ window.app.updateWeeklyMessage = async function() {
     const targetCardio = profile?.target_cardio_weekly || 1;
     const dailyNorm = profile?.min_steps || 10000;
     
-    const today = new Date();
-    const startOfWeek = window.app.getMoscowStartOfWeek?.(today) || (() => {
-        const mskDate = new Date(today.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-        const day = mskDate.getDay();
-        const diff = (day === 0 ? 6 : day - 1);
-        mskDate.setDate(mskDate.getDate() - diff);
-        mskDate.setHours(0, 0, 0, 0);
-        return mskDate;
-    })();
+    // Берём ПРОШЕДШУЮ неделю (понедельник прошлой недели - воскресенье)
+    const startOfLastWeek = new Date(today);
+    const dayOfWeek = today.getDay();
+    const daysToLastMonday = (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + 7;
+    startOfLastWeek.setDate(today.getDate() - daysToLastMonday);
+    startOfLastWeek.setHours(0, 0, 0, 0);
     
-    const startDateStr = startOfWeek.toISOString().split('T')[0];
-    const endDate = new Date(startOfWeek);
-    endDate.setDate(startOfWeek.getDate() + 6);
-    const endDateStr = endDate.toISOString().split('T')[0];
+    const endOfLastWeek = new Date(startOfLastWeek);
+    endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+    
+    const startDateStr = startOfLastWeek.toISOString().split('T')[0];
+    const endDateStr = endOfLastWeek.toISOString().split('T')[0];
+    
+    console.log('Анализируем прошлую неделю:', startDateStr, '-', endDateStr);
     
     const { data: reports } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
         .gte('report_date', startDateStr)
-        .lte('report_date', endDateStr);
+        .lte('report_date', endDateStr)
+        .order('report_date');
     
     let actualStrength = 0, actualCardio = 0, socialDays = 0;
     let lowStepsDays = 0;
@@ -446,14 +458,27 @@ window.app.updateWeeklyMessage = async function() {
     
     if (!messageDiv || !messageText) return;
     
+    // Форматируем даты для отображения
+    const weekStartFormatted = startOfLastWeek.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
+    const weekEndFormatted = endOfLastWeek.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
+    
+    if (totalDays === 0) {
+        // Нет отчётов за прошлую неделю
+        messageDiv.style.background = '#fff3e0';
+        messageDiv.style.borderLeftColor = '#ff9800';
+        messageText.innerHTML = `📋 <strong>Нет отчётов за неделю ${weekStartFormatted} - ${weekEndFormatted}</strong><br><br>Заполняйте ежедневные отчёты, чтобы видеть свой прогресс! 📝`;
+        messageDiv.style.display = 'block';
+        return;
+    }
+    
     if (isWellnessMode) {
-        // Режим "Здоровье" — хвалим за выполнение рекомендаций
+        // Режим "Здоровье" — анализ выполнения рекомендаций
         const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
         
         if (allCompliant) {
             messageDiv.style.background = '#e8f5e9';
             messageDiv.style.borderLeftColor = '#36B647';
-            messageText.innerHTML = `🌟 <strong>Отличная неделя!</strong> Ты выполнил(а) все рекомендации: шаги, тренировки и питание (без соц. событий)! Так держать! 💪✨`;
+            messageText.innerHTML = `🌟 <strong>Отличная неделя (${weekStartFormatted} - ${weekEndFormatted})!</strong><br><br>Ты выполнил(а) все рекомендации: шаги, тренировки и без соц. событий! Так держать! 💪✨`;
             messageDiv.style.display = 'block';
         } else {
             let failures = [];
@@ -464,33 +489,38 @@ window.app.updateWeeklyMessage = async function() {
             
             messageDiv.style.background = '#fff3e0';
             messageDiv.style.borderLeftColor = '#ff9800';
-            messageText.innerHTML = `📋 <strong>На этой неделе не все рекомендации выполнены.</strong><br><br>Давай посмотрим, над чем поработать:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На следующей неделе ты точно справишься! 🔥`;
+            messageText.innerHTML = `📋 <strong>На неделе ${weekStartFormatted} - ${weekEndFormatted} не все рекомендации выполнены.</strong><br><br>Давай посмотрим, над чем поработать:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе ты точно справишься! 🔥`;
             messageDiv.style.display = 'block';
         }
     } else {
-        // Режим "Снижение веса" — анализируем вес
+        // Режим "Снижение веса" — анализ веса
         const { data: weights } = await window.app.sb
             .from('weight_history')
             .select('weight, weigh_date')
             .eq('user_id', window.app.currentUser.id)
+            .eq('weigh_date', startDateStr)
             .order('weigh_date', { ascending: false })
             .limit(2);
         
-        if (!weights || weights.length < 2) {
-            messageDiv.style.display = 'none';
+        // Для режима снижения веса нужно два взвешивания: начало и конец недели
+        const startWeightData = weights?.find(w => w.weigh_date === startDateStr);
+        const endWeightData = weights?.find(w => w.weigh_date === endDateStr);
+        
+        if (!startWeightData || !endWeightData) {
+            messageDiv.style.background = '#e3f2fd';
+            messageDiv.style.borderLeftColor = '#36B647';
+            messageText.innerHTML = `📊 <strong>Нет данных взвешивания за неделю ${weekStartFormatted} - ${weekEndFormatted}</strong><br><br>Взвешивайтесь по понедельникам утром, чтобы отслеживать прогресс. ⚖️`;
+            messageDiv.style.display = 'block';
             return;
         }
         
-        const currentWeight = weights[0].weight;
-        const prevWeight = weights[1].weight;
-        const weightChange = currentWeight - prevWeight;
-        
+        const weightChange = endWeightData.weight - startWeightData.weight;
         const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
         
         if (weightChange < -0.2) {
             messageDiv.style.background = '#e8f5e9';
             messageDiv.style.borderLeftColor = '#36B647';
-            messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел(а) на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
+            messageText.innerHTML = `🎉 <strong>Поздравляю за неделю ${weekStartFormatted} - ${weekEndFormatted}!</strong> Ты похудел(а) на ${Math.abs(weightChange).toFixed(1)} кг! Отличная работа! Продолжай в том же духе 💪`;
             messageDiv.style.display = 'block';
         } 
         else if (!allCompliant) {
@@ -502,13 +532,13 @@ window.app.updateWeeklyMessage = async function() {
             
             messageDiv.style.background = '#fff3e0';
             messageDiv.style.borderLeftColor = '#ff9800';
-            messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
+            messageText.innerHTML = `⚠️ <strong>На неделе ${weekStartFormatted} - ${weekEndFormatted} не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
             messageDiv.style.display = 'block';
         } 
         else {
             messageDiv.style.background = '#e3f2fd';
             messageDiv.style.borderLeftColor = '#36B647';
-            messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Главное — ты не сдаешься! Продолжай в том же ритме, результат обязательно придет. 🙌`;
+            messageText.innerHTML = `🤔 <strong>На неделе ${weekStartFormatted} - ${weekEndFormatted} отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Главное — ты не сдаешься! Продолжай в том же ритме, результат обязательно придет. 🙌`;
             messageDiv.style.display = 'block';
         }
     }
