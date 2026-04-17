@@ -28,6 +28,8 @@ window.app.loginWithPhone = async function(phone, name) {
         password: password
     });
     
+    let isNewUser = false;
+    
     if (error && error.message.includes('Invalid login credentials')) {
         console.log('Пользователь не найден, регистрируем...');
         const { data: signUpData, error: signUpError } = await window.app.sb.auth.signUp({
@@ -40,13 +42,26 @@ window.app.loginWithPhone = async function(phone, name) {
         
         if (signUpError) throw signUpError;
         data = signUpData;
+        isNewUser = true;
     } else if (error && !error.message.includes('Invalid login credentials')) {
         throw error;
     }
     
+    // При регистрации нового пользователя — сохраняем fitness_goal со значением по умолчанию
+    // При входе существующего — обновляем только телефон/имя, цель не трогаем (оставляем как есть)
+    const profileData = {
+        id: data.user.id,
+        phone: phone,
+        name: name
+    };
+    
+    if (isNewUser) {
+        profileData.fitness_goal = 'weight_loss';  // Значение по умолчанию
+    }
+    
     const { error: profileError } = await window.app.sb
         .from('profiles')
-        .upsert({ id: data.user.id, phone: phone, name: name });
+        .upsert(profileData);
     
     if (profileError) console.error('Ошибка сохранения профиля:', profileError);
     
