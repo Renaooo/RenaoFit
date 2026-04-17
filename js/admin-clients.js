@@ -50,6 +50,10 @@ window.app.renderClientsList = async function() {
             .select('*', { count: 'exact', head: true })
             .eq('user_id', client.id);
         
+        // Отображение цели
+        const goalText = client.fitness_goal === 'weight_loss' ? '🎯 Активное снижение веса' : '🌿 Здоровье и хорошее самочувствие';
+        const goalColor = client.fitness_goal === 'weight_loss' ? '#36B647' : '#007aff';
+        
         const clientCard = document.createElement('div');
         clientCard.style.cssText = 'border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: #fff; cursor: pointer; transition: all 0.2s;';
         clientCard.onmouseover = () => clientCard.style.backgroundColor = '#f8f9fa';
@@ -59,7 +63,8 @@ window.app.renderClientsList = async function() {
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="flex: 1;">
                     <strong style="font-size: 16px;">👤 ${escapeHtml(client.name) || 'Без имени'}</strong><br>
-                    <span style="color: #666; font-size: 14px;">📞 ${escapeHtml(client.phone) || 'нет телефона'}</span>
+                    <span style="color: #666; font-size: 14px;">📞 ${escapeHtml(client.phone) || 'нет телефона'}</span><br>
+                    <span style="color: ${goalColor}; font-size: 12px;">${goalText}</span>
                     ${client.weight ? `<br><span style="color: #36B647; font-size: 13px;">⚖️ ${client.weight} кг</span>` : ''}
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -196,6 +201,8 @@ window.app.showClientDetails = async function(client) {
         const targetStrength = client.target_strength_weekly || 3;
         const targetCardio = client.target_cardio_weekly || 1;
         const dailyNorm = client.min_steps || 10000;
+        const fitnessGoal = client.fitness_goal || 'weight_loss';
+        const isWeightLossGoal = fitnessGoal === 'weight_loss';
         
         let actualStrength = 0, actualCardio = 0, socialDays = 0;
         weeklyReports?.forEach(r => {
@@ -232,6 +239,11 @@ window.app.showClientDetails = async function(client) {
         }
         stepsCirclesHtml += '</div>';
         
+        // Для цели "Здоровье" не показываем норму шагов
+        const stepsTitleHtml = isWeightLossGoal 
+            ? `<div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги (норма ${dailyNorm.toLocaleString()})</div>`
+            : `<div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги</div>`;
+        
         return { html: `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <button class="protocol-prev-week" style="background: #36B647; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; ${offset <= -2 ? 'opacity: 0.5; pointer-events: none;' : ''}">← Пред. неделя</button>
@@ -243,7 +255,7 @@ window.app.showClientDetails = async function(client) {
                 <h3 style="margin: 0 0 12px 0; font-size: 16px;">📋 Протокол за эту неделю</h3>
                 
                 <div style="margin-bottom: 15px;">
-                    <div style="font-size: 12px; color: #666; margin-bottom: 8px;">👣 Шаги (норма ${dailyNorm.toLocaleString()})</div>
+                    ${stepsTitleHtml}
                     ${stepsCirclesHtml}
                 </div>
                 
@@ -266,26 +278,30 @@ window.app.showClientDetails = async function(client) {
         `, reports: weeklyReports };
     }
     
-    // Загружаем историю весов клиента (один раз, не зависит от недели)
-    const { data: weightHistory } = await window.app.sb
-        .from('weight_history')
-        .select('weight, weigh_date')
-        .eq('user_id', client.id)
-        .order('weigh_date', { ascending: false })
-        .limit(5);
-    
+    // Загружаем историю весов клиента (только если цель снижение веса)
     let weightHistoryHtml = '';
-    if (weightHistory && weightHistory.length > 0) {
-        weightHistoryHtml = `
-            <div style="background: #f8f9fa; border-radius: 12px; padding: 12px; margin: 15px 0;">
-                <strong>📊 История весов:</strong>
-                <div style="margin-top: 8px;">
-        `;
-        for (let w of weightHistory) {
-            const date = new Date(w.weigh_date).toLocaleDateString();
-            weightHistoryHtml += `<div style="font-size: 14px; padding: 4px 0;">${date}: <strong>${w.weight} кг</strong></div>`;
+    const isWeightLossClient = client.fitness_goal === 'weight_loss';
+    
+    if (isWeightLossClient) {
+        const { data: weightHistory } = await window.app.sb
+            .from('weight_history')
+            .select('weight, weigh_date')
+            .eq('user_id', client.id)
+            .order('weigh_date', { ascending: false })
+            .limit(5);
+        
+        if (weightHistory && weightHistory.length > 0) {
+            weightHistoryHtml = `
+                <div style="background: #f8f9fa; border-radius: 12px; padding: 12px; margin: 15px 0;">
+                    <strong>📊 История весов:</strong>
+                    <div style="margin-top: 8px;">
+            `;
+            for (let w of weightHistory) {
+                const date = new Date(w.weigh_date).toLocaleDateString();
+                weightHistoryHtml += `<div style="font-size: 14px; padding: 4px 0;">${date}: <strong>${w.weight} кг</strong></div>`;
+            }
+            weightHistoryHtml += `</div></div>`;
         }
-        weightHistoryHtml += `</div></div>`;
     }
     
     // Формируем HTML для записей с разделением на утро/вечер
@@ -337,6 +353,9 @@ window.app.showClientDetails = async function(client) {
         bookingsHtml = '<p style="text-align: center; padding: 20px;">Нет записей</p>';
     }
     
+    const goalText = client.fitness_goal === 'weight_loss' ? '🎯 Активное снижение веса' : '🌿 Здоровье и хорошее самочувствие';
+    const goalColor = client.fitness_goal === 'weight_loss' ? '#36B647' : '#007aff';
+    
     // Загружаем начальный протокол
     let currentOffset = 0;
     let protocolData = await loadProtocolForWeek(currentOffset);
@@ -349,7 +368,8 @@ window.app.showClientDetails = async function(client) {
         
         <div style="margin-bottom: 20px;">
             <p><strong>📞 Телефон:</strong> ${escapeHtml(client.phone) || 'не указан'}</p>
-            <p><strong>⚖️ Текущий вес:</strong> ${client.weight ? client.weight + ' кг' : 'не указан'}</p>
+            <p><strong>🎯 Цель:</strong> <span style="color: ${goalColor};">${goalText}</span></p>
+            ${isWeightLossClient ? `<p><strong>⚖️ Текущий вес:</strong> ${client.weight ? client.weight + ' кг' : 'не указан'}</p>` : ''}
         </div>
         
         ${weightHistoryHtml}
@@ -387,6 +407,14 @@ window.app.showClientDetails = async function(client) {
             <div style="margin-bottom: 10px;">
                 <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Норма кардио в неделю</label>
                 <input type="number" id="edit-target-cardio" value="${client.target_cardio_weekly || 1}" placeholder="например: 1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Цель</label>
+                <select id="edit-fitness-goal" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px;">
+                    <option value="weight_loss" ${client.fitness_goal === 'weight_loss' ? 'selected' : ''}>🎯 Активное снижение веса</option>
+                    <option value="wellness" ${client.fitness_goal === 'wellness' ? 'selected' : ''}>🌿 Здоровье и хорошее самочувствие</option>
+                </select>
             </div>
             
             <button id="save-profile-btn" style="background: #36B647; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 5px;">💾 Сохранить</button>
@@ -483,6 +511,7 @@ window.app.showClientDetails = async function(client) {
         const minSteps = modalContent.querySelector('#edit-min-steps')?.value;
         const targetStrengthWeekly = modalContent.querySelector('#edit-target-strength')?.value;
         const targetCardioWeekly = modalContent.querySelector('#edit-target-cardio')?.value;
+        const fitnessGoal = modalContent.querySelector('#edit-fitness-goal')?.value;
         
         const updateData = {};
         if (weight && weight !== '') updateData.weight = parseFloat(weight);
@@ -490,9 +519,10 @@ window.app.showClientDetails = async function(client) {
         if (minSteps && minSteps !== '') updateData.min_steps = parseInt(minSteps);
         if (targetStrengthWeekly && targetStrengthWeekly !== '') updateData.target_strength_weekly = parseInt(targetStrengthWeekly);
         if (targetCardioWeekly && targetCardioWeekly !== '') updateData.target_cardio_weekly = parseInt(targetCardioWeekly);
+        if (fitnessGoal && fitnessGoal !== '') updateData.fitness_goal = fitnessGoal;
         
-        // Если вес изменился, добавляем запись в историю
-        if (weight && weight !== client.weight) {
+        // Если вес изменился и цель снижение веса, добавляем запись в историю
+        if (weight && weight !== client.weight && fitnessGoal === 'weight_loss') {
             await window.app.sb.from('weight_history').insert({
                 user_id: client.id,
                 weight: parseFloat(weight),
