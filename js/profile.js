@@ -1,5 +1,6 @@
 // ============================================
-// МОДУЛЬ ПРОФИЛЯ (ВЕС, ГРАФИК, МОТИВАЦИОННЫЕ СООБЩЕНИЯ, ЦЕЛЬ)
+// МОДУЛЬ ПРОФИЛЯ (ВЕС, ГРАФИК, МОТИВАЦИОННЫЕ СООБЩЕНИЯ)
+// ДОБАВЛЕНА ЦЕЛЬ "ЗДОРОВЬЕ И ХОРОШЕЕ САМОЧУВСТВИЕ"
 // ============================================
 
 // --- Загрузка профиля пользователя ---
@@ -8,7 +9,7 @@ window.app.loadMyProfile = async function() {
     
     const { data: profile, error } = await window.app.sb
         .from('profiles')
-        .select('weight, subscription_until, fitness_goal')
+        .select('weight, subscription_until, fitness_goal, min_steps, target_strength_weekly, target_cardio_weekly')
         .eq('id', window.app.currentUser.id)
         .single();
     
@@ -16,6 +17,9 @@ window.app.loadMyProfile = async function() {
         console.error('Ошибка загрузки профиля:', error);
         return;
     }
+    
+    // Сохраняем цель в глобальную переменную для других модулей
+    window.app.currentUserFitnessGoal = profile?.fitness_goal || 'weight_loss';
     
     // Отображаем абонемент
     const subscriptionEl = document.getElementById('profile-subscription');
@@ -40,82 +44,70 @@ window.app.loadMyProfile = async function() {
         }
     }
     
-    // Отображаем цель
-    const goalEl = document.getElementById('profile-goal');
-    if (goalEl) {
-        const goal = profile?.fitness_goal || 'weight_loss';
-        goalEl.value = goal;
-    }
-    
-    // Отображаем вес (только для цели "Активное снижение веса")
-    const weightContainer = document.getElementById('profile-weight-container');
-    const weightEl = document.getElementById('profile-weight');
-    const weightHistory = await window.app.loadWeightHistory();
-    
-    const goal = profile?.fitness_goal || 'weight_loss';
-    const isWeightLossGoal = goal === 'weight_loss';
-    
-    if (weightContainer) {
-        weightContainer.style.display = isWeightLossGoal ? 'flex' : 'none';
-    }
-    
-    if (weightEl && isWeightLossGoal) {
-        if (weightHistory && weightHistory.length > 0) {
-            const lastWeight = weightHistory[weightHistory.length - 1].weight;
-            weightEl.innerHTML = `${lastWeight} кг`;
-            weightEl.style.color = '#1e1e1e';
-        } else {
-            weightEl.innerHTML = '—';
-            weightEl.style.color = '#666';
+    // Отображаем цель в профиле (добавим новый элемент)
+    let goalEl = document.getElementById('profile-goal');
+    if (!goalEl) {
+        const container = document.querySelector('#profile-screen .container > div:first-child');
+        if (container && subscriptionEl) {
+            const goalDiv = document.createElement('div');
+            goalDiv.style.cssText = 'background: #f8f9fa; border-radius: 16px; padding: 20px; margin-bottom: 20px;';
+            goalDiv.innerHTML = `
+                <label style="display: block; color: #666; font-size: 14px; margin-bottom: 5px;">🎯 Моя цель</label>
+                <div style="font-size: 18px; font-weight: 500;" id="profile-goal"></div>
+            `;
+            container.parentNode.insertBefore(goalDiv, container.nextSibling);
+            goalEl = document.getElementById('profile-goal');
         }
     }
     
-    // Делаем вес кликабельным только для цели снижения веса
-    if (weightContainer && isWeightLossGoal) {
-        weightContainer.style.cursor = 'pointer';
-        weightContainer.onclick = () => window.app.openWeightModal();
+    if (goalEl) {
+        const goalText = profile?.fitness_goal === 'wellness' ? '🌿 Здоровье и хорошее самочувствие' : '🔥 Активное снижение веса';
+        goalEl.innerHTML = goalText;
     }
     
-    // Отрисовываем график (только для цели снижения веса)
-    if (isWeightLossGoal) {
-        await window.app.renderWeightChart();
+    // Отображаем последний вес из истории (ТОЛЬКО для режима снижения веса)
+    const weightEl = document.getElementById('profile-weight');
+    const weightContainer = document.getElementById('profile-weight-container');
+    const weightChartContainer = document.getElementById('weight-chart-container');
+    
+    const isWeightLossMode = profile?.fitness_goal !== 'wellness';
+    
+    if (isWeightLossMode) {
+        const weightHistory = await window.app.loadWeightHistory();
+        if (weightEl) {
+            if (weightHistory && weightHistory.length > 0) {
+                const lastWeight = weightHistory[weightHistory.length - 1].weight;
+                weightEl.innerHTML = `${lastWeight} кг`;
+                weightEl.style.color = '#1e1e1e';
+            } else {
+                weightEl.innerHTML = '—';
+                weightEl.style.color = '#666';
+            }
+        }
+        
+        if (weightContainer) {
+            weightContainer.style.cursor = 'pointer';
+            weightContainer.onclick = () => window.app.openWeightModal();
+        }
+        
+        if (weightChartContainer) {
+            weightChartContainer.style.display = 'block';
+            await window.app.renderWeightChart();
+        }
     } else {
-        const chartContainer = document.getElementById('weight-chart-container');
-        if (chartContainer) chartContainer.style.display = 'none';
+        // Режим "Здоровье" — скрываем вес и график
+        if (weightEl && weightContainer) {
+            weightEl.innerHTML = '—';
+            weightContainer.style.cursor = 'default';
+            weightContainer.onclick = null;
+        }
+        if (weightChartContainer) {
+            weightChartContainer.style.display = 'none';
+        }
     }
 };
 
-// --- Сохранение цели пользователя ---
-window.app.saveFitnessGoal = async function(goal) {
-    if (!window.app.currentUser) return false;
-    
-    const { error } = await window.app.sb
-        .from('profiles')
-        .update({ fitness_goal: goal })
-        .eq('id', window.app.currentUser.id);
-    
-    if (error) {
-        console.error('Ошибка сохранения цели:', error);
-        return false;
-    }
-    
-    return true;
-};
-
-// --- Загрузка цели пользователя ---
-window.app.loadFitnessGoal = async function() {
-    if (!window.app.currentUser) return 'weight_loss';
-    
-    const { data: profile } = await window.app.sb
-        .from('profiles')
-        .select('fitness_goal')
-        .eq('id', window.app.currentUser.id)
-        .single();
-    
-    return profile?.fitness_goal || 'weight_loss';
-};
-
-// --- Загрузка истории веса ---
+// --- Загрузка истории веса (только для режима снижения) ---
 window.app.loadWeightHistory = async function() {
     if (!window.app.currentUser) return [];
     
@@ -133,13 +125,19 @@ window.app.loadWeightHistory = async function() {
     return data || [];
 };
 
-// --- Сохранение нового веса (только для цели снижения веса) ---
+// --- Сохранение нового веса (только для режима снижения) ---
 window.app.saveWeight = async function(weight) {
     if (!window.app.currentUser) return false;
     
-    const goal = await window.app.loadFitnessGoal();
-    if (goal !== 'weight_loss') {
-        alert('Эта функция доступна только при цели "Активное снижение веса"');
+    // Проверка режима
+    const { data: profile } = await window.app.sb
+        .from('profiles')
+        .select('fitness_goal')
+        .eq('id', window.app.currentUser.id)
+        .single();
+    
+    if (profile?.fitness_goal === 'wellness') {
+        alert('В режиме "Здоровье" взвешивание не требуется');
         return false;
     }
     
@@ -153,14 +151,14 @@ window.app.saveWeight = async function(weight) {
     
     const weighDate = today.toISOString().split('T')[0];
     
-    const { data: profile } = await window.app.sb
+    const { data: profileData } = await window.app.sb
         .from('profiles')
         .select('target_strength_weekly, target_cardio_weekly')
         .eq('id', window.app.currentUser.id)
         .single();
     
-    const targetStrength = profile?.target_strength_weekly || 3;
-    const targetCardio = profile?.target_cardio_weekly || 1;
+    const targetStrength = profileData?.target_strength_weekly || 3;
+    const targetCardio = profileData?.target_cardio_weekly || 1;
     
     const { error: historyError } = await window.app.sb
         .from('weight_history')
@@ -204,9 +202,15 @@ window.app.canAddWeight = function(history) {
 
 // --- Открытие модального окна для взвешивания ---
 window.app.openWeightModal = async function() {
-    const goal = await window.app.loadFitnessGoal();
-    if (goal !== 'weight_loss') {
-        alert('Взвешивание доступно только при цели "Активное снижение веса"');
+    // Проверка режима
+    const { data: profile } = await window.app.sb
+        .from('profiles')
+        .select('fitness_goal')
+        .eq('id', window.app.currentUser.id)
+        .single();
+    
+    if (profile?.fitness_goal === 'wellness') {
+        alert('В режиме "Здоровье" взвешивание не требуется');
         return;
     }
     
@@ -292,8 +296,16 @@ window.app.openWeightModal = async function() {
 
 // --- Отрисовка графика веса ---
 window.app.renderWeightChart = async function() {
-    const goal = await window.app.loadFitnessGoal();
-    if (goal !== 'weight_loss') return;
+    // Проверка режима
+    const { data: profile } = await window.app.sb
+        .from('profiles')
+        .select('fitness_goal')
+        .eq('id', window.app.currentUser.id)
+        .single();
+    
+    if (profile?.fitness_goal === 'wellness') {
+        return;
+    }
     
     const history = await window.app.loadWeightHistory();
     const container = document.getElementById('weight-chart-container');
@@ -389,61 +401,40 @@ window.app.renderWeightChart = async function() {
     }
 };
 
-// --- Определение начала недели (понедельник) ---
-function getWeekStartForMessage(date) {
-    const day = date.getDay();
-    const diff = (day === 0 ? 6 : day - 1);
-    const start = new Date(date);
-    start.setDate(date.getDate() - diff);
-    start.setHours(0, 0, 0, 0);
-    return start;
-}
-
-// --- Обновление мотивационного сообщения (с учётом цели) ---
+// --- Обновление мотивационного сообщения (адаптировано под цель) ---
 window.app.updateWeeklyMessage = async function() {
+    const { data: profile } = await window.app.sb
+        .from('profiles')
+        .select('fitness_goal, min_steps, target_strength_weekly, target_cardio_weekly')
+        .eq('id', window.app.currentUser.id)
+        .single();
+    
+    const isWellnessMode = profile?.fitness_goal === 'wellness';
+    const targetStrength = profile?.target_strength_weekly || 3;
+    const targetCardio = profile?.target_cardio_weekly || 1;
+    const dailyNorm = profile?.min_steps || 10000;
+    
     const today = new Date();
-    const goal = await window.app.loadFitnessGoal();
-    const isWeightLossGoal = goal === 'weight_loss';
+    const startOfWeek = window.app.getMoscowStartOfWeek?.(today) || (() => {
+        const mskDate = new Date(today.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+        const day = mskDate.getDay();
+        const diff = (day === 0 ? 6 : day - 1);
+        mskDate.setDate(mskDate.getDate() - diff);
+        mskDate.setHours(0, 0, 0, 0);
+        return mskDate;
+    })();
     
-    // Получаем два последних взвешивания (только для цели снижения веса)
-    let weights = null;
-    let weightChange = null;
-    
-    if (isWeightLossGoal) {
-        const { data: weightsData } = await window.app.sb
-            .from('weight_history')
-            .select('weight, weigh_date, target_strength_weekly, target_cardio_weekly')
-            .eq('user_id', window.app.currentUser.id)
-            .order('weigh_date', { ascending: false })
-            .limit(2);
-        weights = weightsData;
-        
-        if (weights && weights.length >= 2) {
-            weightChange = weights[0].weight - weights[1].weight;
-        }
-    }
-    
-    const targetStrength = weights?.[1]?.target_strength_weekly || 3;
-    const targetCardio = weights?.[1]?.target_cardio_weekly || 1;
-    
-    // Получаем данные за неделю между взвешиваниями
-    const startDate = weights?.[1]?.weigh_date || new Date(today.setDate(today.getDate() - 7)).toISOString().split('T')[0];
-    const endDate = weights?.[0]?.weigh_date || new Date().toISOString().split('T')[0];
+    const startDateStr = startOfWeek.toISOString().split('T')[0];
+    const endDate = new Date(startOfWeek);
+    endDate.setDate(startOfWeek.getDate() + 6);
+    const endDateStr = endDate.toISOString().split('T')[0];
     
     const { data: reports } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
-        .gte('report_date', startDate)
-        .lt('report_date', endDate);
-    
-    const { data: profile } = await window.app.sb
-        .from('profiles')
-        .select('min_steps')
-        .eq('id', window.app.currentUser.id)
-        .single();
-    
-    const dailyNorm = profile?.min_steps || 10000;
+        .gte('report_date', startDateStr)
+        .lte('report_date', endDateStr);
     
     let actualStrength = 0, actualCardio = 0, socialDays = 0;
     let lowStepsDays = 0;
@@ -454,27 +445,68 @@ window.app.updateWeeklyMessage = async function() {
         if (r.training_type === 'strength') actualStrength++;
         if (r.training_type === 'cardio') actualCardio++;
         if (r.social_event) socialDays++;
-        if ((r.steps || 0) < dailyNorm) lowStepsDays++;
+        const normForDay = r.norm_steps || dailyNorm;
+        if ((r.steps || 0) < normForDay) lowStepsDays++;
     });
     
     const strengthOk = actualStrength >= targetStrength;
     const cardioOk = actualCardio >= targetCardio;
     const socialOk = socialDays <= 1;
     const stepsOk = totalDays === 0 ? true : lowStepsDays === 0;
-    const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
     
     const messageDiv = document.getElementById('weekly-message');
     const messageText = document.getElementById('weekly-message-text');
     
     if (!messageDiv || !messageText) return;
     
-    // Для цели "Здоровье и хорошее самочувствие" — другое сообщение
-    if (!isWeightLossGoal) {
+    if (isWellnessMode) {
+        // Режим "Здоровье" — хвалим за выполнение рекомендаций
+        const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
+        
         if (allCompliant) {
             messageDiv.style.background = '#e8f5e9';
             messageDiv.style.borderLeftColor = '#36B647';
-            messageText.innerHTML = `🌿 <strong>Отличная работа!</strong> Ты выполнил(а) все рекомендации на этой неделе! Так держать! 💪`;
+            messageText.innerHTML = `🌟 <strong>Отличная неделя!</strong> Ты выполнил(а) все рекомендации: шаги, тренировки и питание (без соц. событий)! Так держать! 💪✨`;
+            messageDiv.style.display = 'block';
         } else {
+            let failures = [];
+            if (!stepsOk && totalDays > 0) failures.push(`👣 Шаги: в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()}`);
+            if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
+            if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${targetCardio}`);
+            if (!socialOk) failures.push(`🎉 Социальные приемы пищи: ${socialDays} дней (допустимо не более 1)`);
+            
+            messageDiv.style.background = '#fff3e0';
+            messageDiv.style.borderLeftColor = '#ff9800';
+            messageText.innerHTML = `📋 <strong>На этой неделе не все рекомендации выполнены.</strong><br><br>Давай посмотрим, над чем поработать:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На следующей неделе ты точно справишься! 🔥`;
+            messageDiv.style.display = 'block';
+        }
+    } else {
+        // Режим "Снижение веса" — анализируем вес
+        const { data: weights } = await window.app.sb
+            .from('weight_history')
+            .select('weight, weigh_date')
+            .eq('user_id', window.app.currentUser.id)
+            .order('weigh_date', { ascending: false })
+            .limit(2);
+        
+        if (!weights || weights.length < 2) {
+            messageDiv.style.display = 'none';
+            return;
+        }
+        
+        const currentWeight = weights[0].weight;
+        const prevWeight = weights[1].weight;
+        const weightChange = currentWeight - prevWeight;
+        
+        const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
+        
+        if (weightChange < -0.2) {
+            messageDiv.style.background = '#e8f5e9';
+            messageDiv.style.borderLeftColor = '#36B647';
+            messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел(а) на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
+            messageDiv.style.display = 'block';
+        } 
+        else if (!allCompliant) {
             let failures = [];
             if (!stepsOk && totalDays > 0) failures.push(`👣 Шаги: в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()}`);
             if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
@@ -483,64 +515,14 @@ window.app.updateWeeklyMessage = async function() {
             
             messageDiv.style.background = '#fff3e0';
             messageDiv.style.borderLeftColor = '#ff9800';
-            messageText.innerHTML = `🌿 <strong>На этой неделе были нарушения.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На следующей неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
+            messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
+            messageDiv.style.display = 'block';
+        } 
+        else {
+            messageDiv.style.background = '#e3f2fd';
+            messageDiv.style.borderLeftColor = '#36B647';
+            messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Главное — ты не сдаешься! Продолжай в том же ритме, результат обязательно придет. 🙌`;
+            messageDiv.style.display = 'block';
         }
-        messageDiv.style.display = 'block';
-        return;
-    }
-    
-    // Для цели "Активное снижение веса" — старая логика с весом
-    if (!weights || weights.length < 2) {
-        messageDiv.style.display = 'none';
-        return;
-    }
-    
-    if (weightChange < -0.2) {
-        messageDiv.style.background = '#e8f5e9';
-        messageDiv.style.borderLeftColor = '#36B647';
-        messageText.innerHTML = `🎉 <strong>Поздравляю!</strong> Ты похудел(а) на ${Math.abs(weightChange).toFixed(1)} кг за эту неделю! Отличная работа! Продолжай в том же духе 💪`;
-        messageDiv.style.display = 'block';
-    } 
-    else if (!allCompliant) {
-        let failures = [];
-        if (!stepsOk && totalDays > 0) failures.push(`👣 Шаги: в ${lowStepsDays} днях ниже нормы ${dailyNorm.toLocaleString()}`);
-        if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
-        if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${targetCardio}`);
-        if (!socialOk) failures.push(`🎉 Социальные приемы: ${socialDays} дней`);
-        
-        messageDiv.style.background = '#fff3e0';
-        messageDiv.style.borderLeftColor = '#ff9800';
-        
-        let adjustmentText = '';
-        let newTargetCardio = targetCardio;
-        
-        if (weightChange >= -0.2 || weightChange > 0) {
-            newTargetCardio = Math.min(targetCardio + 1, 4);
-            
-            await window.app.sb
-                .from('profiles')
-                .update({
-                    target_cardio_weekly: newTargetCardio
-                })
-                .eq('id', window.app.currentUser.id);
-            
-            adjustmentText = `<br><br>📈 <strong>Корректировка плана на следующую неделю:</strong><br>• Кардио: +1 сессия → ${newTargetCardio} в неделю`;
-        }
-        
-        messageText.innerHTML = `⚠️ <strong>На этой неделе не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На следующей неделе сфокусируемся на выполнении плана. Ты справишься! 🔥${adjustmentText}`;
-        messageDiv.style.display = 'block';
-    } 
-    else {
-        messageDiv.style.background = '#e3f2fd';
-        messageDiv.style.borderLeftColor = '#36B647';
-        
-        let adjustmentText = '';
-        
-        if (weightChange >= -0.2 || weightChange > 0) {
-            adjustmentText = `<br><br>📈 <strong>Мягкая корректировка:</strong> продолжаем в том же ритме. Организм адаптируется, дадим ему время.`;
-        }
-        
-        messageText.innerHTML = `🤔 <strong>На этой неделе отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Бывает, что вес стоит из-за задержки воды, адаптации или накопления гликогена.<br><br><strong>Главное — ты не сдаешься!</strong> Продолжай в том же ритме, результат обязательно придет. Доверяй процессу 🙌${adjustmentText}`;
-        messageDiv.style.display = 'block';
     }
 };
