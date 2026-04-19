@@ -64,22 +64,12 @@ async function getBlockedSlotIds() {
                 const blockFromMinutes = startMinutes + 240;
                 const blockUntilMinutes = startMinutes - 240;
                 
-                const blockFromHour = Math.floor(blockFromMinutes / 60);
-                const blockFromMinute = blockFromMinutes % 60;
-                const blockUntilHour = Math.floor(blockUntilMinutes / 60);
-                const blockUntilMinute = blockUntilMinutes % 60;
-                
-                console.log(`\n  Запись на ${bookedSlot.hour}:${bookedSlot.minute.toString().padStart(2,'0')}`);
-                console.log(`    → блокируем слоты с ${blockFromHour}:${blockFromMinute.toString().padStart(2,'0')} и позже (утро)`);
-                console.log(`    → блокируем слоты с ${blockUntilHour}:${blockUntilMinute.toString().padStart(2,'0')} и раньше (утро)`);
-                
                 const laterSlots = slotsByDay[dayKey]?.filter(slot => {
                     const isMorning = slot.hour < 15;
                     const slotMinutes = slot.timeValue * 60;
                     return isMorning && slotMinutes >= blockFromMinutes;
                 });
                 if (laterSlots && laterSlots.length > 0) {
-                    console.log(`    ЗАБЛОКИРОВАНО (позже): ${laterSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
                     laterSlots.forEach(slot => blockedIds.add(slot.id));
                 }
                 
@@ -89,7 +79,6 @@ async function getBlockedSlotIds() {
                     return isMorning && slotMinutes <= blockUntilMinutes;
                 });
                 if (earlierSlots && earlierSlots.length > 0) {
-                    console.log(`    ЗАБЛОКИРОВАНО (раньше): ${earlierSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
                     earlierSlots.forEach(slot => blockedIds.add(slot.id));
                 }
             }
@@ -103,22 +92,12 @@ async function getBlockedSlotIds() {
                 const blockFromMinutes = startMinutes + 240;
                 const blockUntilMinutes = startMinutes - 240;
                 
-                const blockFromHour = Math.floor(blockFromMinutes / 60);
-                const blockFromMinute = blockFromMinutes % 60;
-                const blockUntilHour = Math.floor(blockUntilMinutes / 60);
-                const blockUntilMinute = blockUntilMinutes % 60;
-                
-                console.log(`\n  Запись на ${bookedSlot.hour}:${bookedSlot.minute.toString().padStart(2,'0')}`);
-                console.log(`    → блокируем слоты с ${blockFromHour}:${blockFromMinute.toString().padStart(2,'0')} и позже (вечер)`);
-                console.log(`    → блокируем слоты с ${blockUntilHour}:${blockUntilMinute.toString().padStart(2,'0')} и раньше (вечер)`);
-                
                 const laterSlots = slotsByDay[dayKey]?.filter(slot => {
                     const isEvening = slot.hour >= 15;
                     const slotMinutes = slot.timeValue * 60;
                     return isEvening && slotMinutes >= blockFromMinutes;
                 });
                 if (laterSlots && laterSlots.length > 0) {
-                    console.log(`    ЗАБЛОКИРОВАНО (позже): ${laterSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
                     laterSlots.forEach(slot => blockedIds.add(slot.id));
                 }
                 
@@ -128,7 +107,6 @@ async function getBlockedSlotIds() {
                     return isEvening && slotMinutes <= blockUntilMinutes;
                 });
                 if (earlierSlots && earlierSlots.length > 0) {
-                    console.log(`    ЗАБЛОКИРОВАНО (раньше): ${earlierSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
                     earlierSlots.forEach(slot => blockedIds.add(slot.id));
                 }
             }
@@ -138,7 +116,6 @@ async function getBlockedSlotIds() {
         console.log(`\n--- ПРАВИЛО СОСЕДНИЕ СЛОТЫ ---`);
         for (let bookedSlot of booked) {
             const startMinutes = bookedSlot.timeValue * 60;
-            console.log(`\n  Запись на ${bookedSlot.hour}:${bookedSlot.minute.toString().padStart(2,'0')}`);
             
             const adjacentSlots = [];
             slotsByDay[dayKey]?.forEach(slot => {
@@ -149,7 +126,6 @@ async function getBlockedSlotIds() {
             });
             
             if (adjacentSlots.length > 0) {
-                console.log(`    ЗАБЛОКИРОВАНО (соседние): ${adjacentSlots.map(s => `${s.hour}:${s.minute.toString().padStart(2,'0')}`).join(', ')}`);
                 adjacentSlots.forEach(slot => blockedIds.add(slot.id));
             }
         }
@@ -495,8 +471,30 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- Автоматическое обновление расписания на 8 дней ---
+// --- БЕЗОПАСНАЯ ГЕНЕРАЦИЯ СЛОТОВ (без удаления существующих, только добавление недостающих дней) ---
 window.app.ensureWeeklySchedule = async function() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 7);
+    
+    // Получаем все существующие слоты на нужный период
+    const { data: existingSlots } = await window.app.sb
+        .from('slots')
+        .select('start_time')
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString());
+    
+    // Создаём Set существующих дат (только YYYY-MM-DD)
+    const existingDates = new Set();
+    existingSlots?.forEach(slot => {
+        const date = new Date(slot.start_time);
+        const dateKey = date.toISOString().split('T')[0];
+        existingDates.add(dateKey);
+    });
+    
+    // Расписание для каждого дня недели
     const schedule = {
         1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
              evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
@@ -513,84 +511,49 @@ window.app.ensureWeeklySchedule = async function() {
         0: { morning: [], evening: [] }
     };
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    let addedCount = 0;
     
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 8);
-    
-    const { data: existingSlots } = await window.app.sb
-        .from('slots')
-        .select('start_time')
-        .gte('start_time', today.toISOString())
-        .lte('start_time', endDate.toISOString());
-    
-    if (existingSlots && existingSlots.length > 0) {
-        console.log('Слоты уже есть, пропускаем генерацию');
-        return;
-    }
-    
-    console.log('Генерируем расписание...');
-    
-    for (let day = 0; day < 8; day++) {
+    for (let day = 0; day <= 7; day++) {
         const currentDate = new Date(today);
         currentDate.setDate(today.getDate() + day);
-        const dayOfWeek = currentDate.getDay();
+        const dateKey = currentDate.toISOString().split('T')[0];
         
+        // Если на этот день уже есть слоты — пропускаем
+        if (existingDates.has(dateKey)) {
+            console.log(`День ${dateKey} уже имеет слоты, пропускаем`);
+            continue;
+        }
+        
+        const dayOfWeek = currentDate.getDay();
         const daySchedule = schedule[dayOfWeek] || schedule[1];
         const requiredTimes = [...daySchedule.morning, ...daySchedule.evening];
         
         if (requiredTimes.length === 0) continue;
+        
+        console.log(`Добавляю слоты на ${dateKey} (${dayOfWeek})`);
         
         for (let time of requiredTimes) {
             const [hours, minutes] = time.split(':');
             const startTime = new Date(currentDate);
             startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             
+            // Не создаём слоты в прошлом
             if (startTime < new Date()) continue;
             
             const endTime = new Date(startTime);
             endTime.setHours(startTime.getHours() + 1);
             
-            await window.app.sb.from('slots').insert({
+            const { error } = await window.app.sb.from('slots').insert({
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
                 is_available: true
             });
+            
+            if (!error) addedCount++;
         }
     }
     
-    console.log('Расписание готово');
-};
-
-// --- Вспомогательная функция для отображения слота в админке ---
-window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
-    const start = new Date(slot.start_time);
-    const isAvailable = slot.is_available;
-    const isBlocked = !isAvailable || isBlockedByRule;
-    
-    const div = document.createElement('div');
-    div.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: ${isBlocked ? '#f0f0f0' : '#fff'}; border-radius: 8px; border: 1px solid ${isBlocked ? '#ffcccc' : '#e0e0e0'};`;
-    div.innerHTML = `
-        <span style="${isBlocked ? 'text-decoration: line-through; color: #999;' : ''}">
-            ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
-            ${!isAvailable ? ' ❌ занят' : (isBlockedByRule ? ' 🔒 заблокирован правилами' : '')}
-        </span>
-        <button class="delete-slot-btn" data-id="${slot.id}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>
-    `;
-    
-    const deleteBtn = div.querySelector('.delete-slot-btn');
-    if (deleteBtn) {
-        deleteBtn.addEventListener('click', async () => {
-            if (confirm('Удалить этот слот?')) {
-                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
-                await window.app.sb.from('slots').delete().eq('id', slot.id);
-                await window.app.loadAdminData();
-            }
-        });
-    }
-    
-    container.appendChild(div);
+    console.log(`✅ Добавлено ${addedCount} новых слотов на недостающие дни`);
 };
 
 // --- Админ-панель: отображение слотов и записей ---
