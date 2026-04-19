@@ -2,7 +2,6 @@
 // МОДУЛЬ СЛОТОВ (С ОТЛАДКОЙ)
 // ============================================
 
-// --- Получение списка заблокированных слотов ---
 // --- Получение списка заблокированных слотов (с учётом исключений) ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
@@ -477,7 +476,7 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- БЕЗОПАСНАЯ ГЕНЕРАЦИЯ СЛОТОВ (проверка по каждому времени отдельно, без дублирования) ---
+// --- Безопасная генерация слотов (без дублирования) ---
 window.app.ensureWeeklySchedule = async function() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -485,18 +484,16 @@ window.app.ensureWeeklySchedule = async function() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 7);
     
-    // Получаем ВСЕ существующие слоты на период
     const { data: existingSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
         .gte('start_time', today.toISOString())
         .lte('start_time', endDate.toISOString());
     
-    // Создаём Set существующих временных слотов (дата+время)
     const existingSlotKeys = new Set();
     existingSlots?.forEach(slot => {
         const date = new Date(slot.start_time);
-        const key = date.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+        const key = date.toISOString().slice(0, 16);
         existingSlotKeys.add(key);
     });
     
@@ -536,10 +533,7 @@ window.app.ensureWeeklySchedule = async function() {
             
             const slotKey = startTime.toISOString().slice(0, 16);
             
-            // Проверяем, существует ли уже такой слот
-            if (existingSlotKeys.has(slotKey)) {
-                continue;
-            }
+            if (existingSlotKeys.has(slotKey)) continue;
             
             const endTime = new Date(startTime);
             endTime.setHours(startTime.getHours() + 1);
@@ -560,6 +554,64 @@ window.app.ensureWeeklySchedule = async function() {
     if (addedCount > 0) {
         console.log(`✅ Добавлено ${addedCount} новых слотов`);
     }
+};
+
+// --- Функция отображения слота в админке (с кнопкой разблокировки) ---
+window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
+    const start = new Date(slot.start_time);
+    const isAvailable = slot.is_available;
+    const isBlocked = !isAvailable || isBlockedByRule;
+    
+    const div = document.createElement('div');
+    div.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: ${isBlocked ? '#f0f0f0' : '#fff'}; border-radius: 8px; border: 1px solid ${isBlocked ? '#ffcccc' : '#e0e0e0'};`;
+    
+    let statusText = '';
+    if (!isAvailable) statusText = '❌ занят';
+    else if (isBlockedByRule) statusText = '🔒 заблокирован правилами';
+    
+    const showUnblockBtn = isBlockedByRule && isAvailable;
+    
+    div.innerHTML = `
+        <span style="${isBlocked ? 'text-decoration: line-through; color: #999;' : ''}">
+            ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+            ${statusText ? ` ${statusText}` : ''}
+        </span>
+        <div style="display: flex; gap: 6px;">
+            ${showUnblockBtn ? '<button class="unblock-slot-btn" data-id="' + slot.id + '" style="background: #36B647; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;" title="Разблокировать слот">🔓</button>' : ''}
+            <button class="delete-slot-btn" data-id="${slot.id}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>
+        </div>
+    `;
+    
+    const unblockBtn = div.querySelector('.unblock-slot-btn');
+    if (unblockBtn) {
+        unblockBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm(`Разблокировать слот на ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}?\n\nСлот будет добавлен в исключения и больше не будет блокироваться правилами.`)) {
+                await window.app.sb
+                    .from('slot_exceptions')
+                    .insert({ slot_id: slot.id });
+                await window.app.sb
+                    .from('slots')
+                    .update({ is_available: true })
+                    .eq('id', slot.id);
+                alert('✅ Слот разблокирован');
+                await window.app.loadAdminData();
+            }
+        });
+    }
+    
+    const deleteBtn = div.querySelector('.delete-slot-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+            if (confirm('Удалить этот слот?')) {
+                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
+                await window.app.sb.from('slots').delete().eq('id', slot.id);
+                await window.app.loadAdminData();
+            }
+        });
+    }
+    
+    container.appendChild(div);
 };
 
 // --- Админ-панель: отображение слотов и записей ---
