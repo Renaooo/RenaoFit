@@ -2,7 +2,6 @@
 // МОДУЛЬ АДМИН-ПАНЕЛИ (КЛИЕНТЫ)
 // ============================================
 
-// --- Вспомогательная функция для экранирования HTML ---
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
@@ -10,7 +9,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// --- Вспомогательная функция для отображения цели ---
 function getGoalDisplay(goal) {
     if (goal === 'wellness') {
         return '🌿 Здоровье и хорошее самочувствие';
@@ -18,7 +16,6 @@ function getGoalDisplay(goal) {
     return '🔥 Активное снижение веса';
 }
 
-// --- Загрузка списка клиентов (все пользователи, кроме админа) ---
 window.app.loadClientsList = async function() {
     const adminId = 'edafd00c-3f7d-47aa-8d69-9efbe95de98e';
     
@@ -36,7 +33,6 @@ window.app.loadClientsList = async function() {
     return profiles || [];
 };
 
-// --- Отображение списка клиентов ---
 window.app.renderClientsList = async function() {
     const container = document.getElementById('admin-clients-list');
     if (!container) return;
@@ -50,7 +46,6 @@ window.app.renderClientsList = async function() {
         return;
     }
     
-    // Один запрос для подсчёта записей всех клиентов
     const { data: allBookings } = await window.app.sb
         .from('bookings')
         .select('user_id');
@@ -112,7 +107,7 @@ window.app.renderClientsList = async function() {
     }
 };
 
-// --- Вспомогательная функция для отображения слота в админке (с кнопками удалить и разблокировать) ---
+// --- Вспомогательная функция для отображения слота в админке (кнопка разблокировки ТОЛЬКО у заблокированных правилами) ---
 window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     const start = new Date(slot.start_time);
     const isAvailable = slot.is_available;
@@ -125,13 +120,16 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     if (!isAvailable) statusText = '❌ занят';
     else if (isBlockedByRule) statusText = '🔒 заблокирован правилами';
     
+    // Кнопка разблокировки ТОЛЬКО если слот заблокирован правилами (но не занят)
+    const showUnblockBtn = isBlockedByRule && isAvailable;
+    
     div.innerHTML = `
         <span style="${isBlocked ? 'text-decoration: line-through; color: #999;' : ''}">
             ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
             ${statusText ? ` ${statusText}` : ''}
         </span>
         <div style="display: flex; gap: 6px;">
-            <button class="unblock-slot-btn" data-id="${slot.id}" style="background: #36B647; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;" title="Разблокировать слот (игнорировать правила)">🔓</button>
+            ${showUnblockBtn ? '<button class="unblock-slot-btn" data-id="' + slot.id + '" style="background: #36B647; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;" title="Разблокировать слот">🔓</button>' : ''}
             <button class="delete-slot-btn" data-id="${slot.id}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>
         </div>
     `;
@@ -140,7 +138,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     if (unblockBtn) {
         unblockBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            if (confirm(`Разблокировать слот на ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}?\n\nСлот станет доступен для записи, правила блокировки будут применены заново при следующей загрузке.`)) {
+            if (confirm(`Разблокировать слот на ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}?`)) {
                 await window.app.sb
                     .from('slots')
                     .update({ is_available: true })
@@ -165,7 +163,6 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     container.appendChild(div);
 };
 
-// --- Определение начала недели (понедельник) для клиента ---
 function getStartOfWeekForClient(date) {
     const d = new Date(date);
     const day = d.getDay();
@@ -175,9 +172,7 @@ function getStartOfWeekForClient(date) {
     return d;
 }
 
-// --- Отображение карточки клиента с протоколом, комментариями и редактированием ---
 window.app.showClientDetails = async function(client) {
-    // Получаем записи клиента
     const { data: bookings, error: bookingsError } = await window.app.sb
         .from('bookings')
         .select(`
@@ -194,7 +189,6 @@ window.app.showClientDetails = async function(client) {
         return;
     }
     
-    // Функция форматирования локальной даты
     function formatLocalDate(date) {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -202,7 +196,6 @@ window.app.showClientDetails = async function(client) {
         return `${year}-${month}-${day}`;
     }
     
-    // Функция определения понедельника
     function getStartOfWeek(date) {
         const d = new Date(date);
         const day = d.getDay();
@@ -212,10 +205,8 @@ window.app.showClientDetails = async function(client) {
         return d;
     }
     
-    // Переменная для смещения недели (0 = текущая, -1 = прошлая, -2 = позапрошлая)
     let currentWeekOffset = 0;
     
-    // Создаем модальное окно
     const modal = document.createElement('div');
     modal.style.cssText = `
         position: fixed;
@@ -241,7 +232,6 @@ window.app.showClientDetails = async function(client) {
         padding: 20px;
     `;
     
-    // Функция загрузки протокола для выбранной недели
     async function loadProtocolForWeek(offset) {
         const today = new Date();
         const targetDate = new Date(today);
@@ -286,7 +276,6 @@ window.app.showClientDetails = async function(client) {
         const cardioOk = actualCardio >= targetCardio;
         const socialOk = socialDays <= 1;
         
-        // Формируем HTML для кружочков шагов
         let stepsCirclesHtml = '<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">';
         const daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
         for (let i = 0; i < 7; i++) {
@@ -345,12 +334,10 @@ window.app.showClientDetails = async function(client) {
                 ` : ''}
             </div>
             
-            <!-- Комментарии клиента -->
             <div id="client-comments-section" style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;"></div>
         `, reports: weeklyReports };
     }
     
-    // Загружаем историю весов клиента (только для режима снижения веса)
     let weightHistoryHtml = '';
     if (client.fitness_goal !== 'wellness') {
         const { data: weightHistory } = await window.app.sb
@@ -374,7 +361,6 @@ window.app.showClientDetails = async function(client) {
         }
     }
     
-    // Формируем HTML для записей с разделением на утро/вечер
     let bookingsHtml = '';
     if (bookings && bookings.length > 0) {
         const groupedByDay = {};
@@ -426,7 +412,6 @@ window.app.showClientDetails = async function(client) {
     const goalDisplay = getGoalDisplay(client.fitness_goal);
     const isWellnessMode = client.fitness_goal === 'wellness';
     
-    // Загружаем начальный протокол
     let currentOffset = 0;
     let protocolData = await loadProtocolForWeek(currentOffset);
     
@@ -450,11 +435,9 @@ window.app.showClientDetails = async function(client) {
         
         <div id="client-comments-section" style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;"></div>
         
-        <!-- Редактирование профиля -->
         <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
             <h3 style="margin: 0 0 12px 0; font-size: 16px;">✏️ Редактировать профиль</h3>
             
-            <!-- Выбор цели -->
             <div style="margin-bottom: 15px;">
                 <label style="display: block; font-size: 12px; color: #666; margin-bottom: 8px;">🎯 Цель тренировок</label>
                 <div style="display: flex; gap: 20px;">
@@ -497,7 +480,6 @@ window.app.showClientDetails = async function(client) {
             <button id="save-profile-btn" style="background: #36B647; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 5px;">💾 Сохранить</button>
         </div>
         
-        <!-- Записи клиента -->
         <div>
             <h3 style="margin: 0 0 10px 0; font-size: 16px;">📋 Записи клиента</h3>
             <div id="client-bookings-list" style="max-height: 200px; overflow-y: auto;">
@@ -509,7 +491,6 @@ window.app.showClientDetails = async function(client) {
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
     
-    // Загружаем комментарии для текущей недели
     async function loadComments(weekOffset) {
         const today = new Date();
         const targetDate = new Date(today);
@@ -551,10 +532,8 @@ window.app.showClientDetails = async function(client) {
         }
     }
     
-    // Загружаем комментарии для начальной недели
     await loadComments(0);
     
-    // Обработчики переключения недель в протоколе
     const protocolContainer = document.getElementById('protocol-container');
     
     protocolContainer.addEventListener('click', async (e) => {
@@ -575,12 +554,10 @@ window.app.showClientDetails = async function(client) {
         }
     });
     
-    // Закрытие модального окна
     const closeBtn = modalContent.querySelector('#close-client-modal');
     closeBtn.addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
     
-    // Сохранение профиля
     const saveBtn = modalContent.querySelector('#save-profile-btn');
     saveBtn.addEventListener('click', async () => {
         const goalRadio = modalContent.querySelector('input[name="edit-goal"]:checked');
@@ -602,7 +579,6 @@ window.app.showClientDetails = async function(client) {
         if (targetStrengthWeekly && targetStrengthWeekly !== '') updateData.target_strength_weekly = parseInt(targetStrengthWeekly);
         if (targetCardioWeekly && targetCardioWeekly !== '') updateData.target_cardio_weekly = parseInt(targetCardioWeekly);
         
-        // Если вес изменился и режим снижения веса, добавляем запись в историю
         if (weight && weight !== client.weight && newGoal !== 'wellness') {
             await window.app.sb.from('weight_history').insert({
                 user_id: client.id,
@@ -625,7 +601,6 @@ window.app.showClientDetails = async function(client) {
         }
     });
     
-    // Обработчики удаления записей
     const deleteButtons = modalContent.querySelectorAll('.delete-booking-from-client');
     deleteButtons.forEach(btn => {
         btn.addEventListener('click', async () => {
