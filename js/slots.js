@@ -476,7 +476,7 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- Безопасная генерация слотов (без дублирования) ---
+// --- Безопасная генерация слотов (с учётом удалённых слотов) ---
 window.app.ensureWeeklySchedule = async function() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -484,11 +484,26 @@ window.app.ensureWeeklySchedule = async function() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 7);
     
+    // Получаем все существующие слоты
     const { data: existingSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
         .gte('start_time', today.toISOString())
         .lte('start_time', endDate.toISOString());
+    
+    // Получаем список удалённых слотов (которые не нужно создавать)
+    const { data: deletedSlots } = await window.app.sb
+        .from('deleted_slots')
+        .select('slot_time')
+        .gte('slot_time', today.toISOString())
+        .lte('slot_time', endDate.toISOString());
+    
+    const deletedSlotKeys = new Set();
+    deletedSlots?.forEach(ds => {
+        const date = new Date(ds.slot_time);
+        const key = date.toISOString().slice(0, 16);
+        deletedSlotKeys.add(key);
+    });
     
     const existingSlotKeys = new Set();
     existingSlots?.forEach(slot => {
@@ -533,7 +548,11 @@ window.app.ensureWeeklySchedule = async function() {
             
             const slotKey = startTime.toISOString().slice(0, 16);
             
+            // Пропускаем, если слот уже существует
             if (existingSlotKeys.has(slotKey)) continue;
+            
+            // Пропускаем, если слот был удалён ранее
+            if (deletedSlotKeys.has(slotKey)) continue;
             
             const endTime = new Date(startTime);
             endTime.setHours(startTime.getHours() + 1);
@@ -578,7 +597,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
         </span>
         <div style="display: flex; gap: 6px;">
             ${showUnblockBtn ? '<button class="unblock-slot-btn" data-id="' + slot.id + '" style="background: #36B647; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;" title="Разблокировать слот">🔓</button>' : ''}
-            <button class="delete-slot-btn" data-id="${slot.id}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>
+            <button class="delete-slot-btn" data-id="${slot.id}" data-time="${start.toISOString()}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>
         </div>
     `;
     
@@ -603,10 +622,21 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     const deleteBtn = div.querySelector('.delete-slot-btn');
     if (deleteBtn) {
         deleteBtn.addEventListener('click', async () => {
-            if (confirm('Удалить этот слот?')) {
+            if (confirm('Удалить этот слот? Он больше НЕ БУДЕТ восстанавливаться автоматически.')) {
+                const slotTime = deleteBtn.dataset.time;
+                
+                // Добавляем в таблицу удалённых слотов
+                await window.app.sb
+                    .from('deleted_slots')
+                    .insert({ slot_time: slotTime });
+                
+                // Удаляем связанные записи в bookings
                 await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
+                // Удаляем сам слот
                 await window.app.sb.from('slots').delete().eq('id', slot.id);
-                await window.app.loadAdminData();
+                
+                alert('✅ Слот удалён. Он больше не будет появляться в расписании.');
+                await window.app.loadAdminDataWithoutGenerate();
             }
         });
     }
@@ -614,10 +644,14 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     container.appendChild(div);
 };
 
-// --- Админ-панель: отображение слотов и записей ---
+// --- Админ-панель: отображение слотов и записей (с генерацией) ---
 window.app.loadAdminData = async function() {
     await window.app.ensureWeeklySchedule();
-    
+    await window.app.loadAdminDataWithoutGenerate();
+};
+
+// --- Админ-панель: обновление без автоматической генерации слотов ---
+window.app.loadAdminDataWithoutGenerate = async function() {
     const adminSlotsDiv = document.getElementById('admin-slots');
     const adminBookingsDiv = document.getElementById('admin-bookings');
     
@@ -697,14 +731,26 @@ window.app.loadAdminData = async function() {
                 if (morningDeleteBtn) {
                     morningDeleteBtn.addEventListener('click', async (e) => {
                         e.stopPropagation();
-                        if (confirm(`Удалить все УТРЕННИЕ слоты на ${day}?`)) {
+                        if (confirm(`Удалить все УТРЕННИЕ слоты на ${day}? Они больше не будут восстанавливаться.`)) {
                             const dayDateStr = e.target.dataset.day;
+                            const slotsToDelete = slots.filter(s => {
+                                const date = new Date(s.start_time);
+                                const hours = date.getHours();
+                                return date.toISOString().split('T')[0] === dayDateStr && hours < 12;
+                            });
+                            
+                            for (const slot of slotsToDelete) {
+                                await window.app.sb.from('deleted_slots').insert({ slot_time: slot.start_time });
+                                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
+                            }
+                            
                             await window.app.sb
                                 .from('slots')
                                 .delete()
                                 .gte('start_time', `${dayDateStr}T00:00:00.000Z`)
                                 .lt('start_time', `${dayDateStr}T12:00:00.000Z`);
-                            await window.app.loadAdminData();
+                            
+                            await window.app.loadAdminDataWithoutGenerate();
                         }
                     });
                 }
@@ -712,14 +758,26 @@ window.app.loadAdminData = async function() {
                 if (eveningDeleteBtn) {
                     eveningDeleteBtn.addEventListener('click', async (e) => {
                         e.stopPropagation();
-                        if (confirm(`Удалить все ВЕЧЕРНИЕ слоты на ${day}?`)) {
+                        if (confirm(`Удалить все ВЕЧЕРНИЕ слоты на ${day}? Они больше не будут восстанавливаться.`)) {
                             const dayDateStr = e.target.dataset.day;
+                            const slotsToDelete = slots.filter(s => {
+                                const date = new Date(s.start_time);
+                                const hours = date.getHours();
+                                return date.toISOString().split('T')[0] === dayDateStr && hours >= 12;
+                            });
+                            
+                            for (const slot of slotsToDelete) {
+                                await window.app.sb.from('deleted_slots').insert({ slot_time: slot.start_time });
+                                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
+                            }
+                            
                             await window.app.sb
                                 .from('slots')
                                 .delete()
                                 .gte('start_time', `${dayDateStr}T12:00:00.000Z`)
                                 .lt('start_time', `${dayDateStr}T23:59:59.999Z`);
-                            await window.app.loadAdminData();
+                            
+                            await window.app.loadAdminDataWithoutGenerate();
                         }
                     });
                 }
