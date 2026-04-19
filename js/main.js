@@ -44,6 +44,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('Админ-панель доступна');
         }
         
+        // ⭐ ГЕНЕРАЦИЯ СЛОТОВ при входе любого пользователя (без удаления существующих)
+        if (typeof window.app.ensureWeeklySchedule === 'function') {
+            console.log('Проверяем и добавляем недостающие слоты...');
+            await window.app.ensureWeeklySchedule();
+        }
+        
         window.app.showScreen('menu');
     } else {
         window.app.showScreen('auth');
@@ -71,6 +77,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 window.app.currentUser = await window.app.loginWithPhone(phone, name);
                 const userNameSpan = document.getElementById('user-name');
                 if (userNameSpan) userNameSpan.innerText = name;
+                
+                // ⭐ ГЕНЕРАЦИЯ СЛОТОВ после успешного входа
+                if (typeof window.app.ensureWeeklySchedule === 'function') {
+                    console.log('Проверяем и добавляем недостающие слоты...');
+                    await window.app.ensureWeeklySchedule();
+                }
+                
                 window.app.showScreen('menu');
             } catch(e) {
                 console.error('Ошибка входа:', e);
@@ -150,13 +163,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    document.getElementById('reset-schedule-btn')?.addEventListener('click', async () => {
-    if (confirm('Сбросить расписание? Это удалит ВСЕ слоты и создаст новые.')) {
-        await window.app.ensureWeeklySchedule(true);
-        await window.app.loadAdminData();
-        alert('Расписание обновлено');
+    // --- Сброс расписания (если есть кнопка) ---
+    const resetScheduleBtn = document.getElementById('reset-schedule-btn');
+    if (resetScheduleBtn) {
+        resetScheduleBtn.addEventListener('click', async () => {
+            if (confirm('Сбросить расписание? Это удалит ВСЕ слоты и создаст новые.')) {
+                await window.app.ensureWeeklySchedule(true);
+                await window.app.loadAdminData();
+                alert('Расписание обновлено');
+            }
+        });
     }
-});
     
     // --- Добавление слота в админ-панели (с корректным преобразованием времени) ---
     const adminAddSlotBtn = document.getElementById('admin-add-slot');
