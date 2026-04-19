@@ -2,7 +2,7 @@
 // МОДУЛЬ СЛОТОВ (ВЕРСИЯ С БЛОКИРОВКОЙ/РАЗБЛОКИРОВКОЙ)
 // ============================================
 
-// --- Расписание (только эти слоты должны существовать) ---
+// --- Расписание ---
 const SCHEDULE = {
     1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
          evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
@@ -19,11 +19,10 @@ const SCHEDULE = {
     0: { morning: [], evening: [] }
 };
 
-// --- Получение списка заблокированных слотов (правила 4 часа + is_blocked) ---
+// --- Получение списка заблокированных слотов ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
     
-    // 1. Слоты, заблокированные вручную (is_blocked = true)
     const { data: manuallyBlocked } = await window.app.sb
         .from('slots')
         .select('id')
@@ -31,7 +30,6 @@ async function getBlockedSlotIds() {
     
     manuallyBlocked?.forEach(slot => blockedIds.add(slot.id));
     
-    // 2. Исключения (разблокированные вручную)
     const { data: exceptions } = await window.app.sb
         .from('slot_exceptions')
         .select('slot_id');
@@ -39,7 +37,6 @@ async function getBlockedSlotIds() {
     const exceptionIds = new Set();
     exceptions?.forEach(ex => exceptionIds.add(ex.slot_id));
     
-    // 3. Правила блокировки (4 часа и соседние слоты)
     const today = new Date();
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 14);
@@ -167,7 +164,7 @@ async function getBlockedSlotIds() {
     return blockedIds;
 }
 
-// --- Загрузка свободных слотов для клиента (учитываем is_blocked) ---
+// --- Загрузка свободных слотов для клиента ---
 window.app.loadSlots = async function() {
     const today = new Date();
     const endDate = new Date(today);
@@ -188,7 +185,7 @@ window.app.loadSlots = async function() {
     return slots.filter(slot => !blockedIds.has(slot.id));
 };
 
-// --- Отображение слотов с подсветкой рекомендуемых ---
+// --- Отображение слотов для клиента ---
 window.app.renderSlots = async function(slots) {
     const container = document.getElementById('slots-list');
     if (!container) return;
@@ -358,7 +355,7 @@ window.app.renderSlots = async function(slots) {
     }
 };
 
-// --- Подтверждение записи клиентом ---
+// --- Подтверждение записи ---
 window.app.confirmBooking = async function() {
     if (!window.app.currentUser) return;
     
@@ -389,7 +386,6 @@ window.app.confirmBooking = async function() {
         .insert(bookingsToInsert);
     
     if (insertError) {
-        console.error('Ошибка создания брони:', insertError);
         alert('Ошибка записи: ' + insertError.message);
         return;
     }
@@ -406,7 +402,7 @@ window.app.confirmBooking = async function() {
     window.app.showScreen('menu');
 };
 
-// --- Загрузка и отображение записей клиента ---
+// --- Мои записи ---
 window.app.loadMyBookings = async function() {
     const { data: bookings, error } = await window.app.sb
         .from('bookings')
@@ -457,14 +453,13 @@ window.app.loadMyBookings = async function() {
                 div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
                 div.innerHTML = `
                     <span style="font-weight: 500;">${formatted}</span>
-                    <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
+                    <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px;">Отменить</button>
                 `;
                 const cancelBtn = div.querySelector('.cancel-btn');
                 cancelBtn.addEventListener('click', async () => {
                     if (confirm('Отменить запись?')) {
                         await window.app.sb.from('bookings').delete().eq('id', booking.id);
                         await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
-                        alert('Запись отменена');
                         await window.app.loadMyBookings();
                     }
                 });
@@ -483,14 +478,13 @@ window.app.loadMyBookings = async function() {
                 div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;';
                 div.innerHTML = `
                     <span style="font-weight: 500;">${formatted}</span>
-                    <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;">Отменить</button>
+                    <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px;">Отменить</button>
                 `;
                 const cancelBtn = div.querySelector('.cancel-btn');
                 cancelBtn.addEventListener('click', async () => {
                     if (confirm('Отменить запись?')) {
                         await window.app.sb.from('bookings').delete().eq('id', booking.id);
                         await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
-                        alert('Запись отменена');
                         await window.app.loadMyBookings();
                     }
                 });
@@ -503,7 +497,7 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- Генерация расписания (создаёт недостающие слоты, is_blocked = false) ---
+// --- Генерация расписания ---
 window.app.ensureWeeklySchedule = async function() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -511,7 +505,6 @@ window.app.ensureWeeklySchedule = async function() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 7);
     
-    // Получаем существующие слоты
     const { data: existingSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
@@ -550,17 +543,13 @@ window.app.ensureWeeklySchedule = async function() {
             const endTime = new Date(startTime);
             endTime.setHours(startTime.getHours() + 1);
             
-            const { error } = await window.app.sb.from('slots').insert({
+            await window.app.sb.from('slots').insert({
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
                 is_available: true,
                 is_blocked: false
             });
-            
-            if (!error) {
-                addedCount++;
-                existingSlotKeys.add(slotKey);
-            }
+            addedCount++;
         }
     }
     
@@ -569,7 +558,7 @@ window.app.ensureWeeklySchedule = async function() {
     }
 };
 
-// --- Функция отображения слота в админке ---
+// --- Функция отображения слота в админке (ИСПРАВЛЕНА) ---
 window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     const start = new Date(slot.start_time);
     const isAvailable = slot.is_available;
@@ -584,7 +573,8 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     else if (isManuallyBlocked) statusText = '🔒 заблокирован';
     else if (isBlockedByRule) statusText = '🔒 заблокирован правилами';
     
-    const showUnblockBtn = (isManuallyBlocked || isBlockedByRule) && isAvailable;
+    const showUnblockBtn = isBlocked && isAvailable;
+    const showBlockBtn = !isBlocked && isAvailable;
     
     div.innerHTML = `
         <span style="${isBlocked ? 'text-decoration: line-through; color: #999;' : ''}">
@@ -593,36 +583,28 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
         </span>
         <div style="display: flex; gap: 6px;">
             ${showUnblockBtn ? '<button class="unblock-slot-btn" data-id="' + slot.id + '" style="background: #36B647; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">🔓</button>' : ''}
-            <button class="block-slot-btn" data-id="${slot.id}" style="background: #ff9800; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">🔒</button>
+            ${showBlockBtn ? '<button class="block-slot-btn" data-id="' + slot.id + '" style="background: #ff9800; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">🔒</button>' : ''}
         </div>
     `;
     
-    // Разблокировка
     const unblockBtn = div.querySelector('.unblock-slot-btn');
     if (unblockBtn) {
         unblockBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (confirm(`Разблокировать слот на ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}?`)) {
-                await window.app.sb
-                    .from('slots')
-                    .update({ is_blocked: false })
-                    .eq('id', slot.id);
+                await window.app.sb.from('slots').update({ is_blocked: false }).eq('id', slot.id);
                 alert('✅ Слот разблокирован');
                 await window.app.loadAdminData();
             }
         });
     }
     
-    // Блокировка
     const blockBtn = div.querySelector('.block-slot-btn');
     if (blockBtn) {
         blockBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (confirm(`Заблокировать слот на ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}?`)) {
-                await window.app.sb
-                    .from('slots')
-                    .update({ is_blocked: true })
-                    .eq('id', slot.id);
+                await window.app.sb.from('slots').update({ is_blocked: true }).eq('id', slot.id);
                 alert('✅ Слот заблокирован');
                 await window.app.loadAdminData();
             }
@@ -632,7 +614,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     container.appendChild(div);
 };
 
-// --- Админ-панель: отображение слотов и записей ---
+// --- Админ-панель ---
 window.app.loadAdminData = async function() {
     await window.app.ensureWeeklySchedule();
     await window.app.loadAdminDataWithoutGenerate();
@@ -731,7 +713,6 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                                 const slotTime = new Date(targetDate);
                                 slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
                                 
-                                // Обновляем существующий слот или создаём новый
                                 const { data: existing } = await window.app.sb
                                     .from('slots')
                                     .select('id')
@@ -952,7 +933,7 @@ window.app.loadAdminDataWithoutGenerate = async function() {
     }
 };
 
-// --- Переключение между вкладками в админ-панели ---
+// --- Переключение между вкладками ---
 window.app.setupAdminTabs = function() {
     const slotsTab = document.getElementById('admin-slots-tab');
     const clientsTab = document.getElementById('admin-clients-tab');
