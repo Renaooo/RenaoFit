@@ -37,7 +37,6 @@ window.app.loadClientsList = async function() {
 };
 
 // --- Отображение списка клиентов ---
-// --- Отображение списка клиентов ---
 window.app.renderClientsList = async function() {
     const container = document.getElementById('admin-clients-list');
     if (!container) return;
@@ -51,16 +50,11 @@ window.app.renderClientsList = async function() {
         return;
     }
     
-    // ✅ ОДИН ЗАПРОС для подсчёта записей всех клиентов
-    const { data: allBookings, error } = await window.app.sb
+    // Один запрос для подсчёта записей всех клиентов
+    const { data: allBookings } = await window.app.sb
         .from('bookings')
         .select('user_id');
     
-    if (error) {
-        console.error('Ошибка загрузки записей:', error);
-    }
-    
-    // Считаем количество записей для каждого клиента
     const bookingCounts = {};
     allBookings?.forEach(booking => {
         bookingCounts[booking.user_id] = (bookingCounts[booking.user_id] || 0) + 1;
@@ -116,6 +110,59 @@ window.app.renderClientsList = async function() {
         
         container.appendChild(clientCard);
     }
+};
+
+// --- Вспомогательная функция для отображения слота в админке (с кнопками удалить и разблокировать) ---
+window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
+    const start = new Date(slot.start_time);
+    const isAvailable = slot.is_available;
+    const isBlocked = !isAvailable || isBlockedByRule;
+    
+    const div = document.createElement('div');
+    div.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: ${isBlocked ? '#f0f0f0' : '#fff'}; border-radius: 8px; border: 1px solid ${isBlocked ? '#ffcccc' : '#e0e0e0'};`;
+    
+    let statusText = '';
+    if (!isAvailable) statusText = '❌ занят';
+    else if (isBlockedByRule) statusText = '🔒 заблокирован правилами';
+    
+    div.innerHTML = `
+        <span style="${isBlocked ? 'text-decoration: line-through; color: #999;' : ''}">
+            ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+            ${statusText ? ` ${statusText}` : ''}
+        </span>
+        <div style="display: flex; gap: 6px;">
+            <button class="unblock-slot-btn" data-id="${slot.id}" style="background: #36B647; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;" title="Разблокировать слот (игнорировать правила)">🔓</button>
+            <button class="delete-slot-btn" data-id="${slot.id}" style="background: #dc3545; color: white; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer;">✖</button>
+        </div>
+    `;
+    
+    const unblockBtn = div.querySelector('.unblock-slot-btn');
+    if (unblockBtn) {
+        unblockBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm(`Разблокировать слот на ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}?\n\nСлот станет доступен для записи, правила блокировки будут применены заново при следующей загрузке.`)) {
+                await window.app.sb
+                    .from('slots')
+                    .update({ is_available: true })
+                    .eq('id', slot.id);
+                alert('✅ Слот разблокирован');
+                await window.app.loadAdminData();
+            }
+        });
+    }
+    
+    const deleteBtn = div.querySelector('.delete-slot-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+            if (confirm('Удалить этот слот?')) {
+                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
+                await window.app.sb.from('slots').delete().eq('id', slot.id);
+                await window.app.loadAdminData();
+            }
+        });
+    }
+    
+    container.appendChild(div);
 };
 
 // --- Определение начала недели (понедельник) для клиента ---
