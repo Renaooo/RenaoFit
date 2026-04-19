@@ -1,6 +1,23 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (РАБОЧАЯ ВЕРСИЯ + ИСПРАВЛЕНИЯ)
+// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ВЕРСИЯ)
 // ============================================
+
+// --- Расписание (только эти слоты должны существовать) ---
+const SCHEDULE = {
+    1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+         evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+    2: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+         evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+    3: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+         evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+    4: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+         evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+    5: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+         evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+    6: { morning: ['10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00'], 
+         evening: [] },
+    0: { morning: [], evening: [] }
+};
 
 // --- Получение списка заблокированных слотов (с учётом исключений) ---
 async function getBlockedSlotIds() {
@@ -475,7 +492,7 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- Безопасная генерация слотов (с учётом deleted_slots) ---
+// --- Генерация слотов (проверяет deleted_slots и не создаёт удалённые) ---
 window.app.ensureWeeklySchedule = async function() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -511,29 +528,13 @@ window.app.ensureWeeklySchedule = async function() {
         deletedSlotKeys.add(key);
     });
     
-    const schedule = {
-        1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
-             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
-        2: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
-             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
-        3: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
-             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
-        4: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
-             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
-        5: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
-             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
-        6: { morning: ['10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00'], 
-             evening: [] },
-        0: { morning: [], evening: [] }
-    };
-    
     let addedCount = 0;
     
     for (let day = 0; day <= 7; day++) {
         const currentDate = new Date(today);
         currentDate.setDate(today.getDate() + day);
         const dayOfWeek = currentDate.getDay();
-        const daySchedule = schedule[dayOfWeek] || schedule[1];
+        const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
         const requiredTimes = [...daySchedule.morning, ...daySchedule.evening];
         
         if (requiredTimes.length === 0) continue;
@@ -708,25 +709,31 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                 
                 adminSlotsDiv.appendChild(dayDiv);
                 
+                // --- НОВАЯ ЛОГИКА УДАЛЕНИЯ УТРА (добавляет ВСЕ слоты по расписанию в deleted_slots) ---
                 const morningDeleteBtn = dayDiv.querySelector('.delete-morning-btn');
                 const eveningDeleteBtn = dayDiv.querySelector('.delete-evening-btn');
                 
                 if (morningDeleteBtn) {
                     morningDeleteBtn.addEventListener('click', async (e) => {
                         e.stopPropagation();
-                        if (confirm(`Удалить все УТРЕННИЕ слоты на ${day}? Они больше не будут восстанавливаться.`)) {
+                        if (confirm(`Удалить все УТРЕННИЕ слоты на ${day}? Они больше не появятся в этот день.`)) {
                             const dayDateStr = e.target.dataset.day;
-                            const slotsToDelete = slots.filter(s => {
-                                const date = new Date(s.start_time);
-                                const hours = date.getHours();
-                                return date.toISOString().split('T')[0] === dayDateStr && hours < 12;
-                            });
+                            const targetDate = new Date(dayDateStr);
+                            const dayOfWeek = targetDate.getDay();
+                            const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
+                            const morningTimes = daySchedule.morning;
                             
-                            for (const slot of slotsToDelete) {
-                                await window.app.sb.from('deleted_slots').insert({ slot_time: slot.start_time });
-                                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
+                            // Добавляем ВСЕ утренние слоты по расписанию в deleted_slots
+                            for (const time of morningTimes) {
+                                const [hours, minutes] = time.split(':');
+                                const slotTime = new Date(targetDate);
+                                slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                await window.app.sb.from('deleted_slots').insert({ 
+                                    slot_time: slotTime.toISOString() 
+                                }).select();
                             }
                             
+                            // Удаляем существующие утренние слоты из БД
                             await window.app.sb
                                 .from('slots')
                                 .delete()
@@ -734,26 +741,33 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                                 .lt('start_time', `${dayDateStr}T12:00:00.000Z`);
                             
                             await window.app.loadAdminDataWithoutGenerate();
+                            alert('✅ Все утренние слоты удалены');
                         }
                     });
                 }
                 
+                // --- НОВАЯ ЛОГИКА УДАЛЕНИЯ ВЕЧЕРА ---
                 if (eveningDeleteBtn) {
                     eveningDeleteBtn.addEventListener('click', async (e) => {
                         e.stopPropagation();
-                        if (confirm(`Удалить все ВЕЧЕРНИЕ слоты на ${day}? Они больше не будут восстанавливаться.`)) {
+                        if (confirm(`Удалить все ВЕЧЕРНИЕ слоты на ${day}? Они больше не появятся в этот день.`)) {
                             const dayDateStr = e.target.dataset.day;
-                            const slotsToDelete = slots.filter(s => {
-                                const date = new Date(s.start_time);
-                                const hours = date.getHours();
-                                return date.toISOString().split('T')[0] === dayDateStr && hours >= 12;
-                            });
+                            const targetDate = new Date(dayDateStr);
+                            const dayOfWeek = targetDate.getDay();
+                            const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
+                            const eveningTimes = daySchedule.evening;
                             
-                            for (const slot of slotsToDelete) {
-                                await window.app.sb.from('deleted_slots').insert({ slot_time: slot.start_time });
-                                await window.app.sb.from('bookings').delete().eq('slot_id', slot.id);
+                            // Добавляем ВСЕ вечерние слоты по расписанию в deleted_slots
+                            for (const time of eveningTimes) {
+                                const [hours, minutes] = time.split(':');
+                                const slotTime = new Date(targetDate);
+                                slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                await window.app.sb.from('deleted_slots').insert({ 
+                                    slot_time: slotTime.toISOString() 
+                                }).select();
                             }
                             
+                            // Удаляем существующие вечерние слоты из БД
                             await window.app.sb
                                 .from('slots')
                                 .delete()
@@ -761,6 +775,7 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                                 .lt('start_time', `${dayDateStr}T23:59:59.999Z`);
                             
                             await window.app.loadAdminDataWithoutGenerate();
+                            alert('✅ Все вечерние слоты удалены');
                         }
                     });
                 }
