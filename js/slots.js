@@ -697,4 +697,278 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                 adminSlotsDiv.appendChild(dayDiv);
                 
                 // Блокировка утра
-               
+                const blockMorningBtn = dayDiv.querySelector('.block-morning-btn');
+                if (blockMorningBtn) {
+                    blockMorningBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Заблокировать все УТРЕННИЕ слоты на ${day}?`)) {
+                            const dayDateStr = e.target.dataset.day;
+                            const targetDate = new Date(dayDateStr);
+                            const dayOfWeek = targetDate.getDay();
+                            const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
+                            const morningTimes = daySchedule.morning;
+                            
+                            for (const time of morningTimes) {
+                                const [hours, minutes] = time.split(':');
+                                const slotTime = new Date(targetDate);
+                                slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                
+                                const { data: existing } = await window.app.sb
+                                    .from('slots')
+                                    .select('id')
+                                    .eq('start_time', slotTime.toISOString());
+                                
+                                if (existing && existing.length > 0) {
+                                    await window.app.sb
+                                        .from('slots')
+                                        .update({ is_blocked: true })
+                                        .eq('start_time', slotTime.toISOString());
+                                } else {
+                                    const endTime = new Date(slotTime);
+                                    endTime.setHours(slotTime.getHours() + 1);
+                                    await window.app.sb.from('slots').insert({
+                                        start_time: slotTime.toISOString(),
+                                        end_time: endTime.toISOString(),
+                                        is_available: true,
+                                        is_blocked: true
+                                    });
+                                }
+                            }
+                            
+                            await window.app.loadAdminDataWithoutGenerate();
+                            alert('✅ Все утренние слоты заблокированы');
+                        }
+                    });
+                }
+                
+                // Блокировка вечера
+                const blockEveningBtn = dayDiv.querySelector('.block-evening-btn');
+                if (blockEveningBtn) {
+                    blockEveningBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Заблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
+                            const dayDateStr = e.target.dataset.day;
+                            const targetDate = new Date(dayDateStr);
+                            const dayOfWeek = targetDate.getDay();
+                            const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
+                            const eveningTimes = daySchedule.evening;
+                            
+                            for (const time of eveningTimes) {
+                                const [hours, minutes] = time.split(':');
+                                const slotTime = new Date(targetDate);
+                                slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                
+                                const { data: existing } = await window.app.sb
+                                    .from('slots')
+                                    .select('id')
+                                    .eq('start_time', slotTime.toISOString());
+                                
+                                if (existing && existing.length > 0) {
+                                    await window.app.sb
+                                        .from('slots')
+                                        .update({ is_blocked: true })
+                                        .eq('start_time', slotTime.toISOString());
+                                } else {
+                                    const endTime = new Date(slotTime);
+                                    endTime.setHours(slotTime.getHours() + 1);
+                                    await window.app.sb.from('slots').insert({
+                                        start_time: slotTime.toISOString(),
+                                        end_time: endTime.toISOString(),
+                                        is_available: true,
+                                        is_blocked: true
+                                    });
+                                }
+                            }
+                            
+                            await window.app.loadAdminDataWithoutGenerate();
+                            alert('✅ Все вечерние слоты заблокированы');
+                        }
+                    });
+                }
+                
+                // Разблокировка утра
+                const unblockMorningBtn = dayDiv.querySelector('.unblock-morning-btn');
+                if (unblockMorningBtn) {
+                    unblockMorningBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Разблокировать все УТРЕННИЕ слоты на ${day}?`)) {
+                            const dayDateStr = e.target.dataset.day;
+                            await window.app.sb
+                                .from('slots')
+                                .update({ is_blocked: false })
+                                .gte('start_time', `${dayDateStr}T00:00:00.000Z`)
+                                .lt('start_time', `${dayDateStr}T12:00:00.000Z`);
+                            
+                            await window.app.loadAdminDataWithoutGenerate();
+                            alert('✅ Все утренние слоты разблокированы');
+                        }
+                    });
+                }
+                
+                // Разблокировка вечера
+                const unblockEveningBtn = dayDiv.querySelector('.unblock-evening-btn');
+                if (unblockEveningBtn) {
+                    unblockEveningBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Разблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
+                            const dayDateStr = e.target.dataset.day;
+                            await window.app.sb
+                                .from('slots')
+                                .update({ is_blocked: false })
+                                .gte('start_time', `${dayDateStr}T12:00:00.000Z`)
+                                .lt('start_time', `${dayDateStr}T23:59:59.999Z`);
+                            
+                            await window.app.loadAdminDataWithoutGenerate();
+                            alert('✅ Все вечерние слоты разблокированы');
+                        }
+                    });
+                }
+            }
+        }
+    }
+    
+    // --- Все записи ---
+    if (adminBookingsDiv) {
+        const title = document.createElement('h3');
+        title.textContent = 'Все записи';
+        adminBookingsDiv.appendChild(title);
+        
+        const { data: bookings } = await window.app.sb.rpc('get_bookings_with_profiles');
+        
+        if (bookings && bookings.length > 0) {
+            const groupedByDay = {};
+            bookings.forEach(booking => {
+                const date = new Date(booking.start_time);
+                const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+                if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+                groupedByDay[dayKey].push(booking);
+            });
+            
+            const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
+                const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
+                const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
+                return dateA - dateB;
+            });
+            
+            for (let day of sortedDays) {
+                const dayBookings = groupedByDay[day];
+                const dayDiv = document.createElement('div');
+                dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
+                dayDiv.innerHTML = `<h3 style="margin-bottom: 10px; font-size: 16px;">📅 ${day}</h3>`;
+                
+                const morning = dayBookings.filter(b => new Date(b.start_time).getHours() < 15);
+                const evening = dayBookings.filter(b => new Date(b.start_time).getHours() >= 15);
+                
+                if (morning.length > 0) {
+                    const morningDiv = document.createElement('div');
+                    morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
+                    morning.forEach(booking => {
+                        const timeStr = new Date(booking.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                        const bookingDiv = document.createElement('div');
+                        bookingDiv.style.cssText = 'border:1px solid #ddd; margin:8px 0; padding:10px; border-radius:8px; background:#f9f9f9; display: flex; justify-content: space-between; align-items: center;';
+                        bookingDiv.innerHTML = `
+                            <div>
+                                <strong>${booking.name || 'Неизвестно'}</strong><br>
+                                📞 ${booking.phone || 'нет телефона'}<br>
+                                🕐 ${timeStr}
+                            </div>
+                            <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
+                        `;
+                        const delBtn = bookingDiv.querySelector('.delete-booking-btn');
+                        if (delBtn) {
+                            delBtn.addEventListener('click', async () => {
+                                if (confirm('Удалить эту запись?')) {
+                                    await window.app.sb.from('bookings').delete().eq('id', booking.id);
+                                    await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
+                                    await window.app.loadAdminDataWithoutGenerate();
+                                }
+                            });
+                        }
+                        morningDiv.appendChild(bookingDiv);
+                    });
+                    dayDiv.appendChild(morningDiv);
+                }
+                
+                if (evening.length > 0) {
+                    const eveningDiv = document.createElement('div');
+                    eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
+                    evening.forEach(booking => {
+                        const timeStr = new Date(booking.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                        const bookingDiv = document.createElement('div');
+                        bookingDiv.style.cssText = 'border:1px solid #ddd; margin:8px 0; padding:10px; border-radius:8px; background:#f9f9f9; display: flex; justify-content: space-between; align-items: center;';
+                        bookingDiv.innerHTML = `
+                            <div>
+                                <strong>${booking.name || 'Неизвестно'}</strong><br>
+                                📞 ${booking.phone || 'нет телефона'}<br>
+                                🕐 ${timeStr}
+                            </div>
+                            <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">✖ Удалить</button>
+                        `;
+                        const delBtn = bookingDiv.querySelector('.delete-booking-btn');
+                        if (delBtn) {
+                            delBtn.addEventListener('click', async () => {
+                                if (confirm('Удалить эту запись?')) {
+                                    await window.app.sb.from('bookings').delete().eq('id', booking.id);
+                                    await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
+                                    await window.app.loadAdminDataWithoutGenerate();
+                                }
+                            });
+                        }
+                        eveningDiv.appendChild(bookingDiv);
+                    });
+                    dayDiv.appendChild(eveningDiv);
+                }
+                
+                adminBookingsDiv.appendChild(dayDiv);
+            }
+        } else {
+            const noBookings = document.createElement('p');
+            noBookings.textContent = 'Нет записей';
+            adminBookingsDiv.appendChild(noBookings);
+        }
+    }
+    
+    if (typeof window.app.setupAdminTabs === 'function') {
+        window.app.setupAdminTabs();
+    }
+};
+
+// --- Переключение между вкладками ---
+window.app.setupAdminTabs = function() {
+    const slotsTab = document.getElementById('admin-slots-tab');
+    const clientsTab = document.getElementById('admin-clients-tab');
+    const slotsPanel = document.getElementById('admin-slots-panel');
+    const clientsPanel = document.getElementById('admin-clients-panel');
+    const adminBookingsDiv = document.getElementById('admin-bookings');
+    
+    if (!slotsTab || !clientsTab) return;
+    
+    const newSlotsTab = slotsTab.cloneNode(true);
+    const newClientsTab = clientsTab.cloneNode(true);
+    slotsTab.parentNode.replaceChild(newSlotsTab, slotsTab);
+    clientsTab.parentNode.replaceChild(newClientsTab, clientsTab);
+    
+    newSlotsTab.addEventListener('click', () => {
+        newSlotsTab.style.background = '#36B647';
+        newSlotsTab.style.color = 'white';
+        newClientsTab.style.background = '#f0f0f0';
+        newClientsTab.style.color = '#323338';
+        slotsPanel.style.display = 'block';
+        clientsPanel.style.display = 'none';
+        if (adminBookingsDiv) adminBookingsDiv.style.display = 'block';
+    });
+    
+    newClientsTab.addEventListener('click', async () => {
+        newClientsTab.style.background = '#36B647';
+        newClientsTab.style.color = 'white';
+        newSlotsTab.style.background = '#f0f0f0';
+        newSlotsTab.style.color = '#323338';
+        slotsPanel.style.display = 'none';
+        clientsPanel.style.display = 'block';
+        if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
+        
+        if (typeof window.app.renderClientsList === 'function') {
+            await window.app.renderClientsList();
+        }
+    });
+};
