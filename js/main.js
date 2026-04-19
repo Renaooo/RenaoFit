@@ -1,8 +1,7 @@
 // ============================================
-// МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (НАВИГАЦИЯ, ИНИЦИАЛИЗАЦИЯ)
+// МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (ФИНАЛЬНЫЙ)
 // ============================================
 
-// --- Функция переключения экранов ---
 if (typeof window.app.showScreen !== 'function') {
     window.app.showScreen = function(name) {
         Object.keys(window.app.screens).forEach(key => {
@@ -16,7 +15,6 @@ if (typeof window.app.showScreen !== 'function') {
     };
 }
 
-// --- Инициализация приложения ---
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Приложение загружено');
     
@@ -78,7 +76,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 100);
     }
     
-    // ========== ОБРАБОТЧИКИ КНОПОК ==========
+    // --- Обработчики кнопок ---
     
     const loginBtn = document.getElementById('login-btn');
     if (loginBtn) {
@@ -187,7 +185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- ИСПРАВЛЕННЫЙ обработчик добавления слота ---
+    // --- Добавление слота (с удалением из deleted_slots) ---
     const adminAddSlotBtn = document.getElementById('admin-add-slot');
     if (adminAddSlotBtn) {
         adminAddSlotBtn.addEventListener('click', async () => {
@@ -215,15 +213,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             ));
             const end = endUTC.toISOString();
             
-            console.log('Добавление слота:', { startLocal, start, end });
+            // Удаляем из deleted_slots, если был там
+            await window.app.sb.from('deleted_slots').delete().eq('slot_time', start);
             
-            // ⭐ ВАЖНО: сначала удаляем слот из deleted_slots (если он там был)
-            await window.app.sb
-                .from('deleted_slots')
-                .delete()
-                .eq('slot_time', start);
-            
-            // Затем создаём слот
             const { error } = await window.app.sb.from('slots').insert({ 
                 start_time: start, 
                 end_time: end, 
@@ -233,7 +225,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (error) {
                 alert('Ошибка: ' + error.message);
             } else { 
-                alert('✅ Слот добавлен (1 час)'); 
+                alert('✅ Слот добавлен'); 
                 if (typeof window.app.loadAdminData === 'function') {
                     await window.app.loadAdminData();
                 }
