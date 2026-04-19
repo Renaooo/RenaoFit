@@ -346,3 +346,138 @@ hr {
     border-top: 1px solid #e9ecef;
     margin: 16px 0;
 }
+
+/* ========== ⭐ НОВЫЕ СТИЛИ ДЛЯ ВЫБОРА ЦЕЛИ (АДАПТИВ) ========== */
+
+/* Блок выбора цели в профиле */
+.goal-selection-block {
+    background: #f8f9fa;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.goal-label {
+    display: block;
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+
+.goal-options {
+    display: flex;
+    gap: 20px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.goal-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* Адаптив для очень маленьких экранов (ширина менее 380px) */
+@media (max-width: 380px) {
+    .container {
+        padding: 15px;
+    }
+    
+    h1 { font-size: 24px; }
+    h2 { font-size: 20px; }
+    
+    .btn {
+        padding: 12px;
+        font-size: 16px;
+    }
+    
+    /* Цель в профиле — вертикальное расположение на узких экранах */
+    .goal-options {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .goal-option {
+        font-size: 13px;
+    }
+    
+    /* Кнопки в админке (утро/вечер) */
+    .delete-morning-btn, .delete-evening-btn {
+        font-size: 9px;
+        padding: 3px 8px;
+    }
+    
+    /* Слоты */
+    .slot-item {
+        padding: 12px;
+    }
+    
+    .slot-time {
+        font-size: 14px;
+    }
+}
+
+/* Адаптив для экранов 320px и меньше (iPhone SE и подобные) */
+@media (max-width: 340px) {
+    .container {
+        padding: 12px;
+    }
+    
+    .goal-options {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .goal-option {
+        font-size: 12px;
+    }
+    
+    .btn {
+        padding: 10px;
+        font-size: 15px;
+    }
+    
+    /* Блок выбора цели */
+    .goal-selection-block {
+        padding: 15px;
+    }
+}
+
+/* ========== СТИЛИ ДЛЯ КНОПОК В АДМИНКЕ (УТРО/ВЕЧЕР) ========== */
+.delete-morning-btn, .delete-evening-btn {
+    background: #ff9800;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.delete-morning-btn:active, .delete-evening-btn:active {
+    transform: scale(0.95);
+}
+
+/* Кнопка разблокировки слота */
+.unblock-slot-btn {
+    background: #36B647;
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.unblock-slot-btn:active {
+    transform: scale(0.95);
+}
+
+/* Слот в админке */
+.admin-slot-buttons {
+    display: flex;
+    gap: 6px;
+}
