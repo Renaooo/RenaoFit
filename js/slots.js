@@ -48,17 +48,10 @@ async function getBlockedSlotIds() {
     });
     
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
-        // Разделяем утро и вечер
         const morningBooked = booked.filter(b => b.hour < 15);
         const eveningBooked = booked.filter(b => b.hour >= 15);
         
-        console.log(`\n=== ДЕНЬ ${dayKey} ===`);
-        console.log(`Утро занятые:`, morningBooked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`).join(', '));
-        console.log(`Вечер занятые:`, eveningBooked.map(b => `${b.hour}:${b.minute.toString().padStart(2,'0')}`).join(', '));
-        
-        // === ПРАВИЛО "4 ЧАСА" ДЛЯ УТРА ===
         if (morningBooked.length > 0) {
-            console.log(`\n--- ПРАВИЛО 4 ЧАСА (утро) ---`);
             for (let bookedSlot of morningBooked) {
                 const startMinutes = bookedSlot.timeValue * 60;
                 const blockFromMinutes = startMinutes + 240;
@@ -84,9 +77,7 @@ async function getBlockedSlotIds() {
             }
         }
         
-        // === ПРАВИЛО "4 ЧАСА" ДЛЯ ВЕЧЕРА ===
         if (eveningBooked.length > 0) {
-            console.log(`\n--- ПРАВИЛО 4 ЧАСА (вечер) ---`);
             for (let bookedSlot of eveningBooked) {
                 const startMinutes = bookedSlot.timeValue * 60;
                 const blockFromMinutes = startMinutes + 240;
@@ -112,8 +103,6 @@ async function getBlockedSlotIds() {
             }
         }
         
-        // === ПРАВИЛО "СОСЕДНИЕ СЛОТЫ" ===
-        console.log(`\n--- ПРАВИЛО СОСЕДНИЕ СЛОТЫ ---`);
         for (let bookedSlot of booked) {
             const startMinutes = bookedSlot.timeValue * 60;
             
@@ -131,7 +120,6 @@ async function getBlockedSlotIds() {
         }
     }
     
-    console.log(`\n=== ИТОГО ЗАБЛОКИРОВАНО СЛОТОВ: ${blockedIds.size} ===\n`);
     return blockedIds;
 }
 
@@ -335,7 +323,6 @@ window.app.confirmBooking = async function() {
     }
     
     const selectedIds = Array.from(window.app.selectedSlotIds);
-    console.log('Бронирую слоты:', selectedIds);
     
     const blockedIds = await getBlockedSlotIds();
     const hasBlocked = selectedIds.some(id => blockedIds.has(id));
@@ -471,7 +458,7 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- БЕЗОПАСНАЯ ГЕНЕРАЦИЯ СЛОТОВ (без удаления существующих, только добавление недостающих дней) ---
+// --- БЕЗОПАСНАЯ ГЕНЕРАЦИЯ СЛОТОВ (проверка по каждому времени отдельно, без дублирования) ---
 window.app.ensureWeeklySchedule = async function() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -479,22 +466,21 @@ window.app.ensureWeeklySchedule = async function() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 7);
     
-    // Получаем все существующие слоты на нужный период
+    // Получаем ВСЕ существующие слоты на период
     const { data: existingSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
         .gte('start_time', today.toISOString())
         .lte('start_time', endDate.toISOString());
     
-    // Создаём Set существующих дат (только YYYY-MM-DD)
-    const existingDates = new Set();
+    // Создаём Set существующих временных слотов (дата+время)
+    const existingSlotKeys = new Set();
     existingSlots?.forEach(slot => {
         const date = new Date(slot.start_time);
-        const dateKey = date.toISOString().split('T')[0];
-        existingDates.add(dateKey);
+        const key = date.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+        existingSlotKeys.add(key);
     });
     
-    // Расписание для каждого дня недели
     const schedule = {
         1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
              evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
@@ -516,29 +502,25 @@ window.app.ensureWeeklySchedule = async function() {
     for (let day = 0; day <= 7; day++) {
         const currentDate = new Date(today);
         currentDate.setDate(today.getDate() + day);
-        const dateKey = currentDate.toISOString().split('T')[0];
-        
-        // Если на этот день уже есть слоты — пропускаем
-        if (existingDates.has(dateKey)) {
-            console.log(`День ${dateKey} уже имеет слоты, пропускаем`);
-            continue;
-        }
-        
         const dayOfWeek = currentDate.getDay();
         const daySchedule = schedule[dayOfWeek] || schedule[1];
         const requiredTimes = [...daySchedule.morning, ...daySchedule.evening];
         
         if (requiredTimes.length === 0) continue;
         
-        console.log(`Добавляю слоты на ${dateKey} (${dayOfWeek})`);
-        
         for (let time of requiredTimes) {
             const [hours, minutes] = time.split(':');
             const startTime = new Date(currentDate);
             startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             
-            // Не создаём слоты в прошлом
             if (startTime < new Date()) continue;
+            
+            const slotKey = startTime.toISOString().slice(0, 16);
+            
+            // Проверяем, существует ли уже такой слот
+            if (existingSlotKeys.has(slotKey)) {
+                continue;
+            }
             
             const endTime = new Date(startTime);
             endTime.setHours(startTime.getHours() + 1);
@@ -549,11 +531,16 @@ window.app.ensureWeeklySchedule = async function() {
                 is_available: true
             });
             
-            if (!error) addedCount++;
+            if (!error) {
+                addedCount++;
+                existingSlotKeys.add(slotKey);
+            }
         }
     }
     
-    console.log(`✅ Добавлено ${addedCount} новых слотов на недостающие дни`);
+    if (addedCount > 0) {
+        console.log(`✅ Добавлено ${addedCount} новых слотов`);
+    }
 };
 
 // --- Админ-панель: отображение слотов и записей ---
