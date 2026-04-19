@@ -135,18 +135,26 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     `;
     
     const unblockBtn = div.querySelector('.unblock-slot-btn');
-    if (unblockBtn) {
-        unblockBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (confirm(`Разблокировать слот на ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}?`)) {
-                await window.app.sb
-                    .from('slots')
-                    .update({ is_available: true })
-                    .eq('id', slot.id);
-                alert('✅ Слот разблокирован');
-                await window.app.loadAdminData();
-            }
-        });
+if (unblockBtn) {
+    unblockBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (confirm(`Разблокировать слот на ${start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}?\n\nСлот будет добавлен в исключения и больше не будет блокироваться правилами.`)) {
+            // Добавляем слот в таблицу исключений
+            await window.app.sb
+                .from('slot_exceptions')
+                .insert({ slot_id: slot.id });
+            
+            // Также делаем слот доступным
+            await window.app.sb
+                .from('slots')
+                .update({ is_available: true })
+                .eq('id', slot.id);
+            
+            alert('✅ Слот разблокирован (добавлен в исключения)');
+            await window.app.loadAdminData();
+        }
+    });
+}
     }
     
     const deleteBtn = div.querySelector('.delete-slot-btn');
