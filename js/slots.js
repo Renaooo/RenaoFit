@@ -3,8 +3,17 @@
 // ============================================
 
 // --- Получение списка заблокированных слотов ---
+// --- Получение списка заблокированных слотов (с учётом исключений) ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
+    
+    // Получаем список слотов, которые разблокированы вручную (исключения)
+    const { data: exceptions } = await window.app.sb
+        .from('slot_exceptions')
+        .select('slot_id');
+    
+    const exceptionIds = new Set();
+    exceptions?.forEach(ex => exceptionIds.add(ex.slot_id));
     
     const today = new Date();
     const endDate = new Date(today);
@@ -63,7 +72,9 @@ async function getBlockedSlotIds() {
                     return isMorning && slotMinutes >= blockFromMinutes;
                 });
                 if (laterSlots && laterSlots.length > 0) {
-                    laterSlots.forEach(slot => blockedIds.add(slot.id));
+                    laterSlots.forEach(slot => {
+                        if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
+                    });
                 }
                 
                 const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
@@ -72,7 +83,9 @@ async function getBlockedSlotIds() {
                     return isMorning && slotMinutes <= blockUntilMinutes;
                 });
                 if (earlierSlots && earlierSlots.length > 0) {
-                    earlierSlots.forEach(slot => blockedIds.add(slot.id));
+                    earlierSlots.forEach(slot => {
+                        if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
+                    });
                 }
             }
         }
@@ -89,7 +102,9 @@ async function getBlockedSlotIds() {
                     return isEvening && slotMinutes >= blockFromMinutes;
                 });
                 if (laterSlots && laterSlots.length > 0) {
-                    laterSlots.forEach(slot => blockedIds.add(slot.id));
+                    laterSlots.forEach(slot => {
+                        if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
+                    });
                 }
                 
                 const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
@@ -98,7 +113,9 @@ async function getBlockedSlotIds() {
                     return isEvening && slotMinutes <= blockUntilMinutes;
                 });
                 if (earlierSlots && earlierSlots.length > 0) {
-                    earlierSlots.forEach(slot => blockedIds.add(slot.id));
+                    earlierSlots.forEach(slot => {
+                        if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
+                    });
                 }
             }
         }
@@ -115,7 +132,9 @@ async function getBlockedSlotIds() {
             });
             
             if (adjacentSlots.length > 0) {
-                adjacentSlots.forEach(slot => blockedIds.add(slot.id));
+                adjacentSlots.forEach(slot => {
+                    if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
+                });
             }
         }
     }
