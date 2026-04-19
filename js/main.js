@@ -2,7 +2,7 @@
 // МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (НАВИГАЦИЯ, ИНИЦИАЛИЗАЦИЯ)
 // ============================================
 
-// --- Функция переключения экранов (уже определена в globals.js, но дублируем для надежности) ---
+// --- Функция переключения экранов ---
 if (typeof window.app.showScreen !== 'function') {
     window.app.showScreen = function(name) {
         Object.keys(window.app.screens).forEach(key => {
@@ -20,16 +20,13 @@ if (typeof window.app.showScreen !== 'function') {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Приложение загружено');
     
-    // Инициализируем UI ежедневного отчета
     if (typeof window.app.initDailyReportUI === 'function') {
         window.app.initDailyReportUI();
         console.log('DailyReportUI инициализирован');
     }
     
-    // Небольшая задержка для полной инициализации DOM и window.app.screens
     await new Promise(resolve => setTimeout(resolve, 50));
     
-    // Проверяем сессию пользователя
     const { data: { session } } = await window.app.sb.auth.getSession();
     console.log('Сессия:', session ? 'есть' : 'нет');
     
@@ -40,14 +37,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             userNameSpan.innerText = session.user.user_metadata.name || 'Друг';
         }
         
-        // Показываем кнопку админа, если пользователь админ
         const adminBtn = document.getElementById('admin-btn');
         if (adminBtn && session.user.user_metadata?.is_admin === true) {
             adminBtn.style.display = 'block';
             console.log('Админ-панель доступна');
         }
         
-        // Генерация слотов при входе любого пользователя (без удаления существующих)
         if (typeof window.app.ensureWeeklySchedule === 'function') {
             console.log('Проверяем и добавляем недостающие слоты...');
             try {
@@ -57,14 +52,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         
-        // Показываем меню с небольшой задержкой (ждём готовности DOM)
         setTimeout(() => {
             if (typeof window.app.showScreen === 'function') {
                 window.app.showScreen('menu');
                 console.log('Меню отображено');
             } else {
-                console.error('window.app.showScreen не функция');
-                // fallback
                 const menuScreen = document.getElementById('menu-screen');
                 if (menuScreen) {
                     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -73,7 +65,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 100);
     } else {
-        // Нет сессии — показываем экран авторизации
         setTimeout(() => {
             if (typeof window.app.showScreen === 'function') {
                 window.app.showScreen('auth');
@@ -89,7 +80,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // ========== ОБРАБОТЧИКИ КНОПОК ==========
     
-    // --- Авторизация ---
     const loginBtn = document.getElementById('login-btn');
     if (loginBtn) {
         loginBtn.addEventListener('click', async () => {
@@ -110,7 +100,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const userNameSpan = document.getElementById('user-name');
                 if (userNameSpan) userNameSpan.innerText = name;
                 
-                // Генерация слотов после успешного входа
                 if (typeof window.app.ensureWeeklySchedule === 'function') {
                     console.log('Проверяем и добавляем недостающие слоты...');
                     await window.app.ensureWeeklySchedule();
@@ -126,7 +115,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Записаться ---
     const bookBtn = document.getElementById('book-btn');
     if (bookBtn) {
         bookBtn.addEventListener('click', async () => {
@@ -136,7 +124,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Мои записи ---
     const myBookingsBtn = document.getElementById('my-bookings-btn');
     if (myBookingsBtn) {
         myBookingsBtn.addEventListener('click', async () => {
@@ -145,7 +132,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Ежедневный отчет ---
     const dailyReportBtn = document.getElementById('daily-report-btn');
     if (dailyReportBtn) {
         dailyReportBtn.addEventListener('click', async () => {
@@ -153,7 +139,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Мой профиль ---
     const myProfileBtn = document.getElementById('my-profile-btn');
     if (myProfileBtn) {
         myProfileBtn.addEventListener('click', async () => {
@@ -165,7 +150,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Админ-панель ---
     const adminBtn = document.getElementById('admin-btn');
     if (adminBtn) {
         adminBtn.addEventListener('click', async () => {
@@ -174,18 +158,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Кнопка подтверждения записи ---
     const confirmBtn = document.getElementById('confirm-booking-btn');
     if (confirmBtn) {
         confirmBtn.addEventListener('click', window.app.confirmBooking);
     }
     
-    // --- Кнопки "Назад" ---
     document.querySelectorAll('.back-btn').forEach(btn => {
         btn.addEventListener('click', () => window.app.showScreen('menu'));
     });
     
-    // --- Выход ---
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', async () => {
@@ -195,7 +176,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // --- Сброс расписания (если есть кнопка) ---
     const resetScheduleBtn = document.getElementById('reset-schedule-btn');
     if (resetScheduleBtn) {
         resetScheduleBtn.addEventListener('click', async () => {
@@ -207,16 +187,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Добавление слота в админ-панели (с корректным преобразованием времени) ---
+    // --- ИСПРАВЛЕННЫЙ обработчик добавления слота ---
     const adminAddSlotBtn = document.getElementById('admin-add-slot');
     if (adminAddSlotBtn) {
         adminAddSlotBtn.addEventListener('click', async () => {
             const startLocal = document.getElementById('admin-start').value;
             if (!startLocal) return alert('Выберите начало слота');
             
-            // Преобразуем локальное время (МСК) в UTC для сохранения в БД
             const startDate = new Date(startLocal);
-            // Создаем UTC дату из локальных компонентов
             const startUTC = new Date(Date.UTC(
                 startDate.getFullYear(),
                 startDate.getMonth(),
@@ -224,7 +202,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 startDate.getHours(),
                 startDate.getMinutes()
             ));
-            const start = startUTC.toISOString().slice(0, 16);
+            const start = startUTC.toISOString();
             
             const endDate = new Date(startLocal);
             endDate.setHours(startDate.getHours() + 1);
@@ -235,10 +213,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 endDate.getHours(),
                 endDate.getMinutes()
             ));
-            const end = endUTC.toISOString().slice(0, 16);
+            const end = endUTC.toISOString();
             
             console.log('Добавление слота:', { startLocal, start, end });
             
+            // ⭐ ВАЖНО: сначала удаляем слот из deleted_slots (если он там был)
+            await window.app.sb
+                .from('deleted_slots')
+                .delete()
+                .eq('slot_time', start);
+            
+            // Затем создаём слот
             const { error } = await window.app.sb.from('slots').insert({ 
                 start_time: start, 
                 end_time: end, 
@@ -248,7 +233,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (error) {
                 alert('Ошибка: ' + error.message);
             } else { 
-                alert('Слот добавлен (1 час)'); 
+                alert('✅ Слот добавлен (1 час)'); 
                 if (typeof window.app.loadAdminData === 'function') {
                     await window.app.loadAdminData();
                 }
