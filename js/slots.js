@@ -662,12 +662,6 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                 dayDiv.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <h3 style="margin: 0; font-size: 16px;">📅 ${day}</h3>
-                        <div style="display: flex; gap: 8px;">
-                            <button class="block-morning-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;">🔒 Блокировать утро</button>
-                            <button class="block-evening-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;">🔒 Блокировать вечер</button>
-                            <button class="unblock-morning-btn" data-day="${dayDateStr}" style="background: #36B647; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;">🔓 Разблокировать утро</button>
-                            <button class="unblock-evening-btn" data-day="${dayDateStr}" style="background: #36B647; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;">🔓 Разблокировать вечер</button>
-                        </div>
                     </div>
                 `;
                 
@@ -676,153 +670,171 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                 
                 if (morning.length > 0) {
                     const morningDiv = document.createElement('div');
-                    morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
+                    morningDiv.style.cssText = 'margin-bottom: 15px;';
+                    morningDiv.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-size: 12px; color: #666;">☀️ Утро</div>
+                            <div style="display: flex; gap: 6px;">
+                                <button class="block-morning-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔒</button>
+                                <button class="unblock-morning-btn" data-day="${dayDateStr}" style="background: #36B647; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔓</button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    const morningSlotsContainer = document.createElement('div');
                     morning.forEach(slot => {
                         const isBlockedByRule = blockedIds.has(slot.id);
-                        window.app.addSlotElement(morningDiv, slot, isBlockedByRule);
+                        window.app.addSlotElement(morningSlotsContainer, slot, isBlockedByRule);
                     });
+                    morningDiv.appendChild(morningSlotsContainer);
                     dayDiv.appendChild(morningDiv);
+                    
+                    const blockMorningBtn = morningDiv.querySelector('.block-morning-btn');
+                    const unblockMorningBtn = morningDiv.querySelector('.unblock-morning-btn');
+                    
+                    if (blockMorningBtn) {
+                        blockMorningBtn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            if (confirm(`Заблокировать все УТРЕННИЕ слоты на ${day}?`)) {
+                                const targetDate = new Date(dayDateStr);
+                                const dayOfWeek = targetDate.getDay();
+                                const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
+                                const morningTimes = daySchedule.morning;
+                                
+                                for (const time of morningTimes) {
+                                    const [hours, minutes] = time.split(':');
+                                    const slotTime = new Date(targetDate);
+                                    slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                    
+                                    const { data: existing } = await window.app.sb
+                                        .from('slots')
+                                        .select('id')
+                                        .eq('start_time', slotTime.toISOString());
+                                    
+                                    if (existing && existing.length > 0) {
+                                        await window.app.sb
+                                            .from('slots')
+                                            .update({ is_blocked: true })
+                                            .eq('start_time', slotTime.toISOString());
+                                    } else {
+                                        const endTime = new Date(slotTime);
+                                        endTime.setHours(slotTime.getHours() + 1);
+                                        await window.app.sb.from('slots').insert({
+                                            start_time: slotTime.toISOString(),
+                                            end_time: endTime.toISOString(),
+                                            is_available: true,
+                                            is_blocked: true
+                                        });
+                                    }
+                                }
+                                
+                                await window.app.loadAdminDataWithoutGenerate();
+                                alert('✅ Все утренние слоты заблокированы');
+                            }
+                        });
+                    }
+                    
+                    if (unblockMorningBtn) {
+                        unblockMorningBtn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            if (confirm(`Разблокировать все УТРЕННИЕ слоты на ${day}?`)) {
+                                await window.app.sb
+                                    .from('slots')
+                                    .update({ is_blocked: false })
+                                    .gte('start_time', `${dayDateStr}T00:00:00.000Z`)
+                                    .lt('start_time', `${dayDateStr}T12:00:00.000Z`);
+                                
+                                await window.app.loadAdminDataWithoutGenerate();
+                                alert('✅ Все утренние слоты разблокированы');
+                            }
+                        });
+                    }
                 }
                 
                 if (evening.length > 0) {
                     const eveningDiv = document.createElement('div');
-                    eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
+                    eveningDiv.style.cssText = 'margin-top: 15px;';
+                    eveningDiv.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-size: 12px; color: #666;">🌙 Вечер</div>
+                            <div style="display: flex; gap: 6px;">
+                                <button class="block-evening-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔒</button>
+                                <button class="unblock-evening-btn" data-day="${dayDateStr}" style="background: #36B647; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔓</button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    const eveningSlotsContainer = document.createElement('div');
                     evening.forEach(slot => {
                         const isBlockedByRule = blockedIds.has(slot.id);
-                        window.app.addSlotElement(eveningDiv, slot, isBlockedByRule);
+                        window.app.addSlotElement(eveningSlotsContainer, slot, isBlockedByRule);
                     });
+                    eveningDiv.appendChild(eveningSlotsContainer);
                     dayDiv.appendChild(eveningDiv);
+                    
+                    const blockEveningBtn = eveningDiv.querySelector('.block-evening-btn');
+                    const unblockEveningBtn = eveningDiv.querySelector('.unblock-evening-btn');
+                    
+                    if (blockEveningBtn) {
+                        blockEveningBtn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            if (confirm(`Заблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
+                                const targetDate = new Date(dayDateStr);
+                                const dayOfWeek = targetDate.getDay();
+                                const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
+                                const eveningTimes = daySchedule.evening;
+                                
+                                for (const time of eveningTimes) {
+                                    const [hours, minutes] = time.split(':');
+                                    const slotTime = new Date(targetDate);
+                                    slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                    
+                                    const { data: existing } = await window.app.sb
+                                        .from('slots')
+                                        .select('id')
+                                        .eq('start_time', slotTime.toISOString());
+                                    
+                                    if (existing && existing.length > 0) {
+                                        await window.app.sb
+                                            .from('slots')
+                                            .update({ is_blocked: true })
+                                            .eq('start_time', slotTime.toISOString());
+                                    } else {
+                                        const endTime = new Date(slotTime);
+                                        endTime.setHours(slotTime.getHours() + 1);
+                                        await window.app.sb.from('slots').insert({
+                                            start_time: slotTime.toISOString(),
+                                            end_time: endTime.toISOString(),
+                                            is_available: true,
+                                            is_blocked: true
+                                        });
+                                    }
+                                }
+                                
+                                await window.app.loadAdminDataWithoutGenerate();
+                                alert('✅ Все вечерние слоты заблокированы');
+                            }
+                        });
+                    }
+                    
+                    if (unblockEveningBtn) {
+                        unblockEveningBtn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            if (confirm(`Разблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
+                                await window.app.sb
+                                    .from('slots')
+                                    .update({ is_blocked: false })
+                                    .gte('start_time', `${dayDateStr}T12:00:00.000Z`)
+                                    .lt('start_time', `${dayDateStr}T23:59:59.999Z`);
+                                
+                                await window.app.loadAdminDataWithoutGenerate();
+                                alert('✅ Все вечерние слоты разблокированы');
+                            }
+                        });
+                    }
                 }
                 
                 adminSlotsDiv.appendChild(dayDiv);
-                
-                // Блокировка утра
-                const blockMorningBtn = dayDiv.querySelector('.block-morning-btn');
-                if (blockMorningBtn) {
-                    blockMorningBtn.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        if (confirm(`Заблокировать все УТРЕННИЕ слоты на ${day}?`)) {
-                            const dayDateStr = e.target.dataset.day;
-                            const targetDate = new Date(dayDateStr);
-                            const dayOfWeek = targetDate.getDay();
-                            const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
-                            const morningTimes = daySchedule.morning;
-                            
-                            for (const time of morningTimes) {
-                                const [hours, minutes] = time.split(':');
-                                const slotTime = new Date(targetDate);
-                                slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                                
-                                const { data: existing } = await window.app.sb
-                                    .from('slots')
-                                    .select('id')
-                                    .eq('start_time', slotTime.toISOString());
-                                
-                                if (existing && existing.length > 0) {
-                                    await window.app.sb
-                                        .from('slots')
-                                        .update({ is_blocked: true })
-                                        .eq('start_time', slotTime.toISOString());
-                                } else {
-                                    const endTime = new Date(slotTime);
-                                    endTime.setHours(slotTime.getHours() + 1);
-                                    await window.app.sb.from('slots').insert({
-                                        start_time: slotTime.toISOString(),
-                                        end_time: endTime.toISOString(),
-                                        is_available: true,
-                                        is_blocked: true
-                                    });
-                                }
-                            }
-                            
-                            await window.app.loadAdminDataWithoutGenerate();
-                            alert('✅ Все утренние слоты заблокированы');
-                        }
-                    });
-                }
-                
-                // Блокировка вечера
-                const blockEveningBtn = dayDiv.querySelector('.block-evening-btn');
-                if (blockEveningBtn) {
-                    blockEveningBtn.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        if (confirm(`Заблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
-                            const dayDateStr = e.target.dataset.day;
-                            const targetDate = new Date(dayDateStr);
-                            const dayOfWeek = targetDate.getDay();
-                            const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
-                            const eveningTimes = daySchedule.evening;
-                            
-                            for (const time of eveningTimes) {
-                                const [hours, minutes] = time.split(':');
-                                const slotTime = new Date(targetDate);
-                                slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                                
-                                const { data: existing } = await window.app.sb
-                                    .from('slots')
-                                    .select('id')
-                                    .eq('start_time', slotTime.toISOString());
-                                
-                                if (existing && existing.length > 0) {
-                                    await window.app.sb
-                                        .from('slots')
-                                        .update({ is_blocked: true })
-                                        .eq('start_time', slotTime.toISOString());
-                                } else {
-                                    const endTime = new Date(slotTime);
-                                    endTime.setHours(slotTime.getHours() + 1);
-                                    await window.app.sb.from('slots').insert({
-                                        start_time: slotTime.toISOString(),
-                                        end_time: endTime.toISOString(),
-                                        is_available: true,
-                                        is_blocked: true
-                                    });
-                                }
-                            }
-                            
-                            await window.app.loadAdminDataWithoutGenerate();
-                            alert('✅ Все вечерние слоты заблокированы');
-                        }
-                    });
-                }
-                
-                // Разблокировка утра
-                const unblockMorningBtn = dayDiv.querySelector('.unblock-morning-btn');
-                if (unblockMorningBtn) {
-                    unblockMorningBtn.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        if (confirm(`Разблокировать все УТРЕННИЕ слоты на ${day}?`)) {
-                            const dayDateStr = e.target.dataset.day;
-                            await window.app.sb
-                                .from('slots')
-                                .update({ is_blocked: false })
-                                .gte('start_time', `${dayDateStr}T00:00:00.000Z`)
-                                .lt('start_time', `${dayDateStr}T12:00:00.000Z`);
-                            
-                            await window.app.loadAdminDataWithoutGenerate();
-                            alert('✅ Все утренние слоты разблокированы');
-                        }
-                    });
-                }
-                
-                // Разблокировка вечера
-                const unblockEveningBtn = dayDiv.querySelector('.unblock-evening-btn');
-                if (unblockEveningBtn) {
-                    unblockEveningBtn.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        if (confirm(`Разблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
-                            const dayDateStr = e.target.dataset.day;
-                            await window.app.sb
-                                .from('slots')
-                                .update({ is_blocked: false })
-                                .gte('start_time', `${dayDateStr}T12:00:00.000Z`)
-                                .lt('start_time', `${dayDateStr}T23:59:59.999Z`);
-                            
-                            await window.app.loadAdminDataWithoutGenerate();
-                            alert('✅ Все вечерние слоты разблокированы');
-                        }
-                    });
-                }
             }
         }
     }
