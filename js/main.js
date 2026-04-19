@@ -26,6 +26,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('DailyReportUI инициализирован');
     }
     
+    // Небольшая задержка для полной инициализации DOM и window.app.screens
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
     // Проверяем сессию пользователя
     const { data: { session } } = await window.app.sb.auth.getSession();
     console.log('Сессия:', session ? 'есть' : 'нет');
@@ -44,15 +47,44 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('Админ-панель доступна');
         }
         
-        // ⭐ ГЕНЕРАЦИЯ СЛОТОВ при входе любого пользователя (без удаления существующих)
+        // Генерация слотов при входе любого пользователя (без удаления существующих)
         if (typeof window.app.ensureWeeklySchedule === 'function') {
             console.log('Проверяем и добавляем недостающие слоты...');
-            await window.app.ensureWeeklySchedule();
+            try {
+                await window.app.ensureWeeklySchedule();
+            } catch(e) {
+                console.error('Ошибка генерации слотов:', e);
+            }
         }
         
-        window.app.showScreen('menu');
+        // Показываем меню с небольшой задержкой (ждём готовности DOM)
+        setTimeout(() => {
+            if (typeof window.app.showScreen === 'function') {
+                window.app.showScreen('menu');
+                console.log('Меню отображено');
+            } else {
+                console.error('window.app.showScreen не функция');
+                // fallback
+                const menuScreen = document.getElementById('menu-screen');
+                if (menuScreen) {
+                    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                    menuScreen.classList.add('active');
+                }
+            }
+        }, 100);
     } else {
-        window.app.showScreen('auth');
+        // Нет сессии — показываем экран авторизации
+        setTimeout(() => {
+            if (typeof window.app.showScreen === 'function') {
+                window.app.showScreen('auth');
+            } else {
+                const authScreen = document.getElementById('auth-screen');
+                if (authScreen) {
+                    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                    authScreen.classList.add('active');
+                }
+            }
+        }, 100);
     }
     
     // ========== ОБРАБОТЧИКИ КНОПОК ==========
@@ -78,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const userNameSpan = document.getElementById('user-name');
                 if (userNameSpan) userNameSpan.innerText = name;
                 
-                // ⭐ ГЕНЕРАЦИЯ СЛОТОВ после успешного входа
+                // Генерация слотов после успешного входа
                 if (typeof window.app.ensureWeeklySchedule === 'function') {
                     console.log('Проверяем и добавляем недостающие слоты...');
                     await window.app.ensureWeeklySchedule();
