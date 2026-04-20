@@ -2,24 +2,27 @@
 // МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (ФИНАЛЬНЫЙ)
 // ============================================
 
-// Флаг для предотвращения многократной генерации
 let isGeneratingSchedule = false;
 
-// --- Функция переключения экранов ---
-if (typeof window.app.showScreen !== 'function') {
-    window.app.showScreen = function(name) {
-        Object.keys(window.app.screens).forEach(key => {
-            if (window.app.screens[key]) {
-                window.app.screens[key].classList.remove('active');
+// --- Функция переключения экранов (работает напрямую с DOM) ---
+function switchScreen(screenName) {
+    console.log('Переключение на экран:', screenName);
+    const screens = ['auth', 'menu', 'booking', 'myBookings', 'dailyReport', 'profile', 'admin'];
+    screens.forEach(name => {
+        const el = document.getElementById(`${name}-screen`);
+        if (el) {
+            if (name === screenName) {
+                el.classList.add('active');
+            } else {
+                el.classList.remove('active');
             }
-        });
-        if (window.app.screens[name]) {
-            window.app.screens[name].classList.add('active');
         }
-    };
+    });
 }
 
-// --- Безопасный вызов генерации расписания (один раз за сессию) ---
+// --- Дублируем функцию в window.app для совместимости ---
+window.app.showScreen = switchScreen;
+
 async function safeEnsureWeeklySchedule() {
     if (isGeneratingSchedule) {
         console.log('Генерация расписания уже выполняется, пропускаем...');
@@ -41,7 +44,6 @@ async function safeEnsureWeeklySchedule() {
     }
 }
 
-// --- Инициализация приложения ---
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Приложение загружено');
     
@@ -68,38 +70,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('Админ-панель доступна');
         }
         
-        // Генерация расписания (безопасно, один раз)
-        await safeEnsureWeeklySchedule();
+        safeEnsureWeeklySchedule().catch(e => console.error('Ошибка генерации:', e));
         
         setTimeout(() => {
-            if (typeof window.app.showScreen === 'function') {
-                window.app.showScreen('menu');
-                console.log('Меню отображено');
-            } else {
-                const menuScreen = document.getElementById('menu-screen');
-                if (menuScreen) {
-                    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-                    menuScreen.classList.add('active');
-                }
-            }
+            switchScreen('menu');
         }, 100);
     } else {
         setTimeout(() => {
-            if (typeof window.app.showScreen === 'function') {
-                window.app.showScreen('auth');
-            } else {
-                const authScreen = document.getElementById('auth-screen');
-                if (authScreen) {
-                    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-                    authScreen.classList.add('active');
-                }
-            }
+            switchScreen('auth');
         }, 100);
     }
     
-    // ========== ОБРАБОТЧИКИ КНОПОК ==========
+    // --- Обработчики кнопок ---
     
-    // --- Авторизация ---
     const loginBtn = document.getElementById('login-btn');
     if (loginBtn) {
         loginBtn.addEventListener('click', async () => {
@@ -120,10 +103,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const userNameSpan = document.getElementById('user-name');
                 if (userNameSpan) userNameSpan.innerText = name;
                 
-                // Генерация после входа (безопасно)
-                await safeEnsureWeeklySchedule();
+                safeEnsureWeeklySchedule().catch(e => console.error('Ошибка генерации:', e));
                 
-                window.app.showScreen('menu');
+                switchScreen('menu');
             } catch(e) {
                 console.error('Ошибка входа:', e);
                 alert('Ошибка входа: ' + e.message);
@@ -133,26 +115,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Записаться ---
     const bookBtn = document.getElementById('book-btn');
     if (bookBtn) {
         bookBtn.addEventListener('click', async () => {
             const slots = await window.app.loadSlots();
             await window.app.renderSlots(slots);
-            window.app.showScreen('booking');
+            switchScreen('booking');
         });
     }
     
-    // --- Мои записи ---
     const myBookingsBtn = document.getElementById('my-bookings-btn');
     if (myBookingsBtn) {
         myBookingsBtn.addEventListener('click', async () => {
             await window.app.loadMyBookings();
-            window.app.showScreen('myBookings');
+            switchScreen('myBookings');
         });
     }
     
-    // --- Ежедневный отчет ---
     const dailyReportBtn = document.getElementById('daily-report-btn');
     if (dailyReportBtn) {
         dailyReportBtn.addEventListener('click', async () => {
@@ -160,7 +139,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Мой профиль ---
     const myProfileBtn = document.getElementById('my-profile-btn');
     if (myProfileBtn) {
         myProfileBtn.addEventListener('click', async () => {
@@ -168,41 +146,36 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (typeof window.app.updateWeeklyMessage === 'function') {
                 await window.app.updateWeeklyMessage();
             }
-            window.app.showScreen('profile');
+            switchScreen('profile');
         });
     }
     
-    // --- Админ-панель ---
     const adminBtn = document.getElementById('admin-btn');
     if (adminBtn) {
         adminBtn.addEventListener('click', async () => {
             await window.app.loadAdminData();
-            window.app.showScreen('admin');
+            switchScreen('admin');
         });
     }
     
-    // --- Подтверждение записи ---
     const confirmBtn = document.getElementById('confirm-booking-btn');
     if (confirmBtn) {
         confirmBtn.addEventListener('click', window.app.confirmBooking);
     }
     
-    // --- Кнопки "Назад" ---
     document.querySelectorAll('.back-btn').forEach(btn => {
-        btn.addEventListener('click', () => window.app.showScreen('menu'));
+        btn.addEventListener('click', () => switchScreen('menu'));
     });
     
-    // --- Выход ---
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', async () => {
             await window.app.sb.auth.signOut();
             window.app.currentUser = null;
-            window.app.showScreen('auth');
+            switchScreen('auth');
         });
     }
 
-    // --- Сброс расписания (если есть кнопка) ---
     const resetScheduleBtn = document.getElementById('reset-schedule-btn');
     if (resetScheduleBtn) {
         resetScheduleBtn.addEventListener('click', async () => {
@@ -214,7 +187,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Добавление слота вручную (с удалением из deleted_slots, если нужно) ---
     const adminAddSlotBtn = document.getElementById('admin-add-slot');
     if (adminAddSlotBtn) {
         adminAddSlotBtn.addEventListener('click', async () => {
@@ -242,13 +214,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             ));
             const end = endUTC.toISOString();
             
-            // Если используется таблица deleted_slots (опционально)
             if (window.app.sb.from('deleted_slots')) {
                 try {
                     await window.app.sb.from('deleted_slots').delete().eq('slot_time', start);
-                } catch(e) {
-                    // Таблицы может не быть, игнорируем
-                }
+                } catch(e) {}
             }
             
             const { error } = await window.app.sb.from('slots').insert({ 
