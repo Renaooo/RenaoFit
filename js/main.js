@@ -296,4 +296,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+    
+    // --- Генерация всей недели ---
+    const generateWeekBtn = document.getElementById('generate-week-btn');
+    if (generateWeekBtn) {
+        generateWeekBtn.addEventListener('click', async () => {
+            generateWeekBtn.disabled = true;
+            generateWeekBtn.textContent = '⏳ Генерация...';
+            
+            try {
+                await window.app.generateFullWeek();
+            } catch (e) {
+                console.error('Ошибка генерации недели:', e);
+                alert('Ошибка генерации: ' + e.message);
+            } finally {
+                generateWeekBtn.disabled = false;
+                generateWeekBtn.textContent = '📅 Сгенерировать неделю (ПН-СБ)';
+            }
+        });
+    }
 });
