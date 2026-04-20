@@ -505,17 +505,17 @@ window.app.ensureWeeklySchedule = async function() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 7);
     
+    // Получаем ВСЕ существующие слоты за период
     const { data: existingSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
         .gte('start_time', today.toISOString())
         .lte('start_time', endDate.toISOString());
     
-    const existingSlotKeys = new Set();
+    // Создаём Set из ISO строк (полных, до миллисекунды)
+    const existingSlotSet = new Set();
     existingSlots?.forEach(slot => {
-        const date = new Date(slot.start_time);
-        const key = date.toISOString().slice(0, 16);
-        existingSlotKeys.add(key);
+        existingSlotSet.add(slot.start_time);
     });
     
     let addedCount = 0;
@@ -529,34 +529,48 @@ window.app.ensureWeeklySchedule = async function() {
         
         if (requiredTimes.length === 0) continue;
         
-        for (let time of requiredTimes) {
+        for (const time of requiredTimes) {
             const [hours, minutes] = time.split(':');
             const startTime = new Date(currentDate);
             startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             
             if (startTime < new Date()) continue;
             
-            const slotKey = startTime.toISOString().slice(0, 16);
+            const startTimeISO = startTime.toISOString();
             
-            if (existingSlotKeys.has(slotKey)) continue;
+            // Проверяем, существует ли уже такой слот
+            if (existingSlotSet.has(startTimeISO)) {
+                console.log(`Слот ${startTimeISO} уже существует, пропускаем`);
+                continue;
+            }
             
             const endTime = new Date(startTime);
             endTime.setHours(startTime.getHours() + 1);
             
-            await window.app.sb.from('slots').insert({
-                start_time: startTime.toISOString(),
+            const { error } = await window.app.sb.from('slots').insert({
+                start_time: startTimeISO,
                 end_time: endTime.toISOString(),
                 is_available: true,
                 is_blocked: false
             });
-            addedCount++;
+            
+            if (error) {
+                console.error('Ошибка создания слота:', error);
+            } else {
+                addedCount++;
+                existingSlotSet.add(startTimeISO);
+            }
         }
     }
     
     if (addedCount > 0) {
         console.log(`✅ Добавлено ${addedCount} новых слотов`);
+    } else {
+        console.log('✅ Новых слотов не требуется');
     }
 };
+
+
 
 // --- Функция отображения слота в админке ---
 window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
