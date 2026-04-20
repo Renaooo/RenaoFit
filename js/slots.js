@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ВЕРСИЯ - МСК)
+// МОДУЛЬ СЛОТОВ (ПРАВИЛО 4 ЧАСОВ ОТКЛЮЧЕНО)
 // ============================================
 
 // --- Расписание в МСК ---
@@ -43,10 +43,11 @@ function getNowMSK() {
     return now;
 }
 
-// --- Получение списка заблокированных слотов ---
+// --- Получение списка заблокированных слотов (ТОЛЬКО соседние слоты, без правила 4 часов) ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
     
+    // 1. Слоты, заблокированные вручную
     const { data: manuallyBlocked } = await window.app.sb
         .from('slots')
         .select('id')
@@ -54,6 +55,7 @@ async function getBlockedSlotIds() {
     
     manuallyBlocked?.forEach(slot => blockedIds.add(slot.id));
     
+    // 2. Исключения (разблокированные вручную)
     const { data: exceptions } = await window.app.sb
         .from('slot_exceptions')
         .select('slot_id');
@@ -61,6 +63,7 @@ async function getBlockedSlotIds() {
     const exceptionIds = new Set();
     exceptions?.forEach(ex => exceptionIds.add(ex.slot_id));
     
+    // 3. Только ПРАВИЛО СОСЕДНИХ СЛОТОВ (правило 4 часов ОТКЛЮЧЕНО)
     const today = new Date();
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 14);
@@ -103,69 +106,7 @@ async function getBlockedSlotIds() {
     });
     
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
-        const morningBooked = booked.filter(b => b.hour < 15);
-        const eveningBooked = booked.filter(b => b.hour >= 15);
-        
-        if (morningBooked.length > 0) {
-            for (let bookedSlot of morningBooked) {
-                const startMinutes = bookedSlot.timeValue * 60;
-                const blockFromMinutes = startMinutes + 240;
-                const blockUntilMinutes = startMinutes - 240;
-                
-                const laterSlots = slotsByDay[dayKey]?.filter(slot => {
-                    const isMorning = slot.hour < 15;
-                    const slotMinutes = slot.timeValue * 60;
-                    return isMorning && slotMinutes >= blockFromMinutes;
-                });
-                if (laterSlots && laterSlots.length > 0) {
-                    laterSlots.forEach(slot => {
-                        if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
-                    });
-                }
-                
-                const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
-                    const isMorning = slot.hour < 15;
-                    const slotMinutes = slot.timeValue * 60;
-                    return isMorning && slotMinutes <= blockUntilMinutes;
-                });
-                if (earlierSlots && earlierSlots.length > 0) {
-                    earlierSlots.forEach(slot => {
-                        if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
-                    });
-                }
-            }
-        }
-        
-        if (eveningBooked.length > 0) {
-            for (let bookedSlot of eveningBooked) {
-                const startMinutes = bookedSlot.timeValue * 60;
-                const blockFromMinutes = startMinutes + 240;
-                const blockUntilMinutes = startMinutes - 240;
-                
-                const laterSlots = slotsByDay[dayKey]?.filter(slot => {
-                    const isEvening = slot.hour >= 15;
-                    const slotMinutes = slot.timeValue * 60;
-                    return isEvening && slotMinutes >= blockFromMinutes;
-                });
-                if (laterSlots && laterSlots.length > 0) {
-                    laterSlots.forEach(slot => {
-                        if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
-                    });
-                }
-                
-                const earlierSlots = slotsByDay[dayKey]?.filter(slot => {
-                    const isEvening = slot.hour >= 15;
-                    const slotMinutes = slot.timeValue * 60;
-                    return isEvening && slotMinutes <= blockUntilMinutes;
-                });
-                if (earlierSlots && earlierSlots.length > 0) {
-                    earlierSlots.forEach(slot => {
-                        if (!exceptionIds.has(slot.id)) blockedIds.add(slot.id);
-                    });
-                }
-            }
-        }
-        
+        // ТОЛЬКО ПРАВИЛО СОСЕДНИХ СЛОТОВ (правило 4 часов пропущено)
         for (let bookedSlot of booked) {
             const startMinutes = bookedSlot.timeValue * 60;
             
@@ -415,7 +356,7 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- РУЧНАЯ ГЕНЕРАЦИЯ СЛОТОВ (исправленная, МСК) ---
+// --- РУЧНАЯ ГЕНЕРАЦИЯ СЛОТОВ ---
 window.app.generateSlotsForDay = async function(dateStr, half) {
     if (!dateStr) {
         alert('Выберите дату');
@@ -441,27 +382,22 @@ window.app.generateSlotsForDay = async function(dateStr, half) {
     let skipped = 0;
     let existing = 0;
     
-    // Текущее время в МСК
     const nowMSK = getNowMSK();
     
     for (const time of times) {
         const [hours, minutes] = time.split(':');
         
-        // Создаём время в МСК
         const startTimeMSK = new Date(targetDate);
         startTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         
-        // Пропускаем прошедшие слоты
         if (startTimeMSK < nowMSK) {
             skipped++;
             continue;
         }
         
-        // Конвертируем в UTC для сохранения в БД
         const startTimeUTC = mskToUtc(startTimeMSK);
         const startTimeISO = startTimeUTC.toISOString();
         
-        // Проверяем, существует ли уже такой слот
         const { data: existingSlot } = await window.app.sb
             .from('slots')
             .select('id')
@@ -554,7 +490,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     container.appendChild(div);
 };
 
-// --- Админ-панель (без автоматической генерации) ---
+// --- Админ-панель ---
 window.app.loadAdminData = async function() {
     await window.app.loadAdminDataWithoutGenerate();
 };
