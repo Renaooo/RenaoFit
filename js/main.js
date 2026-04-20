@@ -2,6 +2,7 @@
 // МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (ФИНАЛЬНЫЙ)
 // ============================================
 
+// Флаг для предотвращения многократной генерации (если нужно)
 let isGeneratingSchedule = false;
 
 // --- Функция переключения экранов (работает напрямую с DOM) ---
@@ -23,27 +24,14 @@ function switchScreen(screenName) {
 // --- Дублируем функцию в window.app для совместимости ---
 window.app.showScreen = switchScreen;
 
+// --- Безопасный вызов генерации (отключён, оставлен для совместимости) ---
 async function safeEnsureWeeklySchedule() {
-    if (isGeneratingSchedule) {
-        console.log('Генерация расписания уже выполняется, пропускаем...');
-        return;
-    }
-    
-    if (typeof window.app.ensureWeeklySchedule !== 'function') {
-        console.log('Функция ensureWeeklySchedule не определена');
-        return;
-    }
-    
-    isGeneratingSchedule = true;
-    try {
-        await window.app.ensureWeeklySchedule();
-    } catch (e) {
-        console.error('Ошибка генерации расписания:', e);
-    } finally {
-        isGeneratingSchedule = false;
-    }
+    // Автоматическая генерация ОТКЛЮЧЕНА
+    console.log('Автоматическая генерация отключена. Используйте ручную генерацию в админ-панели.');
+    return;
 }
 
+// --- Инициализация приложения ---
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Приложение загружено');
     
@@ -70,7 +58,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('Админ-панель доступна');
         }
         
-        safeEnsureWeeklySchedule().catch(e => console.error('Ошибка генерации:', e));
+        // Автоматическая генерация ОТКЛЮЧЕНА
+        // safeEnsureWeeklySchedule().catch(e => console.error('Ошибка генерации:', e));
         
         setTimeout(() => {
             switchScreen('menu');
@@ -81,8 +70,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 100);
     }
     
-    // --- Обработчики кнопок ---
+    // ========== ОБРАБОТЧИКИ КНОПОК ==========
     
+    // --- Авторизация ---
     const loginBtn = document.getElementById('login-btn');
     if (loginBtn) {
         loginBtn.addEventListener('click', async () => {
@@ -103,7 +93,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const userNameSpan = document.getElementById('user-name');
                 if (userNameSpan) userNameSpan.innerText = name;
                 
-                safeEnsureWeeklySchedule().catch(e => console.error('Ошибка генерации:', e));
+                // Автоматическая генерация ОТКЛЮЧЕНА
+                // safeEnsureWeeklySchedule().catch(e => console.error('Ошибка генерации:', e));
                 
                 switchScreen('menu');
             } catch(e) {
@@ -115,6 +106,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
+    // --- Записаться ---
     const bookBtn = document.getElementById('book-btn');
     if (bookBtn) {
         bookBtn.addEventListener('click', async () => {
@@ -124,6 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
+    // --- Мои записи ---
     const myBookingsBtn = document.getElementById('my-bookings-btn');
     if (myBookingsBtn) {
         myBookingsBtn.addEventListener('click', async () => {
@@ -132,6 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
+    // --- Ежедневный отчет ---
     const dailyReportBtn = document.getElementById('daily-report-btn');
     if (dailyReportBtn) {
         dailyReportBtn.addEventListener('click', async () => {
@@ -139,6 +133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
+    // --- Мой профиль ---
     const myProfileBtn = document.getElementById('my-profile-btn');
     if (myProfileBtn) {
         myProfileBtn.addEventListener('click', async () => {
@@ -150,6 +145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
+    // --- Админ-панель ---
     const adminBtn = document.getElementById('admin-btn');
     if (adminBtn) {
         adminBtn.addEventListener('click', async () => {
@@ -158,15 +154,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
+    // --- Подтверждение записи ---
     const confirmBtn = document.getElementById('confirm-booking-btn');
     if (confirmBtn) {
         confirmBtn.addEventListener('click', window.app.confirmBooking);
     }
     
+    // --- Кнопки "Назад" ---
     document.querySelectorAll('.back-btn').forEach(btn => {
         btn.addEventListener('click', () => switchScreen('menu'));
     });
     
+    // --- Выход ---
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', async () => {
@@ -176,17 +175,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // --- Сброс расписания (если есть кнопка) ---
     const resetScheduleBtn = document.getElementById('reset-schedule-btn');
     if (resetScheduleBtn) {
         resetScheduleBtn.addEventListener('click', async () => {
             if (confirm('Сбросить расписание? Это удалит ВСЕ слоты и создаст новые.')) {
-                await window.app.ensureWeeklySchedule(true);
-                await window.app.loadAdminData();
-                alert('Расписание обновлено');
+                alert('Функция сброса отключена. Используйте ручную генерацию.');
             }
         });
     }
     
+    // --- Добавление слота вручную ---
     const adminAddSlotBtn = document.getElementById('admin-add-slot');
     if (adminAddSlotBtn) {
         adminAddSlotBtn.addEventListener('click', async () => {
@@ -214,10 +213,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             ));
             const end = endUTC.toISOString();
             
+            // Если используется таблица deleted_slots (опционально)
             if (window.app.sb.from('deleted_slots')) {
                 try {
                     await window.app.sb.from('deleted_slots').delete().eq('slot_time', start);
-                } catch(e) {}
+                } catch(e) {
+                    // Таблицы может не быть, игнорируем
+                }
             }
             
             const { error } = await window.app.sb.from('slots').insert({ 
@@ -235,6 +237,62 @@ document.addEventListener('DOMContentLoaded', async () => {
                     await window.app.loadAdminData();
                 }
                 document.getElementById('admin-start').value = '';
+            }
+        });
+    }
+    
+    // ========== НОВЫЕ ОБРАБОТЧИКИ ДЛЯ РУЧНОЙ ГЕНЕРАЦИИ СЛОТОВ ==========
+    
+    // --- Генерация утра ---
+    const generateMorningBtn = document.getElementById('generate-morning-btn');
+    if (generateMorningBtn) {
+        generateMorningBtn.addEventListener('click', async () => {
+            const dateInput = document.getElementById('generate-date');
+            const dateStr = dateInput?.value;
+            
+            if (!dateStr) {
+                alert('Выберите дату');
+                return;
+            }
+            
+            generateMorningBtn.disabled = true;
+            generateMorningBtn.textContent = '⏳ Генерация...';
+            
+            try {
+                await window.app.generateSlotsForDay(dateStr, 'morning');
+            } catch (e) {
+                console.error('Ошибка генерации:', e);
+                alert('Ошибка генерации: ' + e.message);
+            } finally {
+                generateMorningBtn.disabled = false;
+                generateMorningBtn.textContent = '🌅 Сгенерировать утро';
+            }
+        });
+    }
+    
+    // --- Генерация вечера ---
+    const generateEveningBtn = document.getElementById('generate-evening-btn');
+    if (generateEveningBtn) {
+        generateEveningBtn.addEventListener('click', async () => {
+            const dateInput = document.getElementById('generate-date');
+            const dateStr = dateInput?.value;
+            
+            if (!dateStr) {
+                alert('Выберите дату');
+                return;
+            }
+            
+            generateEveningBtn.disabled = true;
+            generateEveningBtn.textContent = '⏳ Генерация...';
+            
+            try {
+                await window.app.generateSlotsForDay(dateStr, 'evening');
+            } catch (e) {
+                console.error('Ошибка генерации:', e);
+                alert('Ошибка генерации: ' + e.message);
+            } finally {
+                generateEveningBtn.disabled = false;
+                generateEveningBtn.textContent = '🌙 Сгенерировать вечер';
             }
         });
     }
