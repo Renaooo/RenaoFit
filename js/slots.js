@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ВЕРСИЯ - РУЧНАЯ ГЕНЕРАЦИЯ)
+// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ВЕРСИЯ - МСК)
 // ============================================
 
 // --- Расписание в МСК ---
@@ -22,18 +22,25 @@ const SCHEDULE = {
 // Флаг для предотвращения повторного рендера
 let isRenderingAdmin = false;
 
-// --- Преобразование UTC в МСК ---
+// --- Преобразование UTC в МСК (при отображении) ---
 function utcToMsk(utcDate) {
     const date = new Date(utcDate);
-    date.setHours(date.getHours() + 3);
+    date.setUTCHours(date.getUTCHours() + 3);
     return date;
 }
 
-// --- Преобразование МСК в UTC ---
+// --- Преобразование МСК в UTC (при сохранении) ---
 function mskToUtc(mskDate) {
     const date = new Date(mskDate);
-    date.setHours(date.getHours() - 3);
+    date.setUTCHours(date.getUTCHours() - 3);
     return date;
+}
+
+// --- Получение текущей даты и времени в МСК ---
+function getNowMSK() {
+    const now = new Date();
+    now.setUTCHours(now.getUTCHours() + 3);
+    return now;
 }
 
 // --- Получение списка заблокированных слотов ---
@@ -408,10 +415,8 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- РУЧНАЯ ГЕНЕРАЦИЯ СЛОТОВ (без автоматики) ---
+// --- РУЧНАЯ ГЕНЕРАЦИЯ СЛОТОВ (исправленная, МСК) ---
 window.app.generateSlotsForDay = async function(dateStr, half) {
-    // dateStr: '2026-04-27', half: 'morning' или 'evening'
-    
     if (!dateStr) {
         alert('Выберите дату');
         return false;
@@ -436,19 +441,23 @@ window.app.generateSlotsForDay = async function(dateStr, half) {
     let skipped = 0;
     let existing = 0;
     
+    // Текущее время в МСК
+    const nowMSK = getNowMSK();
+    
     for (const time of times) {
         const [hours, minutes] = time.split(':');
+        
+        // Создаём время в МСК
         const startTimeMSK = new Date(targetDate);
         startTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         
         // Пропускаем прошедшие слоты
-        const now = new Date();
-        const nowMSK = new Date(now.getTime() + 3 * 60 * 60 * 1000);
         if (startTimeMSK < nowMSK) {
             skipped++;
             continue;
         }
         
+        // Конвертируем в UTC для сохранения в БД
         const startTimeUTC = mskToUtc(startTimeMSK);
         const startTimeISO = startTimeUTC.toISOString();
         
@@ -484,7 +493,6 @@ window.app.generateSlotsForDay = async function(dateStr, half) {
     const message = `✅ Создано ${created} слотов\n⏭️ Пропущено (прошло): ${skipped}\n📌 Уже существовало: ${existing}`;
     alert(message);
     
-    // Обновляем отображение админ-панели
     if (typeof window.app.loadAdminData === 'function') {
         await window.app.loadAdminData();
     }
@@ -548,7 +556,6 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
 
 // --- Админ-панель (без автоматической генерации) ---
 window.app.loadAdminData = async function() {
-    // Автоматическая генерация ОТКЛЮЧЕНА - только ручное управление
     await window.app.loadAdminDataWithoutGenerate();
 };
 
@@ -642,9 +649,9 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                                     
                                     for (const time of morningTimes) {
                                         const [hours, minutes] = time.split(':');
-                                        const slotTime = new Date(targetDate);
-                                        slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                                        const slotTimeUTC = mskToUtc(slotTime);
+                                        const slotTimeMSK = new Date(targetDate);
+                                        slotTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                        const slotTimeUTC = mskToUtc(slotTimeMSK);
                                         
                                         const { data: existing } = await window.app.sb
                                             .from('slots')
@@ -677,8 +684,10 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                             unblockMorningBtn.addEventListener('click', async (e) => {
                                 e.stopPropagation();
                                 if (confirm(`Разблокировать все УТРЕННИЕ слоты на ${day}?`)) {
-                                    const startUTC = mskToUtc(new Date(`${dayDateStr}T00:00:00`));
-                                    const endUTC = mskToUtc(new Date(`${dayDateStr}T12:00:00`));
+                                    const startMSK = new Date(`${dayDateStr}T00:00:00`);
+                                    const endMSK = new Date(`${dayDateStr}T12:00:00`);
+                                    const startUTC = mskToUtc(startMSK);
+                                    const endUTC = mskToUtc(endMSK);
                                     await window.app.sb
                                         .from('slots')
                                         .update({ is_blocked: false })
@@ -726,9 +735,9 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                                     
                                     for (const time of eveningTimes) {
                                         const [hours, minutes] = time.split(':');
-                                        const slotTime = new Date(targetDate);
-                                        slotTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                                        const slotTimeUTC = mskToUtc(slotTime);
+                                        const slotTimeMSK = new Date(targetDate);
+                                        slotTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                        const slotTimeUTC = mskToUtc(slotTimeMSK);
                                         
                                         const { data: existing } = await window.app.sb
                                             .from('slots')
@@ -761,8 +770,10 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                             unblockEveningBtn.addEventListener('click', async (e) => {
                                 e.stopPropagation();
                                 if (confirm(`Разблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
-                                    const startUTC = mskToUtc(new Date(`${dayDateStr}T12:00:00`));
-                                    const endUTC = mskToUtc(new Date(`${dayDateStr}T23:59:59`));
+                                    const startMSK = new Date(`${dayDateStr}T12:00:00`);
+                                    const endMSK = new Date(`${dayDateStr}T23:59:59`);
+                                    const startUTC = mskToUtc(startMSK);
+                                    const endUTC = mskToUtc(endMSK);
                                     await window.app.sb
                                         .from('slots')
                                         .update({ is_blocked: false })
