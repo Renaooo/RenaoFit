@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ВЕРСИЯ - МСК)
+// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ВЕРСИЯ - РУЧНАЯ ГЕНЕРАЦИЯ)
 // ============================================
 
 // --- Расписание в МСК ---
@@ -19,8 +19,7 @@ const SCHEDULE = {
     0: { morning: [], evening: [] }
 };
 
-// Флаг для предотвращения повторных вызовов генерации
-let isGenerating = false;
+// Флаг для предотвращения повторного рендера
 let isRenderingAdmin = false;
 
 // --- Преобразование UTC в МСК ---
@@ -35,14 +34,6 @@ function mskToUtc(mskDate) {
     const date = new Date(mskDate);
     date.setHours(date.getHours() - 3);
     return date;
-}
-
-// --- Получение текущей даты в МСК (начало дня) ---
-function getTodayMSK() {
-    const now = new Date();
-    const mskDate = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-    mskDate.setUTCHours(0, 0, 0, 0);
-    return mskDate;
 }
 
 // --- Получение списка заблокированных слотов ---
@@ -417,82 +408,88 @@ window.app.loadMyBookings = async function() {
     }
 };
 
-// --- Генерация расписания (без дублирования) ---
-window.app.ensureWeeklySchedule = async function() {
-    if (isGenerating) {
-        console.log('⚠️ Генерация уже запущена, пропускаем');
-        return;
-    }
-    isGenerating = true;
+// --- РУЧНАЯ ГЕНЕРАЦИЯ СЛОТОВ (без автоматики) ---
+window.app.generateSlotsForDay = async function(dateStr, half) {
+    // dateStr: '2026-04-27', half: 'morning' или 'evening'
     
-    try {
-        const todayMSK = getTodayMSK();
-        const endDateMSK = new Date(todayMSK);
-        endDateMSK.setUTCDate(todayMSK.getUTCDate() + 7);
+    if (!dateStr) {
+        alert('Выберите дату');
+        return false;
+    }
+    
+    const targetDate = new Date(dateStr);
+    if (isNaN(targetDate.getTime())) {
+        alert('Выберите корректную дату');
+        return false;
+    }
+    
+    const dayOfWeek = targetDate.getDay();
+    const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
+    const times = half === 'morning' ? daySchedule.morning : daySchedule.evening;
+    
+    if (times.length === 0) {
+        alert(`На ${half === 'morning' ? 'утро' : 'вечер'} этого дня нет расписания`);
+        return false;
+    }
+    
+    let created = 0;
+    let skipped = 0;
+    let existing = 0;
+    
+    for (const time of times) {
+        const [hours, minutes] = time.split(':');
+        const startTimeMSK = new Date(targetDate);
+        startTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         
-        // Получаем существующие слоты в UTC
-        const { data: existingSlots } = await window.app.sb
+        // Пропускаем прошедшие слоты
+        const now = new Date();
+        const nowMSK = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+        if (startTimeMSK < nowMSK) {
+            skipped++;
+            continue;
+        }
+        
+        const startTimeUTC = mskToUtc(startTimeMSK);
+        const startTimeISO = startTimeUTC.toISOString();
+        
+        // Проверяем, существует ли уже такой слот
+        const { data: existingSlot } = await window.app.sb
             .from('slots')
-            .select('start_time')
-            .gte('start_time', mskToUtc(todayMSK).toISOString())
-            .lte('start_time', mskToUtc(endDateMSK).toISOString());
+            .select('id')
+            .eq('start_time', startTimeISO)
+            .maybeSingle();
         
-        const existingSlotSet = new Set();
-        existingSlots?.forEach(slot => {
-            existingSlotSet.add(slot.start_time);
+        if (existingSlot) {
+            existing++;
+            continue;
+        }
+        
+        const endTimeUTC = new Date(startTimeUTC);
+        endTimeUTC.setUTCHours(startTimeUTC.getUTCHours() + 1);
+        
+        const { error } = await window.app.sb.from('slots').insert({
+            start_time: startTimeISO,
+            end_time: endTimeUTC.toISOString(),
+            is_available: true,
+            is_blocked: false
         });
         
-        let addedCount = 0;
-        
-        for (let day = 0; day <= 7; day++) {
-            const currentDateMSK = new Date(todayMSK);
-            currentDateMSK.setUTCDate(todayMSK.getUTCDate() + day);
-            
-            const dayOfWeek = currentDateMSK.getUTCDay();
-            const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
-            const requiredTimes = [...daySchedule.morning, ...daySchedule.evening];
-            
-            if (requiredTimes.length === 0) continue;
-            
-            for (const time of requiredTimes) {
-                const [hours, minutes] = time.split(':');
-                
-                const startTimeMSK = new Date(currentDateMSK);
-                startTimeMSK.setUTCHours(parseInt(hours), parseInt(minutes), 0, 0);
-                
-                // Пропускаем прошедшие слоты
-                if (startTimeMSK < new Date(Date.now() + 3 * 60 * 60 * 1000)) continue;
-                
-                const startTimeUTC = mskToUtc(startTimeMSK);
-                const startTimeISO = startTimeUTC.toISOString();
-                
-                if (existingSlotSet.has(startTimeISO)) continue;
-                
-                const endTimeUTC = new Date(startTimeUTC);
-                endTimeUTC.setUTCHours(startTimeUTC.getUTCHours() + 1);
-                
-                const { error } = await window.app.sb.from('slots').insert({
-                    start_time: startTimeISO,
-                    end_time: endTimeUTC.toISOString(),
-                    is_available: true,
-                    is_blocked: false
-                });
-                
-                if (!error) {
-                    addedCount++;
-                    existingSlotSet.add(startTimeISO);
-                }
-            }
+        if (error) {
+            console.error('Ошибка создания слота:', error);
+        } else {
+            created++;
         }
-        
-        if (addedCount > 0) {
-            console.log(`✅ Добавлено ${addedCount} новых слотов`);
-        }
-    } catch (e) {
-        console.error('Ошибка генерации:', e);
-    } finally {
-        isGenerating = false;
     }
+    
+    const message = `✅ Создано ${created} слотов\n⏭️ Пропущено (прошло): ${skipped}\n📌 Уже существовало: ${existing}`;
+    alert(message);
+    
+    // Обновляем отображение админ-панели
+    if (typeof window.app.loadAdminData === 'function') {
+        await window.app.loadAdminData();
+    }
+    
+    return created > 0;
 };
 
 // --- Функция отображения слота в админке ---
@@ -549,9 +546,9 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     container.appendChild(div);
 };
 
-// --- Админ-панель (без дублирования) ---
+// --- Админ-панель (без автоматической генерации) ---
 window.app.loadAdminData = async function() {
-    await window.app.ensureWeeklySchedule();
+    // Автоматическая генерация ОТКЛЮЧЕНА - только ручное управление
     await window.app.loadAdminDataWithoutGenerate();
 };
 
