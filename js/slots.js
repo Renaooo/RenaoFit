@@ -499,74 +499,92 @@ window.app.loadMyBookings = async function() {
 
 // --- Генерация расписания ---
 window.app.ensureWeeklySchedule = async function() {
+    // Текущая дата в МСК
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const mskOffset = 3 * 60 * 60 * 1000;
+    const todayMSK = new Date(today.getTime() + mskOffset);
+    todayMSK.setUTCHours(0, 0, 0, 0);
     
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 7);
+    const endDateMSK = new Date(todayMSK);
+    endDateMSK.setUTCDate(todayMSK.getUTCDate() + 7);
     
-    // Получаем ВСЕ существующие слоты за период
+    // Получаем существующие слоты (хранятся в UTC, но мы их читаем как МСК)
     const { data: existingSlots } = await window.app.sb
         .from('slots')
         .select('start_time')
-        .gte('start_time', today.toISOString())
-        .lte('start_time', endDate.toISOString());
+        .gte('start_time', new Date(todayMSK.getTime() - mskOffset).toISOString())
+        .lte('start_time', new Date(endDateMSK.getTime() - mskOffset).toISOString());
     
-    // Создаём Set из ISO строк (полных, до миллисекунды)
     const existingSlotSet = new Set();
     existingSlots?.forEach(slot => {
-        existingSlotSet.add(slot.start_time);
+        // Приводим UTC к МСК для сравнения
+        const utcDate = new Date(slot.start_time);
+        const mskDate = new Date(utcDate.getTime() + mskOffset);
+        const key = mskDate.toISOString().slice(0, 16);
+        existingSlotSet.add(key);
     });
+    
+    const schedule = {
+        1: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        2: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        3: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        4: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        5: { morning: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00'], 
+             evening: ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30'] },
+        6: { morning: ['10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00'], 
+             evening: [] },
+        0: { morning: [], evening: [] }
+    };
     
     let addedCount = 0;
     
     for (let day = 0; day <= 7; day++) {
-        const currentDate = new Date(today);
-        currentDate.setDate(today.getDate() + day);
-        const dayOfWeek = currentDate.getDay();
-        const daySchedule = SCHEDULE[dayOfWeek] || SCHEDULE[1];
+        const currentDateMSK = new Date(todayMSK);
+        currentDateMSK.setUTCDate(todayMSK.getUTCDate() + day);
+        
+        const dayOfWeek = currentDateMSK.getUTCDay();
+        const daySchedule = schedule[dayOfWeek] || schedule[1];
         const requiredTimes = [...daySchedule.morning, ...daySchedule.evening];
         
         if (requiredTimes.length === 0) continue;
         
         for (const time of requiredTimes) {
             const [hours, minutes] = time.split(':');
-            const startTime = new Date(currentDate);
-            startTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             
-            if (startTime < new Date()) continue;
+            const startTimeMSK = new Date(currentDateMSK);
+            startTimeMSK.setUTCHours(parseInt(hours), parseInt(minutes), 0, 0);
             
-            const startTimeISO = startTime.toISOString();
+            // Пропускаем прошедшие слоты
+            if (startTimeMSK < new Date(today.getTime() + mskOffset)) continue;
             
-            // Проверяем, существует ли уже такой слот
-            if (existingSlotSet.has(startTimeISO)) {
-                console.log(`Слот ${startTimeISO} уже существует, пропускаем`);
-                continue;
-            }
+            const key = startTimeMSK.toISOString().slice(0, 16);
             
-            const endTime = new Date(startTime);
-            endTime.setHours(startTime.getHours() + 1);
+            if (existingSlotSet.has(key)) continue;
+            
+            // Сохраняем в БД как UTC (вычитаем смещение)
+            const startTimeUTC = new Date(startTimeMSK.getTime() - mskOffset);
+            const endTimeUTC = new Date(startTimeUTC.getTime() + 60 * 60 * 1000);
             
             const { error } = await window.app.sb.from('slots').insert({
-                start_time: startTimeISO,
-                end_time: endTime.toISOString(),
+                start_time: startTimeUTC.toISOString(),
+                end_time: endTimeUTC.toISOString(),
                 is_available: true,
                 is_blocked: false
             });
             
-            if (error) {
-                console.error('Ошибка создания слота:', error);
-            } else {
+            if (!error) {
                 addedCount++;
-                existingSlotSet.add(startTimeISO);
+                existingSlotSet.add(key);
             }
         }
     }
     
     if (addedCount > 0) {
-        console.log(`✅ Добавлено ${addedCount} новых слотов`);
-    } else {
-        console.log('✅ Новых слотов не требуется');
+        console.log(`✅ Добавлено ${addedCount} новых слотов (МСК)`);
     }
 };
 
