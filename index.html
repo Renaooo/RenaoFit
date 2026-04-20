@@ -208,10 +208,13 @@
                 <!-- Блок ручной генерации слотов -->
                 <div class="admin-form" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e0e0e0;">
                     <h3 style="margin-top: 0;">🛠️ Ручная генерация слотов</h3>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
                         <input type="date" id="generate-date" style="flex: 2; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
                         <button id="generate-morning-btn" class="btn secondary" style="flex: 1; background: #ff9800; color: white;">🌅 Сгенерировать утро</button>
                         <button id="generate-evening-btn" class="btn secondary" style="flex: 1; background: #ff9800; color: white;">🌙 Сгенерировать вечер</button>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="generate-week-btn" class="btn secondary" style="flex: 1; background: #36B647; color: white;">📅 Сгенерировать неделю (ПН-СБ)</button>
                     </div>
                     <p style="font-size: 12px; color: #666; margin-top: 8px;">
                         * Слоты создаются по расписанию: утро 08:00-12:00, вечер 17:00-21:30 (с шагом 30 мин)<br>
