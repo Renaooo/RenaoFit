@@ -10,21 +10,61 @@ window.app.sb = window.supabase.createClient(
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2aW9jenRpb2V6b2JnZmt0ZHJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MjMwNjYsImV4cCI6MjA4OTk5OTA2Nn0.NT66Ur7c8hnIjY5aZGeuSYPEM--coy9nAT7yLEK9nZ8'
 );
 
-// --- DOM элементы (экран) ---
-window.app.screens = {
-    auth: document.getElementById('auth-screen'),
-    menu: document.getElementById('menu-screen'),
-    booking: document.getElementById('booking-screen'),
-    myBookings: document.getElementById('my-bookings-screen'),
-    dailyReport: document.getElementById('daily-report-screen'),
-    profile: document.getElementById('profile-screen'),
-    admin: document.getElementById('admin-screen')
-};
-
 // --- Глобальные переменные состояния ---
 window.app.currentUser = null;
 window.app.selectedSlotIds = new Set();
 window.app.isLoggingIn = false;
+
+// --- Функция инициализации экранов (вызывается при загрузке и после DOM) ---
+function initScreens() {
+    window.app.screens = {
+        auth: document.getElementById('auth-screen'),
+        menu: document.getElementById('menu-screen'),
+        booking: document.getElementById('booking-screen'),
+        myBookings: document.getElementById('my-bookings-screen'),
+        dailyReport: document.getElementById('daily-report-screen'),
+        profile: document.getElementById('profile-screen'),
+        admin: document.getElementById('admin-screen')
+    };
+    console.log('Screens initialized:', window.app.screens);
+}
+
+// --- Функция переключения экранов (работает напрямую с DOM) ---
+window.app.switchScreen = function(screenName) {
+    console.log('Переключение на экран:', screenName);
+    
+    // Маппинг названий экранов на ID в DOM
+    const screenIdMap = {
+        'auth': 'auth-screen',
+        'menu': 'menu-screen',
+        'booking': 'booking-screen',
+        'myBookings': 'my-bookings-screen',
+        'dailyReport': 'daily-report-screen',
+        'profile': 'profile-screen',
+        'admin': 'admin-screen'
+    };
+    
+    const targetId = screenIdMap[screenName];
+    if (!targetId) {
+        console.error('Неизвестный экран:', screenName);
+        return;
+    }
+    
+    // Скрываем все экраны
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    
+    // Показываем нужный
+    const targetScreen = document.getElementById(targetId);
+    if (targetScreen) {
+        targetScreen.classList.add('active');
+        console.log(`Экран ${screenName} (${targetId}) показан`);
+    } else {
+        console.error(`Экран с id ${targetId} не найден`);
+    }
+};
+
+// --- Дублируем showScreen для совместимости ---
+window.app.showScreen = window.app.switchScreen;
 
 // --- Очистка телефона ---
 window.app.cleanPhone = function(phone) {
@@ -54,38 +94,9 @@ window.app.getNowMSK = function() {
     return now;
 };
 
-// --- Функция переключения экранов ---
-window.app.showScreen = function(name) {
-    console.log('Переключение на экран:', name);
-    if (!window.app.screens || !window.app.screens[name]) {
-        console.error('Экран не найден:', name);
-        // Fallback: прямое управление классами
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        const target = document.getElementById(`${name}-screen`);
-        if (target) target.classList.add('active');
-        return;
-    }
-    Object.keys(window.app.screens).forEach(key => {
-        if (window.app.screens[key]) {
-            window.app.screens[key].classList.remove('active');
-        }
-    });
-    window.app.screens[name].classList.add('active');
-};
-
-// --- Повторная инициализация экранов после загрузки DOM (на случай, если скрипт загрузился раньше) ---
-document.addEventListener('DOMContentLoaded', function() {
-    if (!window.app.screens || Object.keys(window.app.screens).length === 0 || 
-        Object.values(window.app.screens).some(el => !el)) {
-        window.app.screens = {
-            auth: document.getElementById('auth-screen'),
-            menu: document.getElementById('menu-screen'),
-            booking: document.getElementById('booking-screen'),
-            myBookings: document.getElementById('my-bookings-screen'),
-            dailyReport: document.getElementById('daily-report-screen'),
-            profile: document.getElementById('profile-screen'),
-            admin: document.getElementById('admin-screen')
-        };
-        console.log('Screens re-initialized on DOMContentLoaded');
-    }
-});
+// --- Инициализация при загрузке скрипта (если DOM уже готов) ---
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initScreens);
+} else {
+    initScreens();
+}
