@@ -159,12 +159,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // --- Админ-панель ---
     const adminBtn = document.getElementById('admin-btn');
-    if (adminBtn) {
-        adminBtn.addEventListener('click', async () => {
-            await window.app.loadAdminData();
-            switchScreen('admin');
-        });
-    }
+if (adminBtn) {
+    adminBtn.addEventListener('click', async () => {
+        await window.app.loadAdminData();
+        if (typeof window.app.setupAdminTabs === 'function') {
+            window.app.setupAdminTabs();
+        }
+        window.app.switchScreen('admin');
+    });
+}
     
     // --- Подтверждение записи ---
     const confirmBtn = document.getElementById('confirm-booking-btn');
