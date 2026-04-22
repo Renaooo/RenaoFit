@@ -5,26 +5,40 @@
 // Флаг для предотвращения многократной генерации
 let isGeneratingSchedule = false;
 
-// --- Функция переключения экранов (работает напрямую с DOM) ---
+// --- Функция переключения экранов (дублируем из globals.js для надёжности) ---
 function switchScreen(screenName) {
     console.log('Переключение на экран:', screenName);
-    const screens = ['auth', 'menu', 'booking', 'myBookings', 'dailyReport', 'profile', 'admin'];
-    screens.forEach(name => {
-        const el = document.getElementById(`${name}-screen`);
-        if (el) {
-            if (name === screenName) {
-                el.classList.add('active');
-            } else {
-                el.classList.remove('active');
-            }
-        }
-    });
+    const screenIdMap = {
+        'auth': 'auth-screen',
+        'menu': 'menu-screen',
+        'booking': 'booking-screen',
+        'myBookings': 'my-bookings-screen',
+        'dailyReport': 'daily-report-screen',
+        'profile': 'profile-screen',
+        'admin': 'admin-screen'
+    };
+    
+    const targetId = screenIdMap[screenName];
+    if (!targetId) {
+        console.error('Неизвестный экран:', screenName);
+        return;
+    }
+    
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const targetScreen = document.getElementById(targetId);
+    if (targetScreen) {
+        targetScreen.classList.add('active');
+        console.log(`Экран ${screenName} показан`);
+    } else {
+        console.error(`Экран с id ${targetId} не найден`);
+    }
 }
 
-// --- Дублируем функцию в window.app для совместимости ---
+// --- Дублируем в window.app для совместимости ---
+window.app.switchScreen = switchScreen;
 window.app.showScreen = switchScreen;
 
-// --- Безопасный вызов генерации (отключён, оставлен для совместимости) ---
+// --- Безопасный вызов генерации (отключён) ---
 async function safeEnsureWeeklySchedule() {
     console.log('Автоматическая генерация отключена. Используйте ручную генерацию в админ-панели.');
     return;
@@ -56,9 +70,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             adminBtn.style.display = 'block';
             console.log('Админ-панель доступна');
         }
-        
-        // Автоматическая генерация ОТКЛЮЧЕНА
-        // safeEnsureWeeklySchedule().catch(e => console.error('Ошибка генерации:', e));
         
         setTimeout(() => {
             switchScreen('menu');
@@ -112,20 +123,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Мои записи ---
+    // --- Мои записи (с задержкой для гарантии) ---
     const myBookingsBtn = document.getElementById('my-bookings-btn');
     if (myBookingsBtn) {
         myBookingsBtn.addEventListener('click', async () => {
             await window.app.loadMyBookings();
-            switchScreen('myBookings');
+            setTimeout(() => {
+                switchScreen('myBookings');
+            }, 50);
         });
     }
     
-    // --- Ежедневный отчет ---
+    // --- Ежедневный отчет (с задержкой для гарантии) ---
     const dailyReportBtn = document.getElementById('daily-report-btn');
     if (dailyReportBtn) {
         dailyReportBtn.addEventListener('click', async () => {
             await window.app.openDailyReport();
+            setTimeout(() => {
+                switchScreen('dailyReport');
+            }, 50);
         });
     }
     
