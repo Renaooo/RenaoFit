@@ -38,19 +38,24 @@ window.app.loadClientsList = async function() {
 
 // --- Отображение списка клиентов ---
 window.app.renderClientsList = async function() {
+    console.log('renderClientsList started');
     const container = document.getElementById('admin-clients-list');
-    if (!container) return;
+    if (!container) {
+        console.error('Контейнер admin-clients-list не найден');
+        return;
+    }
     
     container.innerHTML = '<div style="text-align: center; padding: 20px;">Загрузка клиентов...</div>';
     
     const clients = await window.app.loadClientsList();
+    console.log('Клиентов загружено:', clients.length);
     
     if (!clients || clients.length === 0) {
         container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет зарегистрированных клиентов</p>';
         return;
     }
     
-    // Один запрос для подсчёта записей всех клиентов
+    // Получаем количество записей для всех клиентов одним запросом
     const { data: allBookings } = await window.app.sb
         .from('bookings')
         .select('user_id');
@@ -64,7 +69,7 @@ window.app.renderClientsList = async function() {
     
     for (let client of clients) {
         const count = bookingCounts[client.id] || 0;
-        const goalDisplay = getGoalDisplay(client.fitness_goal);
+        const goalDisplay = client.fitness_goal === 'wellness' ? '🌿 Здоровье и хорошее самочувствие' : '🔥 Активное снижение веса';
         
         const clientCard = document.createElement('div');
         clientCard.style.cssText = 'border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: #fff; cursor: pointer; transition: all 0.2s;';
@@ -86,12 +91,14 @@ window.app.renderClientsList = async function() {
             </div>
         `;
         
+        // Клик по карточке для открытия деталей
         const clientInfoDiv = clientCard.querySelector('div:first-child');
         clientInfoDiv.addEventListener('click', (e) => {
             e.stopPropagation();
             window.app.showClientDetails(client);
         });
         
+        // Кнопка удаления клиента
         const deleteBtn = clientCard.querySelector('.delete-client-btn');
         deleteBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -109,8 +116,9 @@ window.app.renderClientsList = async function() {
         
         container.appendChild(clientCard);
     }
+    
+    console.log('renderClientsList finished');
 };
-
 // --- Определение начала недели (понедельник) ---
 function getStartOfWeek(date) {
     const d = new Date(date);
