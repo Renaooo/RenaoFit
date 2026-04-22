@@ -206,22 +206,34 @@
                 </div>
                 
                 <!-- Блок ручной генерации слотов -->
-<div class="admin-form" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e0e0e0;">
-    <h3 style="margin-top: 0;">🛠️ Ручная генерация слотов</h3>
-    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <input type="date" id="generate-date" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
-    </div>
-    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        <button id="generate-morning-btn" class="btn secondary" style="flex: 1; background: #ff9800; color: white;">🌅 Сгенерировать утро</button>
-        <button id="generate-evening-btn" class="btn secondary" style="flex: 1; background: #ff9800; color: white;">🌙 Сгенерировать вечер</button>
-        <button id="generate-week-btn" class="btn secondary" style="flex: 1; background: #36B647; color: white;">📅 Сгенерировать неделю (ПН-СБ)</button>
-    </div>
-    <p style="font-size: 12px; color: #666; margin-top: 8px;">
-        * Слоты создаются по расписанию: утро 08:00-12:00, вечер 17:00-21:30 (с шагом 30 мин)<br>
-        * Уже существующие слоты не дублируются
-    </p>
-</div>
+                <div class="admin-form" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e0e0e0;">
+                    <h3 style="margin-top: 0;">🛠️ Ручная генерация слотов</h3>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <input type="date" id="generate-date" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button id="generate-morning-btn" class="btn secondary" style="flex: 1; background: #ff9800; color: white;">🌅 Сгенерировать утро</button>
+                        <button id="generate-evening-btn" class="btn secondary" style="flex: 1; background: #ff9800; color: white;">🌙 Сгенерировать вечер</button>
+                        <button id="generate-week-btn" class="btn secondary" style="flex: 1; background: #36B647; color: white;">📅 Сгенерировать неделю (ПН-СБ)</button>
+                    </div>
+                    <p style="font-size: 12px; color: #666; margin-top: 8px;">
+                        * Слоты создаются по расписанию: утро 08:00-12:00, вечер 17:00-21:30 (с шагом 30 мин)<br>
+                        * Уже существующие слоты не дублируются
+                    </p>
+                </div>
                 
+                <div class="admin-form">
+                    <h3>➕ Добавить слот вручную (1 час)</h3>
+                    <input type="datetime-local" id="admin-start">
+                    <button id="admin-add-slot" class="btn primary">➕ Добавить слот</button>
+                    <p style="font-size: 12px; color: #666; margin-top: 8px;">* Конец слота автоматически ставится +1 час</p>
+                </div>
+                
+                <!-- Блок "Все записи" -->
+                <div id="admin-bookings"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- Модальное окно для взвешивания -->
     <div id="weight-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000;">
