@@ -22,13 +22,30 @@ window.app.screens = {
 };
 
 // --- Глобальные переменные состояния ---
-window.app.currentUser = null;           // Текущий пользователь
-window.app.selectedSlotIds = new Set();   // Выбранные слоты для записи
-window.app.isLoggingIn = false;           // Флаг входа
+window.app.currentUser = null;
+window.app.selectedSlotIds = new Set();
+window.app.isLoggingIn = false;
 
-// --- Вспомогательные функции ---
+// --- Функция переключения экранов (доступна везде) ---
+window.app.switchScreen = function(screenName) {
+    console.log('Переключение на экран:', screenName);
+    const screens = ['auth', 'menu', 'booking', 'myBookings', 'dailyReport', 'profile', 'admin'];
+    screens.forEach(name => {
+        const el = document.getElementById(`${name}-screen`);
+        if (el) {
+            if (name === screenName) {
+                el.classList.add('active');
+            } else {
+                el.classList.remove('active');
+            }
+        }
+    });
+};
 
-// Очистка телефона (приводим к единому формату)
+// --- Дублируем showScreen для совместимости ---
+window.app.showScreen = window.app.switchScreen;
+
+// --- Очистка телефона ---
 window.app.cleanPhone = function(phone) {
     let cleaned = phone.replace(/[^0-9]/g, '');
     if (cleaned.startsWith('8')) {
@@ -37,37 +54,21 @@ window.app.cleanPhone = function(phone) {
     return cleaned;
 };
 
-// --- Преобразование времени (единый часовой пояс МСК) ---
-// В БД время хранится в UTC. При отображении прибавляем 3 часа.
+// --- Преобразование времени (МСК) ---
 window.app.utcToMsk = function(utcDate) {
     const date = new Date(utcDate);
     date.setUTCHours(date.getUTCHours() + 3);
     return date;
 };
 
-// При сохранении в БД вычитаем 3 часа из МСК
 window.app.mskToUtc = function(mskDate) {
     const date = new Date(mskDate);
     date.setUTCHours(date.getUTCHours() - 3);
     return date;
 };
 
-// Текущая дата и время в МСК
 window.app.getNowMSK = function() {
     const now = new Date();
     now.setUTCHours(now.getUTCHours() + 3);
     return now;
-};
-
-// --- Функция переключения экранов (будет переопределена в main.js, но заглушка) ---
-window.app.showScreen = function(name) {
-    console.log('Переключение на экран:', name);
-    if (window.app.screens && window.app.screens[name]) {
-        Object.keys(window.app.screens).forEach(key => {
-            if (window.app.screens[key]) {
-                window.app.screens[key].classList.remove('active');
-            }
-        });
-        window.app.screens[name].classList.add('active');
-    }
 };
