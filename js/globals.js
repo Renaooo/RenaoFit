@@ -26,25 +26,6 @@ window.app.currentUser = null;
 window.app.selectedSlotIds = new Set();
 window.app.isLoggingIn = false;
 
-// --- Функция переключения экранов (доступна везде) ---
-window.app.switchScreen = function(screenName) {
-    console.log('Переключение на экран:', screenName);
-    const screens = ['auth', 'menu', 'booking', 'myBookings', 'dailyReport', 'profile', 'admin'];
-    screens.forEach(name => {
-        const el = document.getElementById(`${name}-screen`);
-        if (el) {
-            if (name === screenName) {
-                el.classList.add('active');
-            } else {
-                el.classList.remove('active');
-            }
-        }
-    });
-};
-
-// --- Дублируем showScreen для совместимости ---
-window.app.showScreen = window.app.switchScreen;
-
 // --- Очистка телефона ---
 window.app.cleanPhone = function(phone) {
     let cleaned = phone.replace(/[^0-9]/g, '');
@@ -72,3 +53,39 @@ window.app.getNowMSK = function() {
     now.setUTCHours(now.getUTCHours() + 3);
     return now;
 };
+
+// --- Функция переключения экранов ---
+window.app.showScreen = function(name) {
+    console.log('Переключение на экран:', name);
+    if (!window.app.screens || !window.app.screens[name]) {
+        console.error('Экран не найден:', name);
+        // Fallback: прямое управление классами
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        const target = document.getElementById(`${name}-screen`);
+        if (target) target.classList.add('active');
+        return;
+    }
+    Object.keys(window.app.screens).forEach(key => {
+        if (window.app.screens[key]) {
+            window.app.screens[key].classList.remove('active');
+        }
+    });
+    window.app.screens[name].classList.add('active');
+};
+
+// --- Повторная инициализация экранов после загрузки DOM (на случай, если скрипт загрузился раньше) ---
+document.addEventListener('DOMContentLoaded', function() {
+    if (!window.app.screens || Object.keys(window.app.screens).length === 0 || 
+        Object.values(window.app.screens).some(el => !el)) {
+        window.app.screens = {
+            auth: document.getElementById('auth-screen'),
+            menu: document.getElementById('menu-screen'),
+            booking: document.getElementById('booking-screen'),
+            myBookings: document.getElementById('my-bookings-screen'),
+            dailyReport: document.getElementById('daily-report-screen'),
+            profile: document.getElementById('profile-screen'),
+            admin: document.getElementById('admin-screen')
+        };
+        console.log('Screens re-initialized on DOMContentLoaded');
+    }
+});
