@@ -614,20 +614,27 @@ window.app.loadAdminDataWithoutGenerate = async function() {
 
 // --- Переключение между вкладками в админке ---
 window.app.setupAdminTabs = function() {
+    console.log('🔵 setupAdminTabs вызвана');
+    
     const slotsTab = document.getElementById('admin-slots-tab');
     const clientsTab = document.getElementById('admin-clients-tab');
     const slotsPanel = document.getElementById('admin-slots-panel');
     const clientsPanel = document.getElementById('admin-clients-panel');
     const adminBookingsDiv = document.getElementById('admin-bookings');
     
-    if (!slotsTab || !clientsTab) return;
+    if (!slotsTab || !clientsTab) {
+        console.error('🔴 Вкладки не найдены');
+        return;
+    }
     
+    // Клонируем, чтобы удалить старые обработчики
     const newSlotsTab = slotsTab.cloneNode(true);
     const newClientsTab = clientsTab.cloneNode(true);
     slotsTab.parentNode.replaceChild(newSlotsTab, slotsTab);
     clientsTab.parentNode.replaceChild(newClientsTab, clientsTab);
     
     newSlotsTab.addEventListener('click', () => {
+        console.log('🔵 Нажата вкладка Слоты');
         newSlotsTab.style.background = '#36B647';
         newSlotsTab.style.color = 'white';
         newClientsTab.style.background = '#f0f0f0';
@@ -638,6 +645,7 @@ window.app.setupAdminTabs = function() {
     });
     
     newClientsTab.addEventListener('click', async () => {
+        console.log('🔵 Нажата вкладка Клиенты');
         newClientsTab.style.background = '#36B647';
         newClientsTab.style.color = 'white';
         newSlotsTab.style.background = '#f0f0f0';
@@ -646,13 +654,14 @@ window.app.setupAdminTabs = function() {
         clientsPanel.style.display = 'block';
         if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
         
-        console.log('Переключение на вкладку Клиенты');
         if (typeof window.app.renderClientsList === 'function') {
             await window.app.renderClientsList();
-            console.log('renderClientsList вызвана');
+            console.log('🔵 renderClientsList выполнена');
         } else {
-            console.error('renderClientsList не определена');
+            console.error('🔴 renderClientsList не определена');
             clientsPanel.innerHTML = '<p style="padding:20px;text-align:center;">Ошибка: функция не загружена</p>';
         }
     });
+    
+    console.log('🔵 setupAdminTabs завершена');
 };
