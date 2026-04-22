@@ -2,6 +2,7 @@
 // МОДУЛЬ АДМИН-ПАНЕЛИ (КЛИЕНТЫ)
 // ============================================
 
+// --- Вспомогательная функция для экранирования HTML ---
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
@@ -9,6 +10,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// --- Вспомогательная функция для отображения цели ---
 function getGoalDisplay(goal) {
     if (goal === 'wellness') {
         return '🌿 Здоровье и хорошее самочувствие';
@@ -16,6 +18,7 @@ function getGoalDisplay(goal) {
     return '🔥 Активное снижение веса';
 }
 
+// --- Загрузка списка клиентов (все пользователи, кроме админа) ---
 window.app.loadClientsList = async function() {
     const adminId = 'edafd00c-3f7d-47aa-8d69-9efbe95de98e';
     
@@ -33,6 +36,7 @@ window.app.loadClientsList = async function() {
     return profiles || [];
 };
 
+// --- Отображение списка клиентов ---
 window.app.renderClientsList = async function() {
     const container = document.getElementById('admin-clients-list');
     if (!container) return;
@@ -46,6 +50,7 @@ window.app.renderClientsList = async function() {
         return;
     }
     
+    // Один запрос для подсчёта записей всех клиентов
     const { data: allBookings } = await window.app.sb
         .from('bookings')
         .select('user_id');
@@ -59,13 +64,12 @@ window.app.renderClientsList = async function() {
     
     for (let client of clients) {
         const count = bookingCounts[client.id] || 0;
+        const goalDisplay = getGoalDisplay(client.fitness_goal);
         
         const clientCard = document.createElement('div');
         clientCard.style.cssText = 'border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: #fff; cursor: pointer; transition: all 0.2s;';
         clientCard.onmouseover = () => clientCard.style.backgroundColor = '#f8f9fa';
         clientCard.onmouseout = () => clientCard.style.backgroundColor = '#fff';
-        
-        const goalDisplay = getGoalDisplay(client.fitness_goal);
         
         clientCard.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -107,7 +111,8 @@ window.app.renderClientsList = async function() {
     }
 };
 
-function getStartOfWeekForClient(date) {
+// --- Определение начала недели (понедельник) ---
+function getStartOfWeek(date) {
     const d = new Date(date);
     const day = d.getDay();
     const diff = (day === 0 ? 6 : day - 1);
@@ -116,7 +121,9 @@ function getStartOfWeekForClient(date) {
     return d;
 }
 
+// --- Отображение карточки клиента с протоколом, комментариями и редактированием ---
 window.app.showClientDetails = async function(client) {
+    // Получаем записи клиента
     const { data: bookings, error: bookingsError } = await window.app.sb
         .from('bookings')
         .select(`
@@ -133,6 +140,7 @@ window.app.showClientDetails = async function(client) {
         return;
     }
     
+    // Функция форматирования локальной даты
     function formatLocalDate(date) {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -140,17 +148,10 @@ window.app.showClientDetails = async function(client) {
         return `${year}-${month}-${day}`;
     }
     
-    function getStartOfWeek(date) {
-        const d = new Date(date);
-        const day = d.getDay();
-        const diff = (day === 0 ? 6 : day - 1);
-        d.setDate(d.getDate() - diff);
-        d.setHours(0, 0, 0, 0);
-        return d;
-    }
-    
+    // Переменная для смещения недели
     let currentWeekOffset = 0;
     
+    // Создаем модальное окно
     const modal = document.createElement('div');
     modal.style.cssText = `
         position: fixed;
@@ -176,6 +177,7 @@ window.app.showClientDetails = async function(client) {
         padding: 20px;
     `;
     
+    // Функция загрузки протокола для выбранной недели
     async function loadProtocolForWeek(offset) {
         const today = new Date();
         const targetDate = new Date(today);
@@ -220,6 +222,7 @@ window.app.showClientDetails = async function(client) {
         const cardioOk = actualCardio >= targetCardio;
         const socialOk = socialDays <= 1;
         
+        // Формируем HTML для кружочков шагов
         let stepsCirclesHtml = '<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">';
         const daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
         for (let i = 0; i < 7; i++) {
@@ -282,6 +285,7 @@ window.app.showClientDetails = async function(client) {
         `, reports: weeklyReports };
     }
     
+    // Загружаем историю весов клиента (только для режима снижения веса)
     let weightHistoryHtml = '';
     if (client.fitness_goal !== 'wellness') {
         const { data: weightHistory } = await window.app.sb
@@ -305,11 +309,12 @@ window.app.showClientDetails = async function(client) {
         }
     }
     
+    // Формируем HTML для записей с разделением на утро/вечер
     let bookingsHtml = '';
     if (bookings && bookings.length > 0) {
         const groupedByDay = {};
         bookings.forEach(booking => {
-            const date = new Date(booking.slots.start_time);
+            const date = window.app.utcToMsk(booking.slots.start_time);
             const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'numeric' });
             if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
             groupedByDay[dayKey].push(booking);
@@ -318,13 +323,13 @@ window.app.showClientDetails = async function(client) {
         for (let [day, dayBookings] of Object.entries(groupedByDay)) {
             bookingsHtml += `<div style="margin-top: 10px;"><strong style="font-size: 13px; color: #36B647;">📅 ${escapeHtml(day)}</strong></div>`;
             
-            const morning = dayBookings.filter(b => new Date(b.slots.start_time).getHours() < 15);
-            const evening = dayBookings.filter(b => new Date(b.slots.start_time).getHours() >= 15);
+            const morning = dayBookings.filter(b => window.app.utcToMsk(b.slots.start_time).getHours() < 15);
+            const evening = dayBookings.filter(b => window.app.utcToMsk(b.slots.start_time).getHours() >= 15);
             
             if (morning.length > 0) {
                 bookingsHtml += '<div style="margin-top: 5px; margin-left: 8px;"><span style="font-size: 12px; color: #666;">☀️ Утро</span></div>';
                 morning.forEach(booking => {
-                    const start = new Date(booking.slots.start_time);
+                    const start = window.app.utcToMsk(booking.slots.start_time);
                     const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
                     bookingsHtml += `
                         <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0 6px 16px; border-bottom: 1px solid #f0f0f0;">
@@ -338,7 +343,7 @@ window.app.showClientDetails = async function(client) {
             if (evening.length > 0) {
                 bookingsHtml += '<div style="margin-top: 8px; margin-left: 8px;"><span style="font-size: 12px; color: #666;">🌙 Вечер</span></div>';
                 evening.forEach(booking => {
-                    const start = new Date(booking.slots.start_time);
+                    const start = window.app.utcToMsk(booking.slots.start_time);
                     const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
                     bookingsHtml += `
                         <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0 6px 16px; border-bottom: 1px solid #f0f0f0;">
@@ -379,9 +384,11 @@ window.app.showClientDetails = async function(client) {
         
         <div id="client-comments-section" style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;"></div>
         
+        <!-- Редактирование профиля -->
         <div style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px;">
             <h3 style="margin: 0 0 12px 0; font-size: 16px;">✏️ Редактировать профиль</h3>
             
+            <!-- Выбор цели -->
             <div style="margin-bottom: 15px;">
                 <label style="display: block; font-size: 12px; color: #666; margin-bottom: 8px;">🎯 Цель тренировок</label>
                 <div style="display: flex; gap: 20px;">
@@ -424,6 +431,7 @@ window.app.showClientDetails = async function(client) {
             <button id="save-profile-btn" style="background: #36B647; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 5px;">💾 Сохранить</button>
         </div>
         
+        <!-- Записи клиента -->
         <div>
             <h3 style="margin: 0 0 10px 0; font-size: 16px;">📋 Записи клиента</h3>
             <div id="client-bookings-list" style="max-height: 200px; overflow-y: auto;">
@@ -435,6 +443,7 @@ window.app.showClientDetails = async function(client) {
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
     
+    // Загружаем комментарии для текущей недели
     async function loadComments(weekOffset) {
         const today = new Date();
         const targetDate = new Date(today);
@@ -478,6 +487,7 @@ window.app.showClientDetails = async function(client) {
     
     await loadComments(0);
     
+    // Обработчики переключения недель в протоколе
     const protocolContainer = document.getElementById('protocol-container');
     
     protocolContainer.addEventListener('click', async (e) => {
@@ -498,10 +508,12 @@ window.app.showClientDetails = async function(client) {
         }
     });
     
+    // Закрытие модального окна
     const closeBtn = modalContent.querySelector('#close-client-modal');
     closeBtn.addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
     
+    // Сохранение профиля
     const saveBtn = modalContent.querySelector('#save-profile-btn');
     saveBtn.addEventListener('click', async () => {
         const goalRadio = modalContent.querySelector('input[name="edit-goal"]:checked');
@@ -523,6 +535,7 @@ window.app.showClientDetails = async function(client) {
         if (targetStrengthWeekly && targetStrengthWeekly !== '') updateData.target_strength_weekly = parseInt(targetStrengthWeekly);
         if (targetCardioWeekly && targetCardioWeekly !== '') updateData.target_cardio_weekly = parseInt(targetCardioWeekly);
         
+        // Если вес изменился и режим снижения веса, добавляем запись в историю
         if (weight && weight !== client.weight && newGoal !== 'wellness') {
             await window.app.sb.from('weight_history').insert({
                 user_id: client.id,
@@ -545,6 +558,7 @@ window.app.showClientDetails = async function(client) {
         }
     });
     
+    // Обработчики удаления записей
     const deleteButtons = modalContent.querySelectorAll('.delete-booking-from-client');
     deleteButtons.forEach(btn => {
         btn.addEventListener('click', async () => {
