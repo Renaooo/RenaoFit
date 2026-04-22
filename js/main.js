@@ -2,7 +2,7 @@
 // МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (ФИНАЛЬНЫЙ)
 // ============================================
 
-// Флаг для предотвращения многократной генерации (если нужно)
+// Флаг для предотвращения многократной генерации
 let isGeneratingSchedule = false;
 
 // --- Функция переключения экранов (работает напрямую с DOM) ---
@@ -26,7 +26,6 @@ window.app.showScreen = switchScreen;
 
 // --- Безопасный вызов генерации (отключён, оставлен для совместимости) ---
 async function safeEnsureWeeklySchedule() {
-    // Автоматическая генерация ОТКЛЮЧЕНА
     console.log('Автоматическая генерация отключена. Используйте ручную генерацию в админ-панели.');
     return;
 }
@@ -92,9 +91,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 window.app.currentUser = await window.app.loginWithPhone(phone, name);
                 const userNameSpan = document.getElementById('user-name');
                 if (userNameSpan) userNameSpan.innerText = name;
-                
-                // Автоматическая генерация ОТКЛЮЧЕНА
-                // safeEnsureWeeklySchedule().catch(e => console.error('Ошибка генерации:', e));
                 
                 switchScreen('menu');
             } catch(e) {
@@ -213,15 +209,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             ));
             const end = endUTC.toISOString();
             
-            // Если используется таблица deleted_slots (опционально)
-            if (window.app.sb.from('deleted_slots')) {
-                try {
-                    await window.app.sb.from('deleted_slots').delete().eq('slot_time', start);
-                } catch(e) {
-                    // Таблицы может не быть, игнорируем
-                }
-            }
-            
             const { error } = await window.app.sb.from('slots').insert({ 
                 start_time: start, 
                 end_time: end, 
@@ -241,7 +228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // ========== НОВЫЕ ОБРАБОТЧИКИ ДЛЯ РУЧНОЙ ГЕНЕРАЦИИ СЛОТОВ ==========
+    // ========== ОБРАБОТЧИКИ ДЛЯ РУЧНОЙ ГЕНЕРАЦИИ СЛОТОВ ==========
     
     // --- Генерация утра ---
     const generateMorningBtn = document.getElementById('generate-morning-btn');
