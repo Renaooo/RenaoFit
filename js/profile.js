@@ -1,6 +1,5 @@
 // ============================================
 // МОДУЛЬ ПРОФИЛЯ (ВЕС, ГРАФИК, МОТИВАЦИОННЫЕ СООБЩЕНИЯ)
-// ДОБАВЛЕНА ЦЕЛЬ "ЗДОРОВЬЕ И ХОРОШЕЕ САМОЧУВСТВИЕ"
 // ============================================
 
 // --- Загрузка профиля пользователя ---
@@ -18,7 +17,7 @@ window.app.loadMyProfile = async function() {
         return;
     }
     
-    // Сохраняем цель в глобальную переменную для других модулей
+    // Сохраняем цель в глобальную переменную
     window.app.currentUserFitnessGoal = profile?.fitness_goal || 'weight_loss';
     
     // Отображаем абонемент
@@ -44,7 +43,7 @@ window.app.loadMyProfile = async function() {
         }
     }
     
-    // Устанавливаем выбранную радиокнопку цели в профиле
+    // Устанавливаем выбранную радиокнопку цели
     const weightLossRadio = document.querySelector('input[name="profile-goal"][value="weight_loss"]');
     const wellnessRadio = document.querySelector('input[name="profile-goal"][value="wellness"]');
     
@@ -58,7 +57,7 @@ window.app.loadMyProfile = async function() {
     
     const isWellnessMode = profile?.fitness_goal === 'wellness';
     
-    // Отображаем или скрываем секцию веса
+    // Скрываем или показываем секцию веса
     const weightSection = document.getElementById('weight-section');
     const weightChartContainer = document.getElementById('weight-chart-container');
     const profileWeightContainer = document.getElementById('profile-weight-container');
@@ -70,7 +69,7 @@ window.app.loadMyProfile = async function() {
         if (weightSection) weightSection.style.display = 'block';
         if (weightChartContainer) weightChartContainer.style.display = 'block';
         
-        // Отображаем последний вес из истории
+        // Загружаем и отображаем вес
         const weightHistory = await window.app.loadWeightHistory();
         const weightEl = document.getElementById('profile-weight');
         
@@ -94,7 +93,7 @@ window.app.loadMyProfile = async function() {
     }
 };
 
-// --- Загрузка истории веса (только для режима снижения) ---
+// --- Загрузка истории веса ---
 window.app.loadWeightHistory = async function() {
     if (!window.app.currentUser) return [];
     
@@ -112,11 +111,10 @@ window.app.loadWeightHistory = async function() {
     return data || [];
 };
 
-// --- Сохранение нового веса (только для режима снижения) ---
+// --- Сохранение нового веса ---
 window.app.saveWeight = async function(weight) {
     if (!window.app.currentUser) return false;
     
-    // Проверка режима
     const { data: profile } = await window.app.sb
         .from('profiles')
         .select('fitness_goal')
@@ -130,13 +128,11 @@ window.app.saveWeight = async function(weight) {
     
     const today = new Date();
     const isMonday = today.getDay() === 1;
+    const weighDate = today.toISOString().split('T')[0];
     
     if (!isMonday) {
-        alert('Взвешивание возможно только в понедельник!');
-        return false;
+        alert('⚠️ Взвешивание рекомендуется в понедельник утром, натощак.\nВы можете указать вес в любой день, но для корректного сравнения лучше взвешиваться по понедельникам.');
     }
-    
-    const weighDate = today.toISOString().split('T')[0];
     
     const { data: profileData } = await window.app.sb
         .from('profiles')
@@ -175,21 +171,8 @@ window.app.saveWeight = async function(weight) {
     return true;
 };
 
-// --- Проверка, можно ли добавить новый вес ---
-window.app.canAddWeight = function(history) {
-    if (!history || history.length === 0) return true;
-    
-    const lastWeighDate = new Date(history[history.length - 1].weigh_date);
-    const today = new Date();
-    const isMonday = today.getDay() === 1;
-    const daysSinceLast = Math.floor((today - lastWeighDate) / (1000 * 60 * 60 * 24));
-    
-    return isMonday && daysSinceLast >= 7;
-};
-
 // --- Открытие модального окна для взвешивания ---
 window.app.openWeightModal = async function() {
-    // Проверка режима
     const { data: profile } = await window.app.sb
         .from('profiles')
         .select('fitness_goal')
@@ -201,8 +184,6 @@ window.app.openWeightModal = async function() {
         return;
     }
     
-    const history = await window.app.loadWeightHistory();
-    const canAdd = window.app.canAddWeight(history);
     const modal = document.getElementById('weight-modal');
     const weightInput = document.getElementById('weight-input');
     const errorDiv = document.getElementById('weight-error');
@@ -217,28 +198,7 @@ window.app.openWeightModal = async function() {
     cancelBtn.disabled = false;
     cancelBtn.style.opacity = '1';
     
-    if (!canAdd) {
-        const today = new Date();
-        const isMonday = today.getDay() === 1;
-        
-        if (!isMonday) {
-            errorDiv.textContent = '⚠️ Взвешивание возможно только по понедельникам.';
-        } else {
-            errorDiv.textContent = '⚠️ Взвешивание возможно не чаще 1 раза в неделю.';
-        }
-        errorDiv.style.display = 'block';
-        weightInput.disabled = true;
-        saveBtn.disabled = true;
-        saveBtn.style.opacity = '0.5';
-    }
-    
     modal.style.display = 'flex';
-    
-    const cleanup = () => {
-        saveBtn.removeEventListener('click', handleSave);
-        cancelBtn.removeEventListener('click', handleCancel);
-        modal.removeEventListener('click', handleClickOutside);
-    };
     
     const handleSave = async () => {
         const weight = weightInput.value;
@@ -255,8 +215,6 @@ window.app.openWeightModal = async function() {
             if (typeof window.app.updateWeeklyMessage === 'function') {
                 await window.app.updateWeeklyMessage();
             }
-        } else {
-            alert('❌ Ошибка сохранения. Возможно, вы уже взвешивались на этой неделе.');
         }
         
         cleanup();
@@ -272,6 +230,12 @@ window.app.openWeightModal = async function() {
         }
     };
     
+    const cleanup = () => {
+        saveBtn.removeEventListener('click', handleSave);
+        cancelBtn.removeEventListener('click', handleCancel);
+        modal.removeEventListener('click', handleClickOutside);
+    };
+    
     saveBtn.removeEventListener('click', handleSave);
     cancelBtn.removeEventListener('click', handleCancel);
     modal.removeEventListener('click', handleClickOutside);
@@ -283,7 +247,6 @@ window.app.openWeightModal = async function() {
 
 // --- Отрисовка графика веса ---
 window.app.renderWeightChart = async function() {
-    // Проверка режима
     const { data: profile } = await window.app.sb
         .from('profiles')
         .select('fitness_goal')
@@ -300,7 +263,6 @@ window.app.renderWeightChart = async function() {
     const canvas = document.getElementById('weight-chart');
     
     if (!container) return;
-    
     container.style.display = 'block';
     
     if (!history || history.length < 2) {
@@ -388,13 +350,11 @@ window.app.renderWeightChart = async function() {
     }
 };
 
-// --- Обновление мотивационного сообщения (адаптировано под цель) ---
-// --- Обновление мотивационного сообщения (только в понедельник за ПРОШЕДШУЮ неделю) ---
+// --- Обновление мотивационного сообщения (только в понедельник, за прошлую неделю) ---
 window.app.updateWeeklyMessage = async function() {
     const today = new Date();
     const isMonday = today.getDay() === 1;
     
-    // Если не понедельник — скрываем сообщение
     if (!isMonday) {
         const messageDiv = document.getElementById('weekly-message');
         if (messageDiv) messageDiv.style.display = 'none';
@@ -412,7 +372,7 @@ window.app.updateWeeklyMessage = async function() {
     const targetCardio = profile?.target_cardio_weekly || 1;
     const dailyNorm = profile?.min_steps || 10000;
     
-    // Берём ПРОШЕДШУЮ неделю (понедельник прошлой недели - воскресенье)
+    // Прошлая неделя
     const startOfLastWeek = new Date(today);
     const dayOfWeek = today.getDay();
     const daysToLastMonday = (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + 7;
@@ -425,19 +385,17 @@ window.app.updateWeeklyMessage = async function() {
     const startDateStr = startOfLastWeek.toISOString().split('T')[0];
     const endDateStr = endOfLastWeek.toISOString().split('T')[0];
     
-    console.log('Анализируем прошлую неделю:', startDateStr, '-', endDateStr);
-    
     const { data: reports } = await window.app.sb
         .from('daily_reports')
         .select('*')
         .eq('user_id', window.app.currentUser.id)
         .gte('report_date', startDateStr)
-        .lte('report_date', endDateStr)
-        .order('report_date');
+        .lte('report_date', endDateStr);
     
     let actualStrength = 0, actualCardio = 0, socialDays = 0;
     let lowStepsDays = 0;
     let totalDays = 0;
+    let daysWithoutReport = 0;
     
     reports?.forEach(r => {
         totalDays++;
@@ -447,6 +405,8 @@ window.app.updateWeeklyMessage = async function() {
         const normForDay = r.norm_steps || dailyNorm;
         if ((r.steps || 0) < normForDay) lowStepsDays++;
     });
+    
+    daysWithoutReport = 7 - totalDays;
     
     const strengthOk = actualStrength >= targetStrength;
     const cardioOk = actualCardio >= targetCardio;
@@ -458,27 +418,23 @@ window.app.updateWeeklyMessage = async function() {
     
     if (!messageDiv || !messageText) return;
     
-    // Форматируем даты для отображения
-    const weekStartFormatted = startOfLastWeek.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
-    const weekEndFormatted = endOfLastWeek.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
+    const weekFormatted = `${startOfLastWeek.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' })} - ${endOfLastWeek.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' })}`;
     
     if (totalDays === 0) {
-        // Нет отчётов за прошлую неделю
         messageDiv.style.background = '#fff3e0';
         messageDiv.style.borderLeftColor = '#ff9800';
-        messageText.innerHTML = `📋 <strong>Нет отчётов за неделю ${weekStartFormatted} - ${weekEndFormatted}</strong><br><br>Заполняйте ежедневные отчёты, чтобы видеть свой прогресс! 📝`;
+        messageText.innerHTML = `📋 <strong>Нет отчётов за неделю ${weekFormatted}</strong><br><br>Заполняйте ежедневные отчёты, чтобы видеть свой прогресс! 📝`;
         messageDiv.style.display = 'block';
         return;
     }
     
     if (isWellnessMode) {
-        // Режим "Здоровье" — анализ выполнения рекомендаций
         const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
         
         if (allCompliant) {
             messageDiv.style.background = '#e8f5e9';
             messageDiv.style.borderLeftColor = '#36B647';
-            messageText.innerHTML = `🌟 <strong>Отличная неделя (${weekStartFormatted} - ${weekEndFormatted})!</strong><br><br>Ты выполнил(а) все рекомендации: шаги, тренировки и без соц. событий! Так держать! 💪✨`;
+            messageText.innerHTML = `🌟 <strong>Отличная неделя (${weekFormatted})!</strong><br><br>Ты выполнил(а) все рекомендации! Так держать! 💪✨`;
             messageDiv.style.display = 'block';
         } else {
             let failures = [];
@@ -486,41 +442,38 @@ window.app.updateWeeklyMessage = async function() {
             if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
             if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${targetCardio}`);
             if (!socialOk) failures.push(`🎉 Социальные приемы пищи: ${socialDays} дней (допустимо не более 1)`);
+            if (daysWithoutReport > 0) failures.push(`📝 Дней без отчёта: ${daysWithoutReport}`);
             
             messageDiv.style.background = '#fff3e0';
             messageDiv.style.borderLeftColor = '#ff9800';
-            messageText.innerHTML = `📋 <strong>На неделе ${weekStartFormatted} - ${weekEndFormatted} не все рекомендации выполнены.</strong><br><br>Давай посмотрим, над чем поработать:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе ты точно справишься! 🔥`;
+            messageText.innerHTML = `📋 <strong>На неделе ${weekFormatted} не все рекомендации выполнены.</strong><br><br>Давай посмотрим, над чем поработать:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе ты точно справишься! 🔥`;
             messageDiv.style.display = 'block';
         }
     } else {
-        // Режим "Снижение веса" — анализ веса
         const { data: weights } = await window.app.sb
             .from('weight_history')
             .select('weight, weigh_date')
             .eq('user_id', window.app.currentUser.id)
-            .eq('weigh_date', startDateStr)
             .order('weigh_date', { ascending: false })
             .limit(2);
         
-        // Для режима снижения веса нужно два взвешивания: начало и конец недели
-        const startWeightData = weights?.find(w => w.weigh_date === startDateStr);
-        const endWeightData = weights?.find(w => w.weigh_date === endDateStr);
-        
-        if (!startWeightData || !endWeightData) {
+        if (!weights || weights.length < 2) {
             messageDiv.style.background = '#e3f2fd';
             messageDiv.style.borderLeftColor = '#36B647';
-            messageText.innerHTML = `📊 <strong>Нет данных взвешивания за неделю ${weekStartFormatted} - ${weekEndFormatted}</strong><br><br>Взвешивайтесь по понедельникам утром, чтобы отслеживать прогресс. ⚖️`;
+            messageText.innerHTML = `📊 <strong>Нет данных взвешивания за неделю ${weekFormatted}</strong><br><br>Взвешивайтесь по понедельникам утром, чтобы отслеживать прогресс. ⚖️`;
             messageDiv.style.display = 'block';
             return;
         }
         
-        const weightChange = endWeightData.weight - startWeightData.weight;
+        const currentWeight = weights[0].weight;
+        const prevWeight = weights[1].weight;
+        const weightChange = currentWeight - prevWeight;
         const allCompliant = stepsOk && strengthOk && cardioOk && socialOk;
         
         if (weightChange < -0.2) {
             messageDiv.style.background = '#e8f5e9';
             messageDiv.style.borderLeftColor = '#36B647';
-            messageText.innerHTML = `🎉 <strong>Поздравляю за неделю ${weekStartFormatted} - ${weekEndFormatted}!</strong> Ты похудел(а) на ${Math.abs(weightChange).toFixed(1)} кг! Отличная работа! Продолжай в том же духе 💪`;
+            messageText.innerHTML = `🎉 <strong>Поздравляю за неделю ${weekFormatted}!</strong> Ты похудел(а) на ${Math.abs(weightChange).toFixed(1)} кг! Отличная работа! Продолжай в том же духе 💪`;
             messageDiv.style.display = 'block';
         } 
         else if (!allCompliant) {
@@ -529,67 +482,18 @@ window.app.updateWeeklyMessage = async function() {
             if (!strengthOk) failures.push(`💪 Силовые: ${actualStrength} из ${targetStrength}`);
             if (!cardioOk) failures.push(`🏃 Кардио: ${actualCardio} из ${targetCardio}`);
             if (!socialOk) failures.push(`🎉 Социальные приемы: ${socialDays} дней`);
+            if (daysWithoutReport > 0) failures.push(`📝 Дней без отчёта: ${daysWithoutReport}`);
             
             messageDiv.style.background = '#fff3e0';
             messageDiv.style.borderLeftColor = '#ff9800';
-            messageText.innerHTML = `⚠️ <strong>На неделе ${weekStartFormatted} - ${weekEndFormatted} не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
+            messageText.innerHTML = `⚠️ <strong>На неделе ${weekFormatted} не было отвеса.</strong><br><br>Давай разберем, что могло повлиять:<br>${failures.map(f => `• ${f}`).join('<br>')}<br><br>На этой неделе сфокусируемся на выполнении плана. Ты справишься! 🔥`;
             messageDiv.style.display = 'block';
         } 
         else {
             messageDiv.style.background = '#e3f2fd';
             messageDiv.style.borderLeftColor = '#36B647';
-            messageText.innerHTML = `🤔 <strong>На неделе ${weekStartFormatted} - ${weekEndFormatted} отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Главное — ты не сдаешься! Продолжай в том же ритме, результат обязательно придет. 🙌`;
+            messageText.innerHTML = `🤔 <strong>На неделе ${weekFormatted} отвеса не случилось, но все рекомендации выполнены!</strong><br><br>Организм — сложная штука. Иногда ему нужно время, чтобы "переварить" изменения. Главное — ты не сдаешься! Продолжай в том же ритме, результат обязательно придет. 🙌`;
             messageDiv.style.display = 'block';
         }
-    }
-};
-
-// --- Сохранение цели из профиля ---
-window.app.saveGoal = async function() {
-    console.log('saveGoal вызвана');
-    
-    if (!window.app.currentUser) {
-        alert('Пользователь не авторизован');
-        return;
-    }
-    
-    const selectedGoal = document.querySelector('input[name="profile-goal"]:checked');
-    if (!selectedGoal) {
-        alert('Выберите цель');
-        return;
-    }
-    
-    const newGoal = selectedGoal.value;
-    console.log('Сохраняем цель:', newGoal);
-    
-    const { error } = await window.app.sb
-        .from('profiles')
-        .update({ fitness_goal: newGoal })
-        .eq('id', window.app.currentUser.id);
-    
-    if (error) {
-        console.error('Ошибка сохранения цели:', error);
-        alert('Ошибка сохранения: ' + error.message);
-        return;
-    }
-    
-    alert('✅ Цель сохранена! Страница обновится.');
-    
-    // Обновляем интерфейс в соответствии с новой целью
-    await window.app.loadMyProfile();
-    
-    // Обновляем видимость блоков питания в ежедневном отчёте
-    if (typeof window.app.updateMealBlocksVisibility === 'function') {
-        await window.app.updateMealBlocksVisibility();
-    }
-    
-    // Обновляем сообщение недели
-    if (typeof window.app.updateWeeklyMessage === 'function') {
-        await window.app.updateWeeklyMessage();
-    }
-    
-    // Перезагружаем прогресс за неделю
-    if (typeof window.app.loadWeeklyProgress === 'function') {
-        await window.app.loadWeeklyProgress();
     }
 };
