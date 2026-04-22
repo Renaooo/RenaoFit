@@ -347,21 +347,12 @@ hr {
     margin: 16px 0;
 }
 
-/* ========== ⭐ НОВЫЕ СТИЛИ ДЛЯ ВЫБОРА ЦЕЛИ (АДАПТИВ) ========== */
-
-/* Блок выбора цели в профиле */
+/* ========== АДАПТИВ ДЛЯ ВЫБОРА ЦЕЛИ ========== */
 .goal-selection-block {
     background: #f8f9fa;
     border-radius: 16px;
     padding: 20px;
     margin-bottom: 20px;
-}
-
-.goal-label {
-    display: block;
-    color: #666;
-    font-size: 14px;
-    margin-bottom: 5px;
 }
 
 .goal-options {
@@ -393,7 +384,6 @@ hr {
         font-size: 16px;
     }
     
-    /* Цель в профиле — вертикальное расположение на узких экранах */
     .goal-options {
         flex-direction: column;
         gap: 10px;
@@ -403,13 +393,11 @@ hr {
         font-size: 13px;
     }
     
-    /* Кнопки в админке (утро/вечер) */
     .delete-morning-btn, .delete-evening-btn {
         font-size: 9px;
         padding: 3px 8px;
     }
     
-    /* Слоты */
     .slot-item {
         padding: 12px;
     }
@@ -419,7 +407,7 @@ hr {
     }
 }
 
-/* Адаптив для экранов 320px и меньше (iPhone SE и подобные) */
+/* Адаптив для экранов 320px и меньше */
 @media (max-width: 340px) {
     .container {
         padding: 12px;
@@ -439,13 +427,12 @@ hr {
         font-size: 15px;
     }
     
-    /* Блок выбора цели */
     .goal-selection-block {
         padding: 15px;
     }
 }
 
-/* ========== СТИЛИ ДЛЯ КНОПОК В АДМИНКЕ (УТРО/ВЕЧЕР) ========== */
+/* ========== КНОПКИ В АДМИНКЕ ========== */
 .delete-morning-btn, .delete-evening-btn {
     background: #ff9800;
     color: white;
@@ -476,7 +463,22 @@ hr {
     transform: scale(0.95);
 }
 
-/* Слот в админке */
+/* Кнопка блокировки слота */
+.block-slot-btn {
+    background: #ff9800;
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.block-slot-btn:active {
+    transform: scale(0.95);
+}
+
+/* Группа кнопок в админке */
 .admin-slot-buttons {
     display: flex;
     gap: 6px;
