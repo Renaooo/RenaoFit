@@ -1,11 +1,16 @@
 // ============================================
-// МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ (с московским временем и переключателем недель)
+// МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ
 // ============================================
 
-// ============================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ МОСКОВСКОГО ВРЕМЕНИ
-// ============================================
+// --- Переменные состояния отчета ---
+let currentTrainingType = '';
+let currentTrainingTime = '';
+let currentSocialEvent = false;
+let currentPreMeal = '';
+let currentPostMeal = '';
+let currentWeekOffset = 0; // 0 = текущая неделя, -1 = прошлая, -2 = позапрошлая
 
+// --- Вспомогательные функции для МСК ---
 function getMoscowDate(date = new Date()) {
     const mskDate = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
     return mskDate;
@@ -25,28 +30,15 @@ function getMoscowStartOfWeek(date = new Date()) {
     return mskDate;
 }
 
-// --- Переменные состояния отчета ---
-let currentTrainingType = '';
-let currentTrainingTime = '';
-let currentSocialEvent = false;
-let currentPreMeal = '';
-let currentPostMeal = '';
-let currentWeekOffset = 0; // 0 = текущая неделя, -1 = прошлая, -2 = позапрошлая
-
-// --- Функция обновления видимости блоков питания в зависимости от цели ---
+// --- Обновление видимости блоков питания в зависимости от цели ---
 async function updateMealBlocksVisibility() {
     if (!window.app.currentUser) return;
     
-    const { data: profile, error } = await window.app.sb
+    const { data: profile } = await window.app.sb
         .from('profiles')
         .select('fitness_goal')
         .eq('id', window.app.currentUser.id)
         .single();
-    
-    if (error) {
-        console.error('Ошибка загрузки цели:', error);
-        return;
-    }
     
     const isWellnessMode = profile?.fitness_goal === 'wellness';
     const preMealContainer = document.getElementById('pre-meal-container');
@@ -101,7 +93,6 @@ window.app.initDailyReportUI = function() {
     const saveBtn = document.getElementById('save-daily-report-btn');
     if (saveBtn) saveBtn.addEventListener('click', window.app.saveDailyReport);
     
-    // Кнопки переключения недель
     const prevWeekBtn = document.getElementById('prev-week-btn');
     const nextWeekBtn = document.getElementById('next-week-btn');
     
@@ -145,13 +136,11 @@ function setTrainingType(type) {
     
     if (type === 'rest') {
         if (timeContainer) timeContainer.style.display = 'none';
-        // Для питания — не скрываем, они управляются через updateMealBlocksVisibility
         currentTrainingTime = '';
         currentPreMeal = '';
         currentPostMeal = '';
     } else {
         if (timeContainer) timeContainer.style.display = 'block';
-        // Показываем/скрываем блоки питания в зависимости от цели
         updateMealBlocksVisibility();
     }
 }
@@ -226,7 +215,7 @@ function setPostMeal(value) {
     if (postMealInput) postMealInput.value = value;
 }
 
-// --- Сохранение отчета (с заморозкой нормы шагов) ---
+// --- Сохранение отчета ---
 window.app.saveDailyReport = async function() {
     console.log('saveDailyReport вызвана');
     
@@ -247,7 +236,6 @@ window.app.saveDailyReport = async function() {
     
     const today = getMoscowDateString();
     
-    // Получаем текущую норму шагов из профиля (для заморозки)
     const { data: profile, error: profileError } = await window.app.sb
         .from('profiles')
         .select('min_steps')
@@ -259,9 +247,6 @@ window.app.saveDailyReport = async function() {
     }
     
     const currentNorm = profile?.min_steps || 10000;
-    
-    console.log('Сохраняем отчет за дату (МСК):', today);
-    console.log('Норма шагов на момент сохранения:', currentNorm);
     
     const { error } = await window.app.sb
         .from('daily_reports')
@@ -295,13 +280,12 @@ window.app.saveDailyReport = async function() {
     }
 };
 
-// --- Загрузка и отображение прогресса за неделю (с поддержкой переключения недель) ---
+// --- Загрузка и отображение прогресса за неделю ---
 window.app.loadWeeklyProgress = async function() {
     console.log('=== loadWeeklyProgress START ===');
     
     if (!window.app.currentUser) return;
     
-    // Получаем цель пользователя
     const { data: profile } = await window.app.sb
         .from('profiles')
         .select('fitness_goal, min_steps, target_strength_weekly, target_cardio_weekly')
@@ -312,11 +296,9 @@ window.app.loadWeeklyProgress = async function() {
     const targetStrength = profile?.target_strength_weekly || 3;
     const targetCardio = profile?.target_cardio_weekly || 1;
     
-    // Получаем локальную дату (МСК)
     const now = new Date();
     const mskDate = getMoscowDate(now);
     
-    // Функция форматирования локальной даты в YYYY-MM-DD
     function formatLocalDate(date) {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -324,7 +306,6 @@ window.app.loadWeeklyProgress = async function() {
         return `${year}-${month}-${day}`;
     }
     
-    // Функция получения понедельника от локальной даты
     function getMonday(date) {
         const d = new Date(date);
         const day = d.getDay();
@@ -333,7 +314,6 @@ window.app.loadWeeklyProgress = async function() {
         return d;
     }
     
-    // Вычисляем дату с учётом смещения недели
     const targetDate = new Date(mskDate);
     targetDate.setDate(mskDate.getDate() + (currentWeekOffset * 7));
     
@@ -344,12 +324,10 @@ window.app.loadWeeklyProgress = async function() {
     const startDateStr = formatLocalDate(monday);
     const endDateStr = formatLocalDate(sunday);
     
-    // Форматируем заголовок недели
     const weekStartFormatted = monday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
     const weekEndFormatted = sunday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
     const weekTitle = currentWeekOffset === 0 ? 'Текущая неделя' : `${weekStartFormatted} - ${weekEndFormatted}`;
     
-    // Обновляем заголовок в интерфейсе
     const weekTitleEl = document.getElementById('weekly-week-title');
     const prevBtn = document.getElementById('prev-week-btn');
     const nextBtn = document.getElementById('next-week-btn');
@@ -358,10 +336,6 @@ window.app.loadWeeklyProgress = async function() {
     if (prevBtn) prevBtn.disabled = currentWeekOffset <= -2;
     if (nextBtn) nextBtn.disabled = currentWeekOffset >= 0;
     
-    console.log('Неделя (пн-вс):', startDateStr, '-', endDateStr);
-    console.log('Смещение недели:', currentWeekOffset);
-    
-    // Получаем отчеты за неделю
     const { data: reports, error } = await window.app.sb
         .from('daily_reports')
         .select('*')
@@ -375,9 +349,6 @@ window.app.loadWeeklyProgress = async function() {
         return;
     }
     
-    console.log('Найдено отчетов:', reports?.length || 0);
-    
-    // Для отображения нормы используем последнюю сохраненную норму из отчета или 10000
     let displayNorm = profile?.min_steps || 10000;
     if (reports && reports.length > 0) {
         const lastReport = reports[reports.length - 1];
@@ -397,19 +368,16 @@ window.app.loadWeeklyProgress = async function() {
                     </div>
                 </div>
                 <p style="text-align: center;">Нет данных за эту неделю</p>
-                <p style="text-align: center; font-size: 12px; color: #999;">Неделя: ${startDateStr} - ${endDateStr}</p>
             </div>
         `;
         return;
     }
     
-    // Создаем карту отчетов по датам
     const reportsMap = {};
     reports.forEach(r => {
         reportsMap[r.report_date] = r;
     });
     
-    // Собираем все дни недели по порядку
     let strengthCount = 0, cardioCount = 0, socialDays = 0, lowStepsDays = 0;
     let dailyTable = '<div style="margin-top: 15px;"><h4 style="margin-bottom: 10px;">📅 По дням</h4>';
     
@@ -514,7 +482,6 @@ window.app.openDailyReport = async function() {
     
     if (!window.app.currentUser) return;
     
-    // Сбрасываем смещение недели на текущую
     currentWeekOffset = 0;
     
     const today = getMoscowDateString();
@@ -561,7 +528,6 @@ window.app.openDailyReport = async function() {
         if (notesInput) notesInput.value = '';
     }
     
-    // Обновляем видимость блоков питания в зависимости от цели
     await updateMealBlocksVisibility();
     
     if (typeof window.app.loadWeeklyProgress === 'function') {
