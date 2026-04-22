@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ВЕРСИЯ)
+// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ)
 // ============================================
 
 const SCHEDULE = {
@@ -21,76 +21,117 @@ const SCHEDULE = {
 let isRenderingAdmin = false;
 let isGenerating = false;
 
+// --- Получение списка заблокированных слотов (без slot_exceptions) ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
-    const { data: manuallyBlocked } = await window.app.sb.from('slots').select('id').eq('is_blocked', true);
+    
+    // Слоты, заблокированные вручную
+    const { data: manuallyBlocked } = await window.app.sb
+        .from('slots')
+        .select('id')
+        .eq('is_blocked', true);
     manuallyBlocked?.forEach(slot => blockedIds.add(slot.id));
     
-    const { data: exceptions } = await window.app.sb.from('slot_exceptions').select('slot_id');
-    const exceptionIds = new Set(exceptions?.map(ex => ex.slot_id));
-    
+    // Получаем занятые слоты
     const today = new Date();
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 14);
     
-    const { data: bookedSlots } = await window.app.sb.from('slots').select('id, start_time').eq('is_available', false)
-        .gte('start_time', today.toISOString()).lte('start_time', endDate.toISOString());
-    if (!bookedSlots?.length) return blockedIds;
+    const { data: bookedSlots } = await window.app.sb
+        .from('slots')
+        .select('id, start_time')
+        .eq('is_available', false)
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString());
     
-    const { data: allSlots } = await window.app.sb.from('slots').select('id, start_time')
-        .gte('start_time', today.toISOString()).lte('start_time', endDate.toISOString());
+    if (!bookedSlots || bookedSlots.length === 0) return blockedIds;
+    
+    const { data: allSlots } = await window.app.sb
+        .from('slots')
+        .select('id, start_time')
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString());
+    
     if (!allSlots) return blockedIds;
     
-    const slotsByDay = {}, bookedByDay = {};
+    // Группируем слоты по дням
+    const slotsByDay = {};
     allSlots.forEach(slot => {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
-        const hour = date.getUTCHours(), minute = date.getUTCMinutes();
+        const hour = date.getUTCHours();
+        const minute = date.getUTCMinutes();
         if (!slotsByDay[dayKey]) slotsByDay[dayKey] = [];
         slotsByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
+    
+    const bookedByDay = {};
     bookedSlots.forEach(slot => {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
-        const hour = date.getUTCHours(), minute = date.getUTCMinutes();
+        const hour = date.getUTCHours();
+        const minute = date.getUTCMinutes();
         if (!bookedByDay[dayKey]) bookedByDay[dayKey] = [];
         bookedByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
     });
     
+    // Блокируем соседние слоты (±1 час)
     for (let [dayKey, booked] of Object.entries(bookedByDay)) {
         for (let bookedSlot of booked) {
             const startMinutes = bookedSlot.timeValue * 60;
+            
             slotsByDay[dayKey]?.forEach(slot => {
-                if (Math.abs(slot.timeValue * 60 - startMinutes) < 60 && slot.id !== bookedSlot.id && !exceptionIds.has(slot.id)) {
+                const slotMinutes = slot.timeValue * 60;
+                if (Math.abs(slotMinutes - startMinutes) < 60 && slot.id !== bookedSlot.id) {
                     blockedIds.add(slot.id);
                 }
             });
         }
     }
+    
     return blockedIds;
 }
 
+// --- Загрузка свободных слотов для клиента ---
 window.app.loadSlots = async function() {
     const today = new Date();
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 8);
-    const { data: slots, error } = await window.app.sb.from('slots').select('*').eq('is_available', true).eq('is_blocked', false)
-        .gte('start_time', today.toISOString()).lte('start_time', endDate.toISOString()).order('start_time');
+    
+    const { data: slots, error } = await window.app.sb
+        .from('slots')
+        .select('*')
+        .eq('is_available', true)
+        .eq('is_blocked', false)
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString())
+        .order('start_time');
+    
     if (error) throw error;
+    
     const blockedIds = await getBlockedSlotIds();
     return slots.filter(slot => !blockedIds.has(slot.id));
 };
 
+// --- Отображение слотов для клиента ---
 window.app.renderSlots = async function(slots) {
     const container = document.getElementById('slots-list');
     if (!container) return;
     container.innerHTML = '';
-    if (!slots?.length) { container.innerHTML = '<p style="text-align:center;padding:20px;">Нет свободных слотов</p>'; return; }
     
-    const { data: allSlots } = await window.app.sb.from('slots').select('start_time, is_available')
-        .gte('start_time', new Date().toISOString()).lte('start_time', new Date(Date.now() + 8*24*60*60*1000).toISOString());
+    if (!slots || slots.length === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Нет свободных слотов</p>';
+        return;
+    }
+    
+    const { data: allSlots } = await window.app.sb
+        .from('slots')
+        .select('start_time, is_available')
+        .gte('start_time', new Date().toISOString())
+        .lte('start_time', new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString());
+    
     const bookedTimesByDay = {};
-    allSlots?.forEach(slot => {
+    (allSlots || []).forEach(slot => {
         if (!slot.is_available) {
             const date = window.app.utcToMsk(slot.start_time);
             const dayKey = date.toLocaleDateString('ru-RU');
@@ -100,10 +141,11 @@ window.app.renderSlots = async function(slots) {
         }
     });
     
-    const hasAdjacentBooking = (dayKey, timeStr) => {
+    function hasAdjacentBooking(dayKey, timeStr) {
         const [hours, minutes] = timeStr.split(':').map(Number);
         const currentMinutes = hours * 60 + minutes;
         const bookedTimes = bookedTimesByDay[dayKey] || [];
+        
         for (const adjMin of [currentMinutes - 60, currentMinutes + 60]) {
             if (adjMin < 0) continue;
             const adjHour = Math.floor(adjMin / 60);
@@ -113,7 +155,7 @@ window.app.renderSlots = async function(slots) {
             if (bookedTimes.includes(adjTimeStr)) return true;
         }
         return false;
-    };
+    }
     
     const groupedByDay = {};
     slots.forEach(slot => {
@@ -125,25 +167,26 @@ window.app.renderSlots = async function(slots) {
     });
     
     for (let [displayDay, dayData] of Object.entries(groupedByDay)) {
-        const daySlots = dayData.slots.sort((a,b) => new Date(a.start_time) - new Date(b.start_time));
+        const daySlots = dayData.slots.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
         const morning = daySlots.filter(s => window.app.utcToMsk(s.start_time).getHours() < 15);
         const evening = daySlots.filter(s => window.app.utcToMsk(s.start_time).getHours() >= 15);
+        
         const dayDiv = document.createElement('div');
-        dayDiv.style.cssText = 'margin-bottom:20px;border-left:3px solid #36B647;padding-left:12px;';
-        dayDiv.innerHTML = `<h3 style="margin-bottom:10px;">📅 ${displayDay}</h3>`;
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
+        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px;">📅 ${displayDay}</h3>`;
         
         if (morning.length) {
             const morningDiv = document.createElement('div');
-            morningDiv.innerHTML = '<div style="font-size:12px;color:#666;margin-bottom:5px;">☀️ Утро</div>';
+            morningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin-bottom: 5px;">☀️ Утро</div>';
             morning.forEach(slot => {
                 const start = window.app.utcToMsk(slot.start_time);
                 const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
                 const hasAdjacent = hasAdjacentBooking(dayData.dayKey, timeStr);
                 const slotDiv = document.createElement('div');
                 if (window.app.selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
-                slotDiv.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:12px;margin-bottom:8px;background:${hasAdjacent ? '#e8f5e9' : '#f8f9fa'};border-radius:12px;border:1px solid ${hasAdjacent ? '#36B647' : '#e9ecef'};`;
-                slotDiv.innerHTML = `<div><span style="font-weight:500;">${timeStr}</span>${hasAdjacent ? '<span style="background:#36B647;color:white;padding:2px 8px;border-radius:12px;font-size:11px;margin-left:8px;">⭐ РЕКОМЕНДУЕМОЕ</span>' : ''}</div>
-                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${window.app.selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width:22px;height:22px;">`;
+                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#e8f5e9' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#36B647' : '#e9ecef'};`;
+                slotDiv.innerHTML = `<div><span style="font-weight: 500;">${timeStr}</span>${hasAdjacent ? '<span style="background: #36B647; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>' : ''}</div>
+                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${window.app.selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width: 22px; height: 22px;">`;
                 slotDiv.querySelector('.slot-select').addEventListener('change', (e) => {
                     if (e.target.checked) window.app.selectedSlotIds.add(slot.id);
                     else window.app.selectedSlotIds.delete(slot.id);
@@ -160,16 +203,16 @@ window.app.renderSlots = async function(slots) {
         
         if (evening.length) {
             const eveningDiv = document.createElement('div');
-            eveningDiv.innerHTML = '<div style="font-size:12px;color:#666;margin:10px 0 5px;">🌙 Вечер</div>';
+            eveningDiv.innerHTML = '<div style="font-size: 12px; color: #666; margin: 10px 0 5px;">🌙 Вечер</div>';
             evening.forEach(slot => {
                 const start = window.app.utcToMsk(slot.start_time);
                 const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
                 const hasAdjacent = hasAdjacentBooking(dayData.dayKey, timeStr);
                 const slotDiv = document.createElement('div');
                 if (window.app.selectedSlotIds.has(slot.id)) slotDiv.classList.add('selected');
-                slotDiv.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:12px;margin-bottom:8px;background:${hasAdjacent ? '#e8f5e9' : '#f8f9fa'};border-radius:12px;border:1px solid ${hasAdjacent ? '#36B647' : '#e9ecef'};`;
-                slotDiv.innerHTML = `<div><span style="font-weight:500;">${timeStr}</span>${hasAdjacent ? '<span style="background:#36B647;color:white;padding:2px 8px;border-radius:12px;font-size:11px;margin-left:8px;">⭐ РЕКОМЕНДУЕМОЕ</span>' : ''}</div>
-                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${window.app.selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width:22px;height:22px;">`;
+                slotDiv.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: ${hasAdjacent ? '#e8f5e9' : '#f8f9fa'}; border-radius: 12px; border: 1px solid ${hasAdjacent ? '#36B647' : '#e9ecef'};`;
+                slotDiv.innerHTML = `<div><span style="font-weight: 500;">${timeStr}</span>${hasAdjacent ? '<span style="background: #36B647; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 8px;">⭐ РЕКОМЕНДУЕМОЕ</span>' : ''}</div>
+                    <input type="checkbox" class="slot-select" data-id="${slot.id}" ${window.app.selectedSlotIds.has(slot.id) ? 'checked' : ''} style="width: 22px; height: 22px;">`;
                 slotDiv.querySelector('.slot-select').addEventListener('change', (e) => {
                     if (e.target.checked) window.app.selectedSlotIds.add(slot.id);
                     else window.app.selectedSlotIds.delete(slot.id);
@@ -187,9 +230,11 @@ window.app.renderSlots = async function(slots) {
     }
 };
 
+// --- Подтверждение записи ---
 window.app.confirmBooking = async function() {
     if (!window.app.currentUser) return;
     if (!window.app.selectedSlotIds.size) return alert('Выберите слоты для записи');
+    
     const selectedIds = Array.from(window.app.selectedSlotIds);
     const blockedIds = await getBlockedSlotIds();
     if (selectedIds.some(id => blockedIds.has(id))) {
@@ -199,14 +244,17 @@ window.app.confirmBooking = async function() {
         await window.app.renderSlots(slots);
         return;
     }
+    
     const { error } = await window.app.sb.from('bookings').insert(selectedIds.map(slotId => ({ slot_id: slotId, user_id: window.app.currentUser.id })));
     if (error) return alert('Ошибка записи: ' + error.message);
+    
     for (let slotId of selectedIds) await window.app.sb.from('slots').update({ is_available: false }).eq('id', slotId);
     alert('Успешно записано!');
     window.app.selectedSlotIds.clear();
     window.app.showScreen('menu');
 };
 
+// --- Мои записи ---
 window.app.loadMyBookings = async function() {
     const { data: bookings } = await window.app.sb.from('bookings').select('id, slot_id, slots(start_time, end_time)').eq('user_id', window.app.currentUser.id);
     const container = document.getElementById('my-bookings-list');
@@ -243,11 +291,17 @@ window.app.loadMyBookings = async function() {
         });
         container.appendChild(dayDiv);
     }
-    // Прямое переключение экрана
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById('myBookings-screen').classList.add('active');
+    
+    // Переключение на экран "Мои записи"
+    if (typeof window.app.showScreen === 'function') {
+        window.app.showScreen('myBookings');
+    } else {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById('myBookings-screen')?.classList.add('active');
+    }
 };
 
+// --- Ручная генерация слотов на день и половинку ---
 window.app.generateSlotsForDay = async function(dateStr, half) {
     if (!dateStr) { alert('Выберите дату'); return false; }
     const targetDate = new Date(dateStr);
@@ -277,6 +331,7 @@ window.app.generateSlotsForDay = async function(dateStr, half) {
     return created > 0;
 };
 
+// --- Генерация всей недели ---
 window.app.generateFullWeek = async function() {
     if (isGenerating) { alert('Генерация уже выполняется...'); return; }
     isGenerating = true;
@@ -301,6 +356,7 @@ window.app.generateFullWeek = async function() {
     if (typeof window.app.loadAdminData === 'function') await window.app.loadAdminData();
 };
 
+// --- Отображение слота в админке ---
 window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     const start = window.app.utcToMsk(slot.start_time);
     const isAvailable = slot.is_available;
@@ -334,6 +390,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     container.appendChild(div);
 };
 
+// --- Админ-панель ---
 window.app.loadAdminData = async function() {
     await window.app.loadAdminDataWithoutGenerate();
 };
@@ -454,31 +511,51 @@ window.app.loadAdminDataWithoutGenerate = async function() {
             }
         }
         
+        // --- Все записи (прямой запрос без RPC) ---
         if (adminBookingsDiv) {
             adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
-            const { data: bookings } = await window.app.sb.rpc('get_bookings_with_profiles');
-            if (bookings?.length) {
+            const { data: bookings, error: bookingsError } = await window.app.sb
+                .from('bookings')
+                .select(`
+                    id,
+                    slot_id,
+                    user_id,
+                    created_at,
+                    slots (start_time, end_time),
+                    profiles (name, phone)
+                `)
+                .order('created_at', { ascending: false });
+            
+            if (bookingsError) {
+                console.error('Ошибка загрузки записей:', bookingsError);
+                adminBookingsDiv.innerHTML += '<p>Ошибка загрузки записей</p>';
+            } else if (bookings && bookings.length > 0) {
                 const groupedByDay = {};
                 bookings.forEach(booking => {
-                    const date = window.app.utcToMsk(booking.start_time);
+                    if (!booking.slots) return;
+                    const date = window.app.utcToMsk(booking.slots.start_time);
                     const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
                     if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
                     groupedByDay[dayKey].push(booking);
                 });
+                
                 for (let [day, dayBookings] of Object.entries(groupedByDay)) {
                     const dayDiv = document.createElement('div');
                     dayDiv.style.cssText = 'margin-bottom:20px;border-left:3px solid #36B647;padding-left:12px;';
                     dayDiv.innerHTML = `<h3 style="margin-bottom:10px;">📅 ${day}</h3>`;
-                    const morning = dayBookings.filter(b => window.app.utcToMsk(b.start_time).getHours() < 15);
-                    const evening = dayBookings.filter(b => window.app.utcToMsk(b.start_time).getHours() >= 15);
+                    
+                    const morning = dayBookings.filter(b => window.app.utcToMsk(b.slots.start_time).getHours() < 15);
+                    const evening = dayBookings.filter(b => window.app.utcToMsk(b.slots.start_time).getHours() >= 15);
+                    
                     if (morning.length) {
                         const morningDiv = document.createElement('div');
                         morningDiv.innerHTML = '<div style="font-size:12px;color:#666;margin-bottom:5px;">☀️ Утро</div>';
                         morning.forEach(booking => {
-                            const timeStr = window.app.utcToMsk(booking.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                            const timeStr = window.app.utcToMsk(booking.slots.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                            const profile = booking.profiles || {};
                             const bookingDiv = document.createElement('div');
                             bookingDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;margin-bottom:8px;background:#f9f9f9;border-radius:8px;';
-                            bookingDiv.innerHTML = `<div><strong>${booking.name || 'Неизвестно'}</strong><br>📞 ${booking.phone || 'нет телефона'}<br>🕐 ${timeStr}</div>
+                            bookingDiv.innerHTML = `<div><strong>${profile.name || 'Неизвестно'}</strong><br>📞 ${profile.phone || 'нет телефона'}<br>🕐 ${timeStr}</div>
                                 <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;margin-left:10px;">✖ Удалить</button>`;
                             bookingDiv.querySelector('.delete-booking-btn').addEventListener('click', async () => {
                                 if (confirm('Удалить эту запись?')) {
@@ -491,14 +568,16 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                         });
                         dayDiv.appendChild(morningDiv);
                     }
+                    
                     if (evening.length) {
                         const eveningDiv = document.createElement('div');
                         eveningDiv.innerHTML = '<div style="font-size:12px;color:#666;margin:10px 0 5px;">🌙 Вечер</div>';
                         evening.forEach(booking => {
-                            const timeStr = window.app.utcToMsk(booking.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                            const timeStr = window.app.utcToMsk(booking.slots.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                            const profile = booking.profiles || {};
                             const bookingDiv = document.createElement('div');
                             bookingDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;margin-bottom:8px;background:#f9f9f9;border-radius:8px;';
-                            bookingDiv.innerHTML = `<div><strong>${booking.name || 'Неизвестно'}</strong><br>📞 ${booking.phone || 'нет телефона'}<br>🕐 ${timeStr}</div>
+                            bookingDiv.innerHTML = `<div><strong>${profile.name || 'Неизвестно'}</strong><br>📞 ${profile.phone || 'нет телефона'}<br>🕐 ${timeStr}</div>
                                 <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;margin-left:10px;">✖ Удалить</button>`;
                             bookingDiv.querySelector('.delete-booking-btn').addEventListener('click', async () => {
                                 if (confirm('Удалить эту запись?')) {
@@ -522,6 +601,7 @@ window.app.loadAdminDataWithoutGenerate = async function() {
     }
 };
 
+// --- Переключение между вкладками в админке ---
 window.app.setupAdminTabs = function() {
     const slotsTab = document.getElementById('admin-slots-tab');
     const clientsTab = document.getElementById('admin-clients-tab');
@@ -553,7 +633,10 @@ window.app.setupAdminTabs = function() {
         slotsPanel.style.display = 'none';
         clientsPanel.style.display = 'block';
         if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
-        if (typeof window.app.renderClientsList === 'function') await window.app.renderClientsList();
-        else console.error('renderClientsList не определена');
+        if (typeof window.app.renderClientsList === 'function') {
+            await window.app.renderClientsList();
+        } else {
+            console.error('renderClientsList не определена');
+        }
     });
 };
