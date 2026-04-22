@@ -136,14 +136,19 @@ function setTrainingType(type) {
     
     if (type === 'rest') {
         if (timeContainer) timeContainer.style.display = 'none';
+        if (preMealContainer) preMealContainer.style.display = 'none';
+        if (postMealContainer) postMealContainer.style.display = 'none';
         currentTrainingTime = '';
         currentPreMeal = '';
         currentPostMeal = '';
     } else {
         if (timeContainer) timeContainer.style.display = 'block';
+        // Показываем блоки питания только если не режим Wellness
         updateMealBlocksVisibility();
     }
 }
+
+
 
 // --- Установка времени тренировки ---
 function setTrainingTime(time) {
