@@ -2,19 +2,6 @@
 // МОДУЛЬ АВТОРИЗАЦИИ
 // ============================================
 
-// --- Очистка телефона (8 и +7 равнозначны, приводим к 7XXXXXXXXXX) ---
-window.app.cleanPhone = function(phone) {
-    // Удаляем все символы, кроме цифр
-    let cleaned = phone.replace(/[^0-9]/g, '');
-    
-    // Если номер начинается с 8, заменяем на 7 (для единого формата)
-    if (cleaned.startsWith('8')) {
-        cleaned = '7' + cleaned.substring(1);
-    }
-    
-    return cleaned;
-};
-
 // --- Авторизация / регистрация ---
 window.app.loginWithPhone = async function(phone, name) {
     const cleanPhoneNumber = window.app.cleanPhone(phone);
@@ -47,16 +34,16 @@ window.app.loginWithPhone = async function(phone, name) {
         throw error;
     }
     
-    // При регистрации нового пользователя — сохраняем fitness_goal со значением по умолчанию
-    // При входе существующего — обновляем только телефон/имя, цель не трогаем (оставляем как есть)
+    // Сохраняем профиль
     const profileData = {
         id: data.user.id,
         phone: phone,
         name: name
     };
     
+    // Для новых пользователей добавляем цель по умолчанию
     if (isNewUser) {
-        profileData.fitness_goal = 'weight_loss';  // Значение по умолчанию
+        profileData.fitness_goal = 'weight_loss';
     }
     
     const { error: profileError } = await window.app.sb
@@ -78,4 +65,38 @@ window.app.logout = async function() {
 // --- Проверка, является ли пользователь админом ---
 window.app.isAdmin = function(user) {
     return user && user.user_metadata?.is_admin === true;
+};
+
+// --- Сохранение цели тренировки (для профиля) ---
+window.app.saveGoal = async function() {
+    if (!window.app.currentUser) {
+        alert('Пользователь не авторизован');
+        return;
+    }
+    
+    const selectedGoal = document.querySelector('input[name="profile-goal"]:checked');
+    if (!selectedGoal) {
+        alert('Выберите цель');
+        return;
+    }
+    
+    const newGoal = selectedGoal.value;
+    
+    const { error } = await window.app.sb
+        .from('profiles')
+        .update({ fitness_goal: newGoal })
+        .eq('id', window.app.currentUser.id);
+    
+    if (error) {
+        console.error('Ошибка сохранения цели:', error);
+        alert('Ошибка сохранения: ' + error.message);
+        return;
+    }
+    
+    alert('✅ Цель сохранена!');
+    
+    // Обновляем интерфейс профиля
+    if (typeof window.app.loadMyProfile === 'function') {
+        await window.app.loadMyProfile();
+    }
 };
