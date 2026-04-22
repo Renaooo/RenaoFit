@@ -2,15 +2,13 @@
 // МОДУЛЬ ЕЖЕДНЕВНЫХ ОТЧЕТОВ
 // ============================================
 
-// --- Переменные состояния отчета ---
 let currentTrainingType = '';
 let currentTrainingTime = '';
 let currentSocialEvent = false;
 let currentPreMeal = '';
 let currentPostMeal = '';
-let currentWeekOffset = 0; // 0 = текущая неделя, -1 = прошлая, -2 = позапрошлая
+let currentWeekOffset = 0;
 
-// --- Вспомогательные функции для МСК ---
 function getMoscowDate(date = new Date()) {
     const mskDate = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
     return mskDate;
@@ -30,7 +28,6 @@ function getMoscowStartOfWeek(date = new Date()) {
     return mskDate;
 }
 
-// --- Обновление видимости блоков питания в зависимости от цели ---
 async function updateMealBlocksVisibility() {
     if (!window.app.currentUser) return;
     
@@ -44,74 +41,40 @@ async function updateMealBlocksVisibility() {
     const preMealContainer = document.getElementById('pre-meal-container');
     const postMealContainer = document.getElementById('post-meal-container');
     
-    if (preMealContainer) {
-        preMealContainer.style.display = isWellnessMode ? 'none' : 'block';
-    }
-    if (postMealContainer) {
-        postMealContainer.style.display = isWellnessMode ? 'none' : 'block';
-    }
+    if (preMealContainer) preMealContainer.style.display = isWellnessMode ? 'none' : 'block';
+    if (postMealContainer) postMealContainer.style.display = isWellnessMode ? 'none' : 'block';
 }
 
-// --- Инициализация UI ---
 window.app.initDailyReportUI = function() {
     console.log('initDailyReportUI вызван');
     
-    const strengthBtn = document.getElementById('training-strength');
-    const cardioBtn = document.getElementById('training-cardio');
-    const restBtn = document.getElementById('training-rest');
+    document.getElementById('training-strength')?.addEventListener('click', () => setTrainingType('strength'));
+    document.getElementById('training-cardio')?.addEventListener('click', () => setTrainingType('cardio'));
+    document.getElementById('training-rest')?.addEventListener('click', () => setTrainingType('rest'));
     
-    if (strengthBtn) strengthBtn.addEventListener('click', () => setTrainingType('strength'));
-    if (cardioBtn) cardioBtn.addEventListener('click', () => setTrainingType('cardio'));
-    if (restBtn) restBtn.addEventListener('click', () => setTrainingType('rest'));
+    document.getElementById('time-morning')?.addEventListener('click', () => setTrainingTime('morning'));
+    document.getElementById('time-day')?.addEventListener('click', () => setTrainingTime('day'));
+    document.getElementById('time-evening')?.addEventListener('click', () => setTrainingTime('evening'));
     
-    const morningBtn = document.getElementById('time-morning');
-    const dayBtn = document.getElementById('time-day');
-    const eveningBtn = document.getElementById('time-evening');
+    document.getElementById('social-no')?.addEventListener('click', () => setSocialEvent(false));
+    document.getElementById('social-yes')?.addEventListener('click', () => setSocialEvent(true));
     
-    if (morningBtn) morningBtn.addEventListener('click', () => setTrainingTime('morning'));
-    if (dayBtn) dayBtn.addEventListener('click', () => setTrainingTime('day'));
-    if (eveningBtn) eveningBtn.addEventListener('click', () => setTrainingTime('evening'));
+    document.getElementById('pre-yes')?.addEventListener('click', () => setPreMeal('yes'));
+    document.getElementById('pre-no')?.addEventListener('click', () => setPreMeal('no'));
     
-    const socialNoBtn = document.getElementById('social-no');
-    const socialYesBtn = document.getElementById('social-yes');
+    document.getElementById('post-yes')?.addEventListener('click', () => setPostMeal('yes'));
+    document.getElementById('post-no')?.addEventListener('click', () => setPostMeal('no'));
     
-    if (socialNoBtn) socialNoBtn.addEventListener('click', () => setSocialEvent(false));
-    if (socialYesBtn) socialYesBtn.addEventListener('click', () => setSocialEvent(true));
+    document.getElementById('save-daily-report-btn')?.addEventListener('click', window.app.saveDailyReport);
     
-    const preYesBtn = document.getElementById('pre-yes');
-    const preNoBtn = document.getElementById('pre-no');
-    
-    if (preYesBtn) preYesBtn.addEventListener('click', () => setPreMeal('yes'));
-    if (preNoBtn) preNoBtn.addEventListener('click', () => setPreMeal('no'));
-    
-    const postYesBtn = document.getElementById('post-yes');
-    const postNoBtn = document.getElementById('post-no');
-    
-    if (postYesBtn) postYesBtn.addEventListener('click', () => setPostMeal('yes'));
-    if (postNoBtn) postNoBtn.addEventListener('click', () => setPostMeal('no'));
-    
-    const saveBtn = document.getElementById('save-daily-report-btn');
-    if (saveBtn) saveBtn.addEventListener('click', window.app.saveDailyReport);
-    
-    const prevWeekBtn = document.getElementById('prev-week-btn');
-    const nextWeekBtn = document.getElementById('next-week-btn');
-    
-    if (prevWeekBtn) prevWeekBtn.addEventListener('click', () => {
-        if (currentWeekOffset > -2) {
-            currentWeekOffset--;
-            window.app.loadWeeklyProgress();
-        }
+    document.getElementById('prev-week-btn')?.addEventListener('click', () => {
+        if (currentWeekOffset > -2) { currentWeekOffset--; window.app.loadWeeklyProgress(); }
     });
-    
-    if (nextWeekBtn) nextWeekBtn.addEventListener('click', () => {
-        if (currentWeekOffset < 0) {
-            currentWeekOffset++;
-            window.app.loadWeeklyProgress();
-        }
+    document.getElementById('next-week-btn')?.addEventListener('click', () => {
+        if (currentWeekOffset < 0) { currentWeekOffset++; window.app.loadWeeklyProgress(); }
     });
 };
 
-// --- Установка типа тренировки ---
 function setTrainingType(type) {
     currentTrainingType = type;
     const btns = {
@@ -119,21 +82,15 @@ function setTrainingType(type) {
         cardio: document.getElementById('training-cardio'),
         rest: document.getElementById('training-rest')
     };
-    
     Object.entries(btns).forEach(([key, btn]) => {
         if (btn) {
             btn.style.background = type === key ? '#36B647' : '#e9ecef';
             btn.style.color = type === key ? 'white' : '#1e1e1e';
         }
     });
-    
-    const trainingTypeInput = document.getElementById('training-type');
-    if (trainingTypeInput) trainingTypeInput.value = type;
+    document.getElementById('training-type').value = type;
     
     const timeContainer = document.getElementById('training-time-container');
-    const preMealContainer = document.getElementById('pre-meal-container');
-    const postMealContainer = document.getElementById('post-meal-container');
-    
     if (type === 'rest') {
         if (timeContainer) timeContainer.style.display = 'none';
         currentTrainingTime = '';
@@ -145,7 +102,6 @@ function setTrainingType(type) {
     }
 }
 
-// --- Установка времени тренировки ---
 function setTrainingTime(time) {
     currentTrainingTime = time;
     const btns = {
@@ -153,18 +109,15 @@ function setTrainingTime(time) {
         day: document.getElementById('time-day'),
         evening: document.getElementById('time-evening')
     };
-    
     Object.entries(btns).forEach(([key, btn]) => {
         if (btn) {
             btn.style.background = time === key ? '#36B647' : '#e9ecef';
             btn.style.color = time === key ? 'white' : '#1e1e1e';
         }
     });
-    const trainingTimeInput = document.getElementById('training-time');
-    if (trainingTimeInput) trainingTimeInput.value = time;
+    document.getElementById('training-time').value = time;
 }
 
-// --- Установка социального события ---
 function setSocialEvent(value) {
     currentSocialEvent = value;
     const noBtn = document.getElementById('social-no');
@@ -177,11 +130,9 @@ function setSocialEvent(value) {
         yesBtn.style.background = value ? '#dc3545' : '#e9ecef';
         yesBtn.style.color = value ? 'white' : '#1e1e1e';
     }
-    const socialEventInput = document.getElementById('social-event');
-    if (socialEventInput) socialEventInput.value = value;
+    document.getElementById('social-event').value = value;
 }
 
-// --- Установка питания до тренировки ---
 function setPreMeal(value) {
     currentPreMeal = value;
     const yesBtn = document.getElementById('pre-yes');
@@ -194,11 +145,9 @@ function setPreMeal(value) {
         noBtn.style.background = value === 'no' ? '#dc3545' : '#e9ecef';
         noBtn.style.color = value === 'no' ? 'white' : '#1e1e1e';
     }
-    const preMealInput = document.getElementById('pre-meal');
-    if (preMealInput) preMealInput.value = value;
+    document.getElementById('pre-meal').value = value;
 }
 
-// --- Установка питания после тренировки ---
 function setPostMeal(value) {
     currentPostMeal = value;
     const yesBtn = document.getElementById('post-yes');
@@ -211,86 +160,43 @@ function setPostMeal(value) {
         noBtn.style.background = value === 'no' ? '#dc3545' : '#e9ecef';
         noBtn.style.color = value === 'no' ? 'white' : '#1e1e1e';
     }
-    const postMealInput = document.getElementById('post-meal');
-    if (postMealInput) postMealInput.value = value;
+    document.getElementById('post-meal').value = value;
 }
 
-// --- Сохранение отчета ---
 window.app.saveDailyReport = async function() {
-    console.log('saveDailyReport вызвана');
-    
-    const stepsInput = document.getElementById('daily-steps');
-    const steps = parseInt(stepsInput?.value || 0);
-    
-    if (!steps || steps <= 0) {
-        alert('Введите количество шагов');
-        return;
-    }
-    
-    const trainingType = currentTrainingType;
-    const trainingTime = currentTrainingTime;
-    const socialEvent = currentSocialEvent;
-    const preMeal = currentPreMeal === 'yes' ? true : (currentPreMeal === 'no' ? false : null);
-    const postMeal = currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null);
-    const notes = document.getElementById('daily-notes')?.value || '';
+    const steps = parseInt(document.getElementById('daily-steps')?.value || 0);
+    if (!steps || steps <= 0) return alert('Введите количество шагов');
     
     const today = getMoscowDateString();
-    
-    const { data: profile, error: profileError } = await window.app.sb
-        .from('profiles')
-        .select('min_steps')
-        .eq('id', window.app.currentUser.id)
-        .single();
-    
-    if (profileError) {
-        console.error('Ошибка получения нормы шагов:', profileError);
-    }
-    
+    const { data: profile } = await window.app.sb.from('profiles').select('min_steps').eq('id', window.app.currentUser.id).single();
     const currentNorm = profile?.min_steps || 10000;
     
-    const { error } = await window.app.sb
-        .from('daily_reports')
-        .upsert({
-            user_id: window.app.currentUser.id,
-            report_date: today,
-            steps: steps,
-            training_type: trainingType === 'rest' ? 'rest' : trainingType,
-            training_time: trainingTime || null,
-            social_event: socialEvent,
-            pre_meal_compliant: preMeal,
-            post_meal_compliant: postMeal,
-            notes: notes,
-            norm_steps: currentNorm
-        }, { onConflict: 'user_id,report_date' });
+    const { error } = await window.app.sb.from('daily_reports').upsert({
+        user_id: window.app.currentUser.id,
+        report_date: today,
+        steps: steps,
+        training_type: currentTrainingType === 'rest' ? 'rest' : currentTrainingType,
+        training_time: currentTrainingTime || null,
+        social_event: currentSocialEvent,
+        pre_meal_compliant: currentPreMeal === 'yes' ? true : (currentPreMeal === 'no' ? false : null),
+        post_meal_compliant: currentPostMeal === 'yes' ? true : (currentPostMeal === 'no' ? false : null),
+        notes: document.getElementById('daily-notes')?.value || '',
+        norm_steps: currentNorm
+    }, { onConflict: 'user_id,report_date' });
     
-    if (error) {
-        console.error('Ошибка сохранения:', error);
-        alert('Ошибка сохранения: ' + error.message);
-    } else {
-        console.log('Отчет успешно сохранен');
+    if (error) alert('Ошибка сохранения: ' + error.message);
+    else {
         alert('✅ Отчет сохранен!');
-        
-        if (typeof window.app.loadWeeklyProgress === 'function') {
-            await window.app.loadWeeklyProgress();
-        }
-        
-        if (typeof window.app.updateWeeklyMessage === 'function') {
-            await window.app.updateWeeklyMessage();
-        }
+        await window.app.loadWeeklyProgress();
+        if (typeof window.app.updateWeeklyMessage === 'function') await window.app.updateWeeklyMessage();
     }
 };
 
-// --- Загрузка и отображение прогресса за неделю ---
 window.app.loadWeeklyProgress = async function() {
-    console.log('=== loadWeeklyProgress START ===');
-    
     if (!window.app.currentUser) return;
     
-    const { data: profile } = await window.app.sb
-        .from('profiles')
-        .select('fitness_goal, min_steps, target_strength_weekly, target_cardio_weekly')
-        .eq('id', window.app.currentUser.id)
-        .single();
+    const { data: profile } = await window.app.sb.from('profiles').select('fitness_goal, min_steps, target_strength_weekly, target_cardio_weekly')
+        .eq('id', window.app.currentUser.id).single();
     
     const isWellnessMode = profile?.fitness_goal === 'wellness';
     const targetStrength = profile?.target_strength_weekly || 3;
@@ -298,241 +204,110 @@ window.app.loadWeeklyProgress = async function() {
     
     const now = new Date();
     const mskDate = getMoscowDate(now);
-    
-    function formatLocalDate(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-    
-    function getMonday(date) {
-        const d = new Date(date);
-        const day = d.getDay();
-        const diff = (day === 0 ? 6 : day - 1);
-        d.setDate(d.getDate() - diff);
-        return d;
-    }
-    
     const targetDate = new Date(mskDate);
     targetDate.setDate(mskDate.getDate() + (currentWeekOffset * 7));
     
-    const monday = getMonday(targetDate);
+    const monday = getMoscowStartOfWeek(targetDate);
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     
-    const startDateStr = formatLocalDate(monday);
-    const endDateStr = formatLocalDate(sunday);
+    const startDateStr = monday.toISOString().split('T')[0];
+    const endDateStr = sunday.toISOString().split('T')[0];
     
-    const weekStartFormatted = monday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
-    const weekEndFormatted = sunday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' });
-    const weekTitle = currentWeekOffset === 0 ? 'Текущая неделя' : `${weekStartFormatted} - ${weekEndFormatted}`;
+    const weekTitle = currentWeekOffset === 0 ? 'Текущая неделя' : `${monday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' })} - ${sunday.toLocaleDateString('ru-RU', { day: 'numeric', month: 'numeric' })}`;
+    document.getElementById('weekly-week-title').textContent = weekTitle;
+    document.getElementById('prev-week-btn').disabled = currentWeekOffset <= -2;
+    document.getElementById('next-week-btn').disabled = currentWeekOffset >= 0;
     
-    const weekTitleEl = document.getElementById('weekly-week-title');
-    const prevBtn = document.getElementById('prev-week-btn');
-    const nextBtn = document.getElementById('next-week-btn');
+    const { data: reports } = await window.app.sb.from('daily_reports').select('*').eq('user_id', window.app.currentUser.id)
+        .gte('report_date', startDateStr).lte('report_date', endDateStr).order('report_date');
     
-    if (weekTitleEl) weekTitleEl.textContent = weekTitle;
-    if (prevBtn) prevBtn.disabled = currentWeekOffset <= -2;
-    if (nextBtn) nextBtn.disabled = currentWeekOffset >= 0;
-    
-    const { data: reports, error } = await window.app.sb
-        .from('daily_reports')
-        .select('*')
-        .eq('user_id', window.app.currentUser.id)
-        .gte('report_date', startDateStr)
-        .lte('report_date', endDateStr)
-        .order('report_date');
-    
-    if (error) {
-        console.error('Ошибка загрузки отчетов:', error);
-        return;
-    }
-    
-    let displayNorm = profile?.min_steps || 10000;
-    if (reports && reports.length > 0) {
-        const lastReport = reports[reports.length - 1];
-        displayNorm = lastReport.norm_steps || displayNorm;
-    }
-    
+    const displayNorm = reports?.length ? reports[reports.length - 1].norm_steps : (profile?.min_steps || 10000);
     const container = document.getElementById('weekly-progress');
     if (!container) return;
     
-    if (!reports || reports.length === 0) {
-        container.innerHTML = `
-            <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
-                <div style="margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
-                        <span><strong style="color: #36B647;">${displayNorm.toLocaleString()}</strong> шагов</span>
-                    </div>
-                </div>
-                <p style="text-align: center;">Нет данных за эту неделю</p>
-            </div>
-        `;
+    if (!reports?.length) {
+        container.innerHTML = `<div style="background:#f8f9fa;border-radius:12px;padding:15px;"><div>🎯 Норма шагов: <strong>${displayNorm.toLocaleString()}</strong></div><p style="text-align:center;">Нет данных за эту неделю</p></div>`;
         return;
     }
     
-    const reportsMap = {};
-    reports.forEach(r => {
-        reportsMap[r.report_date] = r;
-    });
-    
+    const reportsMap = Object.fromEntries(reports.map(r => [r.report_date, r]));
     let strengthCount = 0, cardioCount = 0, socialDays = 0, lowStepsDays = 0;
-    let dailyTable = '<div style="margin-top: 15px;"><h4 style="margin-bottom: 10px;">📅 По дням</h4>';
+    let dailyTable = '<div style="margin-top:15px;"><h4>📅 По дням</h4>';
     
     for (let i = 0; i < 7; i++) {
         const currentDay = new Date(monday);
         currentDay.setDate(monday.getDate() + i);
-        const dateStr = formatLocalDate(currentDay);
+        const dateStr = currentDay.toISOString().split('T')[0];
         const dayName = currentDay.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
-        
         const report = reportsMap[dateStr];
         
         if (report) {
-            const steps = report.steps || 0;
-            const normForThisDay = report.norm_steps || displayNorm;
-            const stepsOk = steps >= normForThisDay;
+            const stepsOk = report.steps >= (report.norm_steps || displayNorm);
             if (!stepsOk) lowStepsDays++;
-            
-            let trainingIcon = '';
-            if (report.training_type === 'strength') trainingIcon = '💪';
-            else if (report.training_type === 'cardio') trainingIcon = '🏃';
-            else if (report.training_type === 'rest') trainingIcon = '😴';
-            else trainingIcon = '⚪';
-            
-            const socialIcon = report.social_event ? '⚠️' : '✅';
-            
-            dailyTable += `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
-                    <div style="flex: 1;">
-                        <span style="font-weight: 500;">${dayName}</span>
-                        <span style="margin-left: 8px; font-size: 12px;">${trainingIcon} ${socialIcon}</span>
-                    </div>
-                    <div style="text-align: right;">
-                        <span style="font-weight: 500;">${steps.toLocaleString()}</span>
-                        <span style="margin-left: 8px; color: ${stepsOk ? '#36B647' : '#dc3545'};">${stepsOk ? '✅' : '⚠️'}</span>
-                    </div>
-                </div>
-            `;
-            
+            let trainingIcon = { strength: '💪', cardio: '🏃', rest: '😴' }[report.training_type] || '⚪';
+            dailyTable += `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;">
+                <div><span style="font-weight:500;">${dayName}</span> <span style="margin-left:8px;">${trainingIcon} ${report.social_event ? '⚠️' : '✅'}</span></div>
+                <div><span>${report.steps.toLocaleString()}</span> <span style="margin-left:8px;color:${stepsOk ? '#36B647' : '#dc3545'};">${stepsOk ? '✅' : '⚠️'}</span></div>
+            </div>`;
             if (report.training_type === 'strength') strengthCount++;
             if (report.training_type === 'cardio') cardioCount++;
             if (report.social_event) socialDays++;
         } else {
-            dailyTable += `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee;">
-                    <div style="flex: 1;">
-                        <span style="font-weight: 500; color: #999;">${dayName}</span>
-                        <span style="margin-left: 8px; font-size: 12px;">⚪</span>
-                    </div>
-                    <div style="text-align: right;">
-                        <span style="color: #999;">—</span>
-                    </div>
-                </div>
-            `;
+            dailyTable += `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;">
+                <div><span style="font-weight:500;color:#999;">${dayName}</span> <span>⚪</span></div>
+                <div><span style="color:#999;">—</span></div>
+            </div>`;
         }
     }
     dailyTable += '</div>';
     
-    const strengthOk = strengthCount >= targetStrength;
-    const cardioOk = cardioCount >= targetCardio;
-    const socialOk = socialDays <= 1;
-    
     container.innerHTML = `
-        <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
-            <div style="margin-bottom: 15px;">
-                <div style="display: flex; justify-content: space-between;">
-                    <span>🎯 <strong>Твоя норма шагов в день:</strong></span>
-                    <span><strong style="color: #36B647;">${displayNorm.toLocaleString()}</strong> шагов</span>
-                </div>
+        <div style="background:#f8f9fa;border-radius:12px;padding:15px;">
+            <div style="margin-bottom:15px;"><div>🎯 Норма шагов: <strong>${displayNorm.toLocaleString()}</strong></div></div>
+            <div style="margin-bottom:15px;">
+                <div>💪 Силовые: <strong>${strengthCount} / ${targetStrength}</strong> ${strengthCount >= targetStrength ? '✅' : '⚠️'}</div>
+                <div>🏃 Кардио: <strong>${cardioCount} / ${targetCardio}</strong> ${cardioCount >= targetCardio ? '✅' : '⚠️'}</div>
+                <div>🎉 Социальные приемы: <strong>${socialDays} дней</strong> ${socialDays <= 1 ? '✅' : '⚠️'}</div>
+                ${!isWellnessMode ? `<div>📉 Дней с шагами ниже нормы: <strong>${lowStepsDays} дней</strong></div>` : ''}
             </div>
-            
-            <div style="margin-bottom: 15px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                    <span>💪 Силовые:</span>
-                    <span><strong>${strengthCount} / ${targetStrength}</strong> ${strengthOk ? '✅' : '⚠️'}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                    <span>🏃 Кардио:</span>
-                    <span><strong>${cardioCount} / ${targetCardio}</strong> ${cardioOk ? '✅' : '⚠️'}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>🎉 Социальные приемы пищи:</span>
-                    <span><strong>${socialDays} дней</strong> ${socialDays <= 1 ? '✅' : '⚠️'}</span>
-                </div>
-                ${!isWellnessMode ? `
-                <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                    <span>📉 Дней с шагами ниже нормы:</span>
-                    <span><strong style="color: ${lowStepsDays > 0 ? '#dc3545' : '#36B647'};">${lowStepsDays} дней</strong></span>
-                </div>
-                ` : ''}
-            </div>
-            
             ${dailyTable}
         </div>
     `;
-    
-    console.log('=== loadWeeklyProgress END ===');
 };
 
-// --- Открытие экрана ежедневного отчета ---
 window.app.openDailyReport = async function() {
-    console.log('openDailyReport вызвана');
-    
     if (!window.app.currentUser) return;
-    
     currentWeekOffset = 0;
     
     const today = getMoscowDateString();
-    const dateEl = document.getElementById('daily-report-date');
-    if (dateEl) {
-        const mskDate = getMoscowDate();
-        dateEl.innerHTML = `📅 ${mskDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
-    }
+    document.getElementById('daily-report-date').innerHTML = `📅 ${getMoscowDate().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' })}`;
     
-    const { data: existing, error } = await window.app.sb
-        .from('daily_reports')
-        .select('*')
-        .eq('user_id', window.app.currentUser.id)
-        .eq('report_date', today)
-        .maybeSingle();
-    
-    if (error) {
-        console.error('Ошибка загрузки существующего отчета:', error);
-    }
+    const { data: existing } = await window.app.sb.from('daily_reports').select('*')
+        .eq('user_id', window.app.currentUser.id).eq('report_date', today).maybeSingle();
     
     if (existing) {
-        const stepsInput = document.getElementById('daily-steps');
-        if (stepsInput) stepsInput.value = existing.steps || '';
-        
+        document.getElementById('daily-steps').value = existing.steps || '';
         setTrainingType(existing.training_type || '');
         setTrainingTime(existing.training_time || '');
         setSocialEvent(existing.social_event || false);
         setPreMeal(existing.pre_meal_compliant === true ? 'yes' : (existing.pre_meal_compliant === false ? 'no' : ''));
         setPostMeal(existing.post_meal_compliant === true ? 'yes' : (existing.post_meal_compliant === false ? 'no' : ''));
-        
-        const notesInput = document.getElementById('daily-notes');
-        if (notesInput) notesInput.value = existing.notes || '';
+        document.getElementById('daily-notes').value = existing.notes || '';
     } else {
-        const stepsInput = document.getElementById('daily-steps');
-        if (stepsInput) stepsInput.value = '';
-        
+        document.getElementById('daily-steps').value = '';
         setTrainingType('');
         setTrainingTime('');
         setSocialEvent(false);
         setPreMeal('');
         setPostMeal('');
-        
-        const notesInput = document.getElementById('daily-notes');
-        if (notesInput) notesInput.value = '';
+        document.getElementById('daily-notes').value = '';
     }
     
     await updateMealBlocksVisibility();
+    await window.app.loadWeeklyProgress();
     
-    if (typeof window.app.loadWeeklyProgress === 'function') {
-        await window.app.loadWeeklyProgress();
-    }
-    
-    window.app.showScreen('dailyReport');
+    // Прямое переключение экрана
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('dailyReport-screen').classList.add('active');
 };
