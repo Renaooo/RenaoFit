@@ -404,14 +404,22 @@ window.app.loadAdminDataWithoutGenerate = async function() {
         if (adminSlotsDiv) adminSlotsDiv.innerHTML = '';
         if (adminBookingsDiv) adminBookingsDiv.innerHTML = '';
         
+        // Исправление бага 4: показываем слоты с начала текущего дня (00:00 UTC)
         const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
         const endDate = new Date(today);
-        endDate.setDate(today.getDate() + 8);
-        const { data: slots } = await window.app.sb.from('slots').select('*')
-            .gte('start_time', today.toISOString()).lte('start_time', endDate.toISOString()).order('start_time');
+        endDate.setUTCDate(today.getUTCDate() + 8);
+        
+        const { data: slots } = await window.app.sb
+            .from('slots')
+            .select('*')
+            .gte('start_time', today.toISOString())
+            .lte('start_time', endDate.toISOString())
+            .order('start_time');
+        
         const blockedIds = await getBlockedSlotIds();
         
-        if (slots?.length) {
+        if (adminSlotsDiv && slots) {
             const groupedByDay = {};
             slots.forEach(slot => {
                 const date = window.app.utcToMsk(slot.start_time);
@@ -419,12 +427,14 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                 if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
                 groupedByDay[dayKey].push(slot);
             });
+            
             for (let [day, daySlots] of Object.entries(groupedByDay)) {
                 const dayDiv = document.createElement('div');
                 dayDiv.style.cssText = 'margin-bottom:20px;border-left:3px solid #36B647;padding-left:12px;';
                 const firstSlotDate = window.app.utcToMsk(daySlots[0]?.start_time);
                 const dayDateStr = firstSlotDate.toISOString().split('T')[0];
                 dayDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 style="margin:0;">📅 ${day}</h3></div>`;
+                
                 const morning = daySlots.filter(s => window.app.utcToMsk(s.start_time).getHours() < 15);
                 const evening = daySlots.filter(s => window.app.utcToMsk(s.start_time).getHours() >= 15);
                 
@@ -511,9 +521,10 @@ window.app.loadAdminDataWithoutGenerate = async function() {
             }
         }
         
-        // --- Все записи (прямой запрос без RPC) ---
+        // --- Баг 3: Все записи ---
         if (adminBookingsDiv) {
             adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
+            
             const { data: bookings, error: bookingsError } = await window.app.sb
                 .from('bookings')
                 .select(`
@@ -608,6 +619,7 @@ window.app.setupAdminTabs = function() {
     const slotsPanel = document.getElementById('admin-slots-panel');
     const clientsPanel = document.getElementById('admin-clients-panel');
     const adminBookingsDiv = document.getElementById('admin-bookings');
+    
     if (!slotsTab || !clientsTab) return;
     
     const newSlotsTab = slotsTab.cloneNode(true);
@@ -633,10 +645,14 @@ window.app.setupAdminTabs = function() {
         slotsPanel.style.display = 'none';
         clientsPanel.style.display = 'block';
         if (adminBookingsDiv) adminBookingsDiv.style.display = 'none';
+        
+        console.log('Переключение на вкладку Клиенты');
         if (typeof window.app.renderClientsList === 'function') {
             await window.app.renderClientsList();
+            console.log('renderClientsList вызвана');
         } else {
             console.error('renderClientsList не определена');
+            clientsPanel.innerHTML = '<p style="padding:20px;text-align:center;">Ошибка: функция не загружена</p>';
         }
     });
 };
