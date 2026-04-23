@@ -404,7 +404,7 @@ window.app.loadAdminDataWithoutGenerate = async function() {
         if (adminSlotsDiv) adminSlotsDiv.innerHTML = '';
         if (adminBookingsDiv) adminBookingsDiv.innerHTML = '';
         
-        // --- Слоты ---
+        // --- Слоты (без изменений) ---
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
         const endDate = new Date(today);
@@ -521,15 +521,11 @@ window.app.loadAdminDataWithoutGenerate = async function() {
             }
         }
         
-        // --- Все записи (только будущие, отсортированные по дате) ---
+        // --- Все записи (быстрая версия, без сложных JOIN фильтров) ---
         if (adminBookingsDiv) {
             adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
             
-            // Получаем сегодняшнюю дату в МСК (начало дня)
-            const todayMSK = new Date();
-            todayMSK.setUTCHours(0, 0, 0, 0);
-            const todayUTC = window.app.mskToUtc(todayMSK);
-            
+            // Загружаем все записи со связанными данными (без фильтрации в SQL)
             const { data: bookings, error: bookingsError } = await window.app.sb
                 .from('bookings')
                 .select(`
@@ -540,92 +536,105 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                     slots (start_time, end_time),
                     profiles (name, phone)
                 `)
-                .gte('slots.start_time', todayUTC.toISOString())
-                .order('slots.start_time', { ascending: true });
+                .order('created_at', { ascending: false });
             
             if (bookingsError) {
                 console.error('Ошибка загрузки записей:', bookingsError);
                 adminBookingsDiv.innerHTML += '<p>Ошибка загрузки записей</p>';
             } else if (bookings && bookings.length > 0) {
-                // Группируем по дням
-                const groupedByDay = {};
-                bookings.forEach(booking => {
-                    if (!booking.slots) return;
-                    const date = window.app.utcToMsk(booking.slots.start_time);
-                    const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
-                    if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
-                    groupedByDay[dayKey].push(booking);
+                // Получаем текущую дату и время в МСК
+                const nowMSK = window.app.getNowMSK();
+                
+                // Фильтруем только будущие записи (start_time >= сейчас)
+                const futureBookings = bookings.filter(booking => {
+                    if (!booking.slots) return false;
+                    const startTimeMSK = window.app.utcToMsk(booking.slots.start_time);
+                    return startTimeMSK >= nowMSK;
                 });
                 
-                // Сортируем дни по возрастанию (от сегодня)
-                const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
-                    const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
-                    const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
-                    return dateA - dateB;
-                });
-                
-                for (let day of sortedDays) {
-                    const dayBookings = groupedByDay[day];
-                    const dayDiv = document.createElement('div');
-                    dayDiv.style.cssText = 'margin-bottom:20px;border-left:3px solid #36B647;padding-left:12px;';
-                    dayDiv.innerHTML = `<h3 style="margin-bottom:10px;">📅 ${day}</h3>`;
+                if (futureBookings.length === 0) {
+                    adminBookingsDiv.innerHTML += '<p>Нет предстоящих записей</p>';
+                } else {
+                    // Сортируем по start_time (от ранних к поздним)
+                    futureBookings.sort((a, b) => {
+                        const timeA = window.app.utcToMsk(a.slots.start_time);
+                        const timeB = window.app.utcToMsk(b.slots.start_time);
+                        return timeA - timeB;
+                    });
                     
-                    const morning = dayBookings.filter(b => window.app.utcToMsk(b.slots.start_time).getHours() < 15);
-                    const evening = dayBookings.filter(b => window.app.utcToMsk(b.slots.start_time).getHours() >= 15);
+                    // Группируем по дням
+                    const groupedByDay = {};
+                    futureBookings.forEach(booking => {
+                        const date = window.app.utcToMsk(booking.slots.start_time);
+                        const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+                        if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+                        groupedByDay[dayKey].push(booking);
+                    });
                     
-                    if (morning.length) {
-                        const morningDiv = document.createElement('div');
-                        morningDiv.innerHTML = '<div style="font-size:12px;color:#666;margin-bottom:5px;">☀️ Утро</div>';
-                        morning.forEach(booking => {
-                            const timeStr = window.app.utcToMsk(booking.slots.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-                            const profile = booking.profiles || {};
-                            const bookingDiv = document.createElement('div');
-                            bookingDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;margin-bottom:8px;background:#f9f9f9;border-radius:8px;';
-                            bookingDiv.innerHTML = `<div><strong>${profile.name || 'Неизвестно'}</strong><br>📞 ${profile.phone || 'нет телефона'}<br>🕐 ${timeStr}</div>
-                                <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;margin-left:10px;">✖ Удалить</button>`;
-                            bookingDiv.querySelector('.delete-booking-btn').addEventListener('click', async () => {
-                                if (confirm('Удалить эту запись?')) {
-                                    await window.app.sb.from('bookings').delete().eq('id', booking.id);
-                                    await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
-                                    await window.app.loadAdminDataWithoutGenerate();
-                                }
+                    for (let [day, dayBookings] of Object.entries(groupedByDay)) {
+                        const dayDiv = document.createElement('div');
+                        dayDiv.style.cssText = 'margin-bottom:20px;border-left:3px solid #36B647;padding-left:12px;';
+                        dayDiv.innerHTML = `<h3 style="margin-bottom:10px;">📅 ${day}</h3>`;
+                        
+                        const morning = dayBookings.filter(b => window.app.utcToMsk(b.slots.start_time).getHours() < 15);
+                        const evening = dayBookings.filter(b => window.app.utcToMsk(b.slots.start_time).getHours() >= 15);
+                        
+                        if (morning.length) {
+                            const morningDiv = document.createElement('div');
+                            morningDiv.innerHTML = '<div style="font-size:12px;color:#666;margin-bottom:5px;">☀️ Утро</div>';
+                            morning.forEach(booking => {
+                                const timeStr = window.app.utcToMsk(booking.slots.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                                const profile = booking.profiles || {};
+                                const bookingDiv = document.createElement('div');
+                                bookingDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;margin-bottom:8px;background:#f9f9f9;border-radius:8px;';
+                                bookingDiv.innerHTML = `<div><strong>${profile.name || 'Неизвестно'}</strong><br>📞 ${profile.phone || 'нет телефона'}<br>🕐 ${timeStr}</div>
+                                    <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;margin-left:10px;">✖ Удалить</button>`;
+                                bookingDiv.querySelector('.delete-booking-btn').addEventListener('click', async () => {
+                                    if (confirm('Удалить эту запись?')) {
+                                        await window.app.sb.from('bookings').delete().eq('id', booking.id);
+                                        await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
+                                        await window.app.loadAdminDataWithoutGenerate();
+                                    }
+                                });
+                                morningDiv.appendChild(bookingDiv);
                             });
-                            morningDiv.appendChild(bookingDiv);
-                        });
-                        dayDiv.appendChild(morningDiv);
-                    }
-                    
-                    if (evening.length) {
-                        const eveningDiv = document.createElement('div');
-                        eveningDiv.innerHTML = '<div style="font-size:12px;color:#666;margin:10px 0 5px;">🌙 Вечер</div>';
-                        evening.forEach(booking => {
-                            const timeStr = window.app.utcToMsk(booking.slots.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-                            const profile = booking.profiles || {};
-                            const bookingDiv = document.createElement('div');
-                            bookingDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;margin-bottom:8px;background:#f9f9f9;border-radius:8px;';
-                            bookingDiv.innerHTML = `<div><strong>${profile.name || 'Неизвестно'}</strong><br>📞 ${profile.phone || 'нет телефона'}<br>🕐 ${timeStr}</div>
-                                <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;margin-left:10px;">✖ Удалить</button>`;
-                            bookingDiv.querySelector('.delete-booking-btn').addEventListener('click', async () => {
-                                if (confirm('Удалить эту запись?')) {
-                                    await window.app.sb.from('bookings').delete().eq('id', booking.id);
-                                    await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
-                                    await window.app.loadAdminDataWithoutGenerate();
-                                }
+                            dayDiv.appendChild(morningDiv);
+                        }
+                        
+                        if (evening.length) {
+                            const eveningDiv = document.createElement('div');
+                            eveningDiv.innerHTML = '<div style="font-size:12px;color:#666;margin:10px 0 5px;">🌙 Вечер</div>';
+                            evening.forEach(booking => {
+                                const timeStr = window.app.utcToMsk(booking.slots.start_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                                const profile = booking.profiles || {};
+                                const bookingDiv = document.createElement('div');
+                                bookingDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;margin-bottom:8px;background:#f9f9f9;border-radius:8px;';
+                                bookingDiv.innerHTML = `<div><strong>${profile.name || 'Неизвестно'}</strong><br>📞 ${profile.phone || 'нет телефона'}<br>🕐 ${timeStr}</div>
+                                    <button class="delete-booking-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;margin-left:10px;">✖ Удалить</button>`;
+                                bookingDiv.querySelector('.delete-booking-btn').addEventListener('click', async () => {
+                                    if (confirm('Удалить эту запись?')) {
+                                        await window.app.sb.from('bookings').delete().eq('id', booking.id);
+                                        await window.app.sb.from('slots').update({ is_available: true }).eq('id', booking.slot_id);
+                                        await window.app.loadAdminDataWithoutGenerate();
+                                    }
+                                });
+                                eveningDiv.appendChild(bookingDiv);
                             });
-                            eveningDiv.appendChild(bookingDiv);
-                        });
-                        dayDiv.appendChild(eveningDiv);
+                            dayDiv.appendChild(eveningDiv);
+                        }
+                        adminBookingsDiv.appendChild(dayDiv);
                     }
-                    adminBookingsDiv.appendChild(dayDiv);
                 }
             } else {
-                adminBookingsDiv.innerHTML += '<p>Нет предстоящих записей</p>';
+                adminBookingsDiv.innerHTML += '<p>Нет записей</p>';
             }
         }
     } finally {
         isRenderingAdmin = false;
     }
 };
+
+
 
 // --- Переключение между вкладками в админке ---
 window.app.setupAdminTabs = function() {
