@@ -131,13 +131,13 @@ function getStartOfWeek(date) {
 
 // --- Отображение карточки клиента с протоколом, комментариями и редактированием ---
 window.app.showClientDetails = async function(client) {
-    // Получаем записи клиента
+    // Получаем записи клиента (с правильным указанием внешнего ключа)
     const { data: bookings, error: bookingsError } = await window.app.sb
         .from('bookings')
         .select(`
             id,
             slot_id,
-            slots (start_time, end_time)
+            slots!fk_bookings_slot_id (start_time, end_time)
         `)
         .eq('user_id', client.id)
         .order('slot_id');
@@ -154,6 +154,16 @@ window.app.showClientDetails = async function(client) {
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
+    }
+    
+    // Функция определения понедельника
+    function getStartOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = (day === 0 ? 6 : day - 1);
+        d.setDate(d.getDate() - diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
     }
     
     // Переменная для смещения недели
@@ -289,6 +299,7 @@ window.app.showClientDetails = async function(client) {
                 ` : ''}
             </div>
             
+            <!-- Комментарии клиента -->
             <div id="client-comments-section" style="background: #f8f9fa; border-radius: 12px; padding: 15px; margin: 15px 0;"></div>
         `, reports: weeklyReports };
     }
