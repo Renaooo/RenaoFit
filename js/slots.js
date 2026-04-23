@@ -404,7 +404,7 @@ window.app.loadAdminDataWithoutGenerate = async function() {
         if (adminSlotsDiv) adminSlotsDiv.innerHTML = '';
         if (adminBookingsDiv) adminBookingsDiv.innerHTML = '';
         
-        // --- Слоты (без изменений) ---
+        // --- Слоты ---
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
         const endDate = new Date(today);
@@ -521,11 +521,10 @@ window.app.loadAdminDataWithoutGenerate = async function() {
             }
         }
         
-        // --- Все записи (быстрая версия, без сложных JOIN фильтров) ---
+        // --- Все записи (с правильным указанием внешних ключей) ---
         if (adminBookingsDiv) {
             adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
             
-            // Загружаем все записи со связанными данными (без фильтрации в SQL)
             const { data: bookings, error: bookingsError } = await window.app.sb
                 .from('bookings')
                 .select(`
@@ -533,8 +532,8 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                     slot_id,
                     user_id,
                     created_at,
-                    slots (start_time, end_time),
-                    profiles (name, phone)
+                    slots!fk_bookings_slot_id (start_time, end_time),
+                    profiles!fk_bookings_user_id (name, phone)
                 `)
                 .order('created_at', { ascending: false });
             
@@ -542,10 +541,8 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                 console.error('Ошибка загрузки записей:', bookingsError);
                 adminBookingsDiv.innerHTML += '<p>Ошибка загрузки записей</p>';
             } else if (bookings && bookings.length > 0) {
-                // Получаем текущую дату и время в МСК
                 const nowMSK = window.app.getNowMSK();
                 
-                // Фильтруем только будущие записи (start_time >= сейчас)
                 const futureBookings = bookings.filter(booking => {
                     if (!booking.slots) return false;
                     const startTimeMSK = window.app.utcToMsk(booking.slots.start_time);
@@ -555,14 +552,12 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                 if (futureBookings.length === 0) {
                     adminBookingsDiv.innerHTML += '<p>Нет предстоящих записей</p>';
                 } else {
-                    // Сортируем по start_time (от ранних к поздним)
                     futureBookings.sort((a, b) => {
                         const timeA = window.app.utcToMsk(a.slots.start_time);
                         const timeB = window.app.utcToMsk(b.slots.start_time);
                         return timeA - timeB;
                     });
                     
-                    // Группируем по дням
                     const groupedByDay = {};
                     futureBookings.forEach(booking => {
                         const date = window.app.utcToMsk(booking.slots.start_time);
