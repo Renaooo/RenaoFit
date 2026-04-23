@@ -404,7 +404,7 @@ window.app.loadAdminDataWithoutGenerate = async function() {
         if (adminSlotsDiv) adminSlotsDiv.innerHTML = '';
         if (adminBookingsDiv) adminBookingsDiv.innerHTML = '';
         
-        // Исправление бага 4: показываем слоты с начала текущего дня (00:00 UTC)
+        // --- Слоты ---
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
         const endDate = new Date(today);
@@ -521,9 +521,14 @@ window.app.loadAdminDataWithoutGenerate = async function() {
             }
         }
         
-        // --- Баг 3: Все записи ---
+        // --- Все записи (только будущие, отсортированные по дате) ---
         if (adminBookingsDiv) {
             adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
+            
+            // Получаем сегодняшнюю дату в МСК (начало дня)
+            const todayMSK = new Date();
+            todayMSK.setUTCHours(0, 0, 0, 0);
+            const todayUTC = window.app.mskToUtc(todayMSK);
             
             const { data: bookings, error: bookingsError } = await window.app.sb
                 .from('bookings')
@@ -535,12 +540,14 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                     slots (start_time, end_time),
                     profiles (name, phone)
                 `)
-                .order('created_at', { ascending: false });
+                .gte('slots.start_time', todayUTC.toISOString())
+                .order('slots.start_time', { ascending: true });
             
             if (bookingsError) {
                 console.error('Ошибка загрузки записей:', bookingsError);
                 adminBookingsDiv.innerHTML += '<p>Ошибка загрузки записей</p>';
             } else if (bookings && bookings.length > 0) {
+                // Группируем по дням
                 const groupedByDay = {};
                 bookings.forEach(booking => {
                     if (!booking.slots) return;
@@ -550,7 +557,15 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                     groupedByDay[dayKey].push(booking);
                 });
                 
-                for (let [day, dayBookings] of Object.entries(groupedByDay)) {
+                // Сортируем дни по возрастанию (от сегодня)
+                const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
+                    const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
+                    const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
+                    return dateA - dateB;
+                });
+                
+                for (let day of sortedDays) {
+                    const dayBookings = groupedByDay[day];
                     const dayDiv = document.createElement('div');
                     dayDiv.style.cssText = 'margin-bottom:20px;border-left:3px solid #36B647;padding-left:12px;';
                     dayDiv.innerHTML = `<h3 style="margin-bottom:10px;">📅 ${day}</h3>`;
@@ -604,7 +619,7 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                     adminBookingsDiv.appendChild(dayDiv);
                 }
             } else {
-                adminBookingsDiv.innerHTML += '<p>Нет записей</p>';
+                adminBookingsDiv.innerHTML += '<p>Нет предстоящих записей</p>';
             }
         }
     } finally {
