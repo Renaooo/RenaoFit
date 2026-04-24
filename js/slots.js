@@ -1,5 +1,5 @@
 // ============================================
-// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ)
+// МОДУЛЬ СЛОТОВ (ФИНАЛЬНАЯ ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)
 // ============================================
 
 const SCHEDULE = {
@@ -21,7 +21,20 @@ const SCHEDULE = {
 let isRenderingAdmin = false;
 let isGenerating = false;
 
-async function getBlockedSlotIds() {
+// --- Функция повторных попыток при ошибках сети ---
+async function fetchWithRetry(fn, retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        }
+    }
+}
+
+// --- ОПТИМИЗИРОВАННАЯ версия getBlockedSlotIds (быстрая, правильная) ---
+window.app.getBlockedSlotIds = async function() {
     const blockedIds = new Set();
     
     // 1. Ручные блокировки
@@ -36,28 +49,27 @@ async function getBlockedSlotIds() {
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 14);
     
-    const [bookedSlotsResult, allSlotsResult] = await Promise.all([
+    const [bookedResult, allResult] = await Promise.all([
         window.app.sb.from('slots').select('id, start_time').eq('is_available', false).gte('start_time', today.toISOString()).lte('start_time', endDate.toISOString()),
         window.app.sb.from('slots').select('id, start_time').gte('start_time', today.toISOString()).lte('start_time', endDate.toISOString())
     ]);
     
-    const bookedSlots = bookedSlotsResult.data || [];
-    const allSlots = allSlotsResult.data || [];
+    const bookedSlots = bookedResult.data || [];
+    const allSlots = allResult.data || [];
     
     if (bookedSlots.length === 0) return blockedIds;
     
-    // Группируем слоты по дням (в UTC) и создаём Map для быстрого поиска
-    const slotsByDay = new Map(); // ключ: день (YYYY-MM-DD), значение: Map{ timeValue: id }
+    // Группируем слоты по дням (в UTC) через Map
+    const slotsByDay = new Map();
     allSlots.forEach(slot => {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
         const timeValue = date.getUTCHours() + date.getUTCMinutes() / 60;
-        
-        if (!slotsByDay.has(dayKey)) slotsByDay.set(dayKey, new Map());
-        slotsByDay.get(dayKey).set(timeValue, slot.id);
+        if (!slotsByDay.has(dayKey)) slotsByDay.set(dayKey, []);
+        slotsByDay.get(dayKey).push({ id: slot.id, timeValue });
     });
     
-    // Для каждого занятого слота блокируем соседние (разница < 60 минут)
+    // Блокируем соседние слоты (разница < 60 минут)
     for (let booked of bookedSlots) {
         const bookedDate = new Date(booked.start_time);
         const dayKey = bookedDate.toISOString().split('T')[0];
@@ -66,35 +78,36 @@ async function getBlockedSlotIds() {
         const daySlots = slotsByDay.get(dayKey);
         if (!daySlots) continue;
         
-        // Перебираем все слоты этого дня
-        for (let [slotTime, slotId] of daySlots) {
-            if (slotId !== booked.id && Math.abs(slotTime - bookedTime) < 1) { // 1 час = 1
-                blockedIds.add(slotId);
+        daySlots.forEach(slot => {
+            if (slot.id !== booked.id && Math.abs(slot.timeValue - bookedTime) < 1) {
+                blockedIds.add(slot.id);
             }
-        }
+        });
     }
     
     return blockedIds;
-}
+};
 
-// --- Загрузка свободных слотов для клиента ---
+// --- Загрузка свободных слотов для клиента (с retry) ---
 window.app.loadSlots = async function() {
     const today = new Date();
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 8);
     
-    const { data: slots, error } = await window.app.sb
-        .from('slots')
-        .select('*')
-        .eq('is_available', true)
-        .eq('is_blocked', false)
-        .gte('start_time', today.toISOString())
-        .lte('start_time', endDate.toISOString())
-        .order('start_time');
+    const { data: slots, error } = await fetchWithRetry(() =>
+        window.app.sb
+            .from('slots')
+            .select('*')
+            .eq('is_available', true)
+            .eq('is_blocked', false)
+            .gte('start_time', today.toISOString())
+            .lte('start_time', endDate.toISOString())
+            .order('start_time')
+    );
     
     if (error) throw error;
     
-    const blockedIds = await getBlockedSlotIds();
+    const blockedIds = await window.app.getBlockedSlotIds();
     return slots.filter(slot => !blockedIds.has(slot.id));
 };
 
@@ -221,7 +234,7 @@ window.app.confirmBooking = async function() {
     if (!window.app.selectedSlotIds.size) return alert('Выберите слоты для записи');
     
     const selectedIds = Array.from(window.app.selectedSlotIds);
-    const blockedIds = await getBlockedSlotIds();
+    const blockedIds = await window.app.getBlockedSlotIds();
     if (selectedIds.some(id => blockedIds.has(id))) {
         alert('Некоторые выбранные слоты стали недоступны. Обновите страницу.');
         window.app.selectedSlotIds.clear();
@@ -277,7 +290,6 @@ window.app.loadMyBookings = async function() {
         container.appendChild(dayDiv);
     }
     
-    // Переключение на экран "Мои записи"
     if (typeof window.app.showScreen === 'function') {
         window.app.showScreen('myBookings');
     } else {
@@ -388,7 +400,6 @@ window.app.loadAdminDataWithoutGenerate = async function() {
         const adminSlotsDiv = document.getElementById('admin-slots');
         const adminBookingsDiv = document.getElementById('admin-bookings');
         
-        // Загружаем слоты и записи ПАРАЛЛЕЛЬНО
         const todayStartUTC = new Date();
         todayStartUTC.setUTCHours(0, 0, 0, 0);
         const endDateUTC = new Date(todayStartUTC);
@@ -416,9 +427,8 @@ window.app.loadAdminDataWithoutGenerate = async function() {
         
         const slots = slotsResult.data || [];
         const bookings = bookingsResult.data || [];
-        const blockedIds = await getBlockedSlotIds();
+        const blockedIds = await window.app.getBlockedSlotIds();
         
-        // === ОТОБРАЖЕНИЕ СЛОТОВ ===
         if (adminSlotsDiv) {
             if (slots.length === 0) {
                 adminSlotsDiv.innerHTML = '<p>Нет слотов на ближайшую неделю</p>';
@@ -526,20 +536,16 @@ window.app.loadAdminDataWithoutGenerate = async function() {
             }
         }
         
-        // === ВСЕ ЗАПИСИ (безопасная версия) ===
         if (adminBookingsDiv) {
             if (!bookings || bookings.length === 0) {
                 adminBookingsDiv.innerHTML = '<h3>Все записи</h3><p>Нет предстоящих записей</p>';
             } else {
                 adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
-                
-                // Фильтруем записи, у которых есть slots
                 const validBookings = bookings.filter(booking => booking && booking.slots && booking.slots.start_time);
                 
                 if (validBookings.length === 0) {
                     adminBookingsDiv.innerHTML += '<p>Нет записей с существующими слотами</p>';
                 } else {
-                    // Сортировка
                     validBookings.sort((a, b) => {
                         const timeA = window.app.utcToMsk(a.slots.start_time);
                         const timeB = window.app.utcToMsk(b.slots.start_time);
@@ -636,7 +642,6 @@ window.app.setupAdminTabs = function() {
         return;
     }
     
-    // Клонируем, чтобы удалить старые обработчики
     const newSlotsTab = slotsTab.cloneNode(true);
     const newClientsTab = clientsTab.cloneNode(true);
     slotsTab.parentNode.replaceChild(newSlotsTab, slotsTab);
