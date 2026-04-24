@@ -429,7 +429,6 @@ window.app.loadAdminDataWithoutGenerate = async function() {
                     profiles!fk_bookings_user_id (name, phone)
                 `)
                 .gte('slots.start_time', todayStartUTC.toISOString())
-                .order('slots.start_time', { ascending: true })
         ]);
         
         const slots = slotsResult.data || [];
@@ -544,12 +543,20 @@ window.app.loadAdminDataWithoutGenerate = async function() {
             }
         }
         
-        // === ОТОБРАЖЕНИЕ ЗАПИСЕЙ ===
+        // === ВСЕ ЗАПИСИ (исправленная версия) ===
         if (adminBookingsDiv) {
             if (bookings.length === 0) {
                 adminBookingsDiv.innerHTML = '<h3>Все записи</h3><p>Нет предстоящих записей</p>';
             } else {
                 adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
+                
+                // Сортируем в JS по start_time
+                bookings.sort((a, b) => {
+                    const timeA = window.app.utcToMsk(a.slots.start_time);
+                    const timeB = window.app.utcToMsk(b.slots.start_time);
+                    return timeA - timeB;
+                });
+                
                 const groupedByDay = {};
                 bookings.forEach(booking => {
                     if (!booking.slots) return;
