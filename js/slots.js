@@ -21,71 +21,56 @@ const SCHEDULE = {
 let isRenderingAdmin = false;
 let isGenerating = false;
 
-// --- Получение списка заблокированных слотов (без slot_exceptions) ---
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
     
-    // Слоты, заблокированные вручную
+    // 1. Ручные блокировки
     const { data: manuallyBlocked } = await window.app.sb
         .from('slots')
         .select('id')
         .eq('is_blocked', true);
     manuallyBlocked?.forEach(slot => blockedIds.add(slot.id));
     
-    // Получаем занятые слоты
+    // 2. Получаем занятые слоты
     const today = new Date();
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 14);
     
-    const { data: bookedSlots } = await window.app.sb
-        .from('slots')
-        .select('id, start_time')
-        .eq('is_available', false)
-        .gte('start_time', today.toISOString())
-        .lte('start_time', endDate.toISOString());
+    const [bookedSlotsResult, allSlotsResult] = await Promise.all([
+        window.app.sb.from('slots').select('id, start_time').eq('is_available', false).gte('start_time', today.toISOString()).lte('start_time', endDate.toISOString()),
+        window.app.sb.from('slots').select('id, start_time').gte('start_time', today.toISOString()).lte('start_time', endDate.toISOString())
+    ]);
     
-    if (!bookedSlots || bookedSlots.length === 0) return blockedIds;
+    const bookedSlots = bookedSlotsResult.data || [];
+    const allSlots = allSlotsResult.data || [];
     
-    const { data: allSlots } = await window.app.sb
-        .from('slots')
-        .select('id, start_time')
-        .gte('start_time', today.toISOString())
-        .lte('start_time', endDate.toISOString());
+    if (bookedSlots.length === 0) return blockedIds;
     
-    if (!allSlots) return blockedIds;
-    
-    // Группируем слоты по дням
-    const slotsByDay = {};
+    // Группируем слоты по дням (в UTC) и создаём Map для быстрого поиска
+    const slotsByDay = new Map(); // ключ: день (YYYY-MM-DD), значение: Map{ timeValue: id }
     allSlots.forEach(slot => {
         const date = new Date(slot.start_time);
         const dayKey = date.toISOString().split('T')[0];
-        const hour = date.getUTCHours();
-        const minute = date.getUTCMinutes();
-        if (!slotsByDay[dayKey]) slotsByDay[dayKey] = [];
-        slotsByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
+        const timeValue = date.getUTCHours() + date.getUTCMinutes() / 60;
+        
+        if (!slotsByDay.has(dayKey)) slotsByDay.set(dayKey, new Map());
+        slotsByDay.get(dayKey).set(timeValue, slot.id);
     });
     
-    const bookedByDay = {};
-    bookedSlots.forEach(slot => {
-        const date = new Date(slot.start_time);
-        const dayKey = date.toISOString().split('T')[0];
-        const hour = date.getUTCHours();
-        const minute = date.getUTCMinutes();
-        if (!bookedByDay[dayKey]) bookedByDay[dayKey] = [];
-        bookedByDay[dayKey].push({ id: slot.id, hour, minute, timeValue: hour + minute/60 });
-    });
-    
-    // Блокируем соседние слоты (±1 час)
-    for (let [dayKey, booked] of Object.entries(bookedByDay)) {
-        for (let bookedSlot of booked) {
-            const startMinutes = bookedSlot.timeValue * 60;
-            
-            slotsByDay[dayKey]?.forEach(slot => {
-                const slotMinutes = slot.timeValue * 60;
-                if (Math.abs(slotMinutes - startMinutes) < 60 && slot.id !== bookedSlot.id) {
-                    blockedIds.add(slot.id);
-                }
-            });
+    // Для каждого занятого слота блокируем соседние (разница < 60 минут)
+    for (let booked of bookedSlots) {
+        const bookedDate = new Date(booked.start_time);
+        const dayKey = bookedDate.toISOString().split('T')[0];
+        const bookedTime = bookedDate.getUTCHours() + bookedDate.getUTCMinutes() / 60;
+        
+        const daySlots = slotsByDay.get(dayKey);
+        if (!daySlots) continue;
+        
+        // Перебираем все слоты этого дня
+        for (let [slotTime, slotId] of daySlots) {
+            if (slotId !== booked.id && Math.abs(slotTime - bookedTime) < 1) { // 1 час = 1
+                blockedIds.add(slotId);
+            }
         }
     }
     
