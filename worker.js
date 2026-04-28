@@ -1,9 +1,4 @@
-// Cloudflare Worker: прокси для Vercel + Supabase
-// GitHub: Renaooo/RenaoFit
-
-const VERIFICATION_TOKEN = 'renao-secret-token-2026';
-
-// Настоящие адреса
+// Cloudflare Worker: прозрачный прокси для всех запросов к Vercel и Supabase
 const TARGET_URL = 'https://renao-fit.vercel.app';
 const SUPABASE_URL = 'https://wviocztioezobgfktdrz.supabase.co';
 
@@ -12,7 +7,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     
-    // === 1. Проверка для обхода CORS (опционально) ===
+    // CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
@@ -24,28 +19,20 @@ export default {
       });
     }
     
-    // === 2. Маршрутизация запросов ===
+    // Определяем целевой URL
     let targetUrl;
-    
-    // Запросы к Supabase API
     if (path.startsWith('/rest/v1/') || 
         path.startsWith('/auth/v1/') || 
-        path.startsWith('/realtime/v1/') ||
-        path.includes('supabase.co')) {
+        path.startsWith('/realtime/v1/')) {
       targetUrl = SUPABASE_URL + path + url.search;
-    } 
-    // Остальные запросы — к Vercel (фронтенд)
-    else {
+    } else {
+      // ВСЕ остальные запросы (включая JS, CSS, HTML) идут на Vercel
       targetUrl = TARGET_URL + path + url.search;
     }
     
     // Копируем заголовки
     const headers = new Headers(request.headers);
     headers.delete('host');
-    headers.delete('origin');
-    
-    // Добавляем заголовок для проверки (опционально)
-    headers.set('X-Proxy-By', 'Cloudflare-Worker');
     
     const proxyRequest = new Request(targetUrl, {
       method: request.method,
@@ -55,8 +42,6 @@ export default {
     
     try {
       const response = await fetch(proxyRequest);
-      
-      // Копируем заголовки ответа
       const responseHeaders = new Headers(response.headers);
       responseHeaders.set('Access-Control-Allow-Origin', '*');
       
