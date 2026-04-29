@@ -33,7 +33,7 @@ async function fetchWithRetry(fn, retries = 3, delay = 1000) {
     }
 }
 
-// --- ОПТИМИЗИРОВАННАЯ версия getBlockedSlotIds (быстрая, правильная) ---
+// --- Оптимизированная версия getBlockedSlotIds ---
 window.app.getBlockedSlotIds = async function() {
     const blockedIds = new Set();
     
@@ -59,7 +59,7 @@ window.app.getBlockedSlotIds = async function() {
     
     if (bookedSlots.length === 0) return blockedIds;
     
-    // Группируем слоты по дням (в UTC) через Map
+    // Группируем слоты по дням
     const slotsByDay = new Map();
     allSlots.forEach(slot => {
         const date = new Date(slot.start_time);
@@ -88,7 +88,7 @@ window.app.getBlockedSlotIds = async function() {
     return blockedIds;
 };
 
-// --- Загрузка свободных слотов для клиента (с retry) ---
+// --- Загрузка свободных слотов для клиента ---
 window.app.loadSlots = async function() {
     const today = new Date();
     const endDate = new Date(today);
@@ -387,7 +387,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
     container.appendChild(div);
 };
 
-// --- Админ-панель ---
+// --- Админ-панель (раздельная загрузка данных, без JOIN) ---
 window.app.loadAdminData = async function() {
     await window.app.loadAdminDataWithoutGenerate();
 };
@@ -405,32 +405,25 @@ window.app.loadAdminDataWithoutGenerate = async function() {
         const endDateUTC = new Date(todayStartUTC);
         endDateUTC.setUTCDate(todayStartUTC.getUTCDate() + 8);
         
-        const [slotsResult, bookingsResult] = await Promise.all([
-            window.app.sb
-                .from('slots')
-                .select('*')
-                .gte('start_time', todayStartUTC.toISOString())
-                .lte('start_time', endDateUTC.toISOString())
-                .order('start_time'),
-            window.app.sb
-                .from('bookings')
-                .select(`
-                    id,
-                    slot_id,
-                    user_id,
-                    created_at,
-                    slots!fk_bookings_slot_id (start_time, end_time),
-                    profiles!fk_bookings_user_id (name, phone)
-                `)
-                .gte('slots.start_time', todayStartUTC.toISOString())
-        ]);
+        // Загружаем слоты
+        const { data: slots } = await window.app.sb
+            .from('slots')
+            .select('*')
+            .gte('start_time', todayStartUTC.toISOString())
+            .lte('start_time', endDateUTC.toISOString())
+            .order('start_time');
         
-        const slots = slotsResult.data || [];
-        const bookings = bookingsResult.data || [];
+        // Загружаем бронирования (без JOIN)
+        const { data: rawBookings } = await window.app.sb
+            .from('bookings')
+            .select('*')
+            .gte('created_at', todayStartUTC.toISOString());
+        
         const blockedIds = await window.app.getBlockedSlotIds();
         
+        // === ОТОБРАЖЕНИЕ СЛОТОВ ===
         if (adminSlotsDiv) {
-            if (slots.length === 0) {
+            if (!slots || slots.length === 0) {
                 adminSlotsDiv.innerHTML = '<p>Нет слотов на ближайшую неделю</p>';
             } else {
                 adminSlotsDiv.innerHTML = '';
@@ -536,24 +529,60 @@ window.app.loadAdminDataWithoutGenerate = async function() {
             }
         }
         
+        // === ВСЕ ЗАПИСИ (раздельная загрузка) ===
         if (adminBookingsDiv) {
-            if (!bookings || bookings.length === 0) {
+            if (!rawBookings || rawBookings.length === 0) {
                 adminBookingsDiv.innerHTML = '<h3>Все записи</h3><p>Нет предстоящих записей</p>';
             } else {
-                adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
-                const validBookings = bookings.filter(booking => booking && booking.slots && booking.slots.start_time);
+                // Загружаем слоты и профили отдельно
+                const slotIds = [...new Set(rawBookings.map(b => b.slot_id).filter(id => id))];
+                const userIds = [...new Set(rawBookings.map(b => b.user_id).filter(id => id))];
                 
-                if (validBookings.length === 0) {
-                    adminBookingsDiv.innerHTML += '<p>Нет записей с существующими слотами</p>';
+                const [slotsMap, profilesMap] = await Promise.all([
+                    (async () => {
+                        if (slotIds.length === 0) return new Map();
+                        const { data: slotsData } = await window.app.sb
+                            .from('slots')
+                            .select('id, start_time, end_time')
+                            .in('id', slotIds);
+                        const map = new Map();
+                        slotsData?.forEach(s => map.set(s.id, s));
+                        return map;
+                    })(),
+                    (async () => {
+                        if (userIds.length === 0) return new Map();
+                        const { data: profilesData } = await window.app.sb
+                            .from('profiles')
+                            .select('id, name, phone')
+                            .in('id', userIds);
+                        const map = new Map();
+                        profilesData?.forEach(p => map.set(p.id, p));
+                        return map;
+                    })()
+                ]);
+                
+                // Собираем обогащённые записи
+                const enrichedBookings = rawBookings.map(booking => ({
+                    ...booking,
+                    slots: slotsMap.get(booking.slot_id),
+                    profiles: profilesMap.get(booking.user_id)
+                })).filter(b => b.slots); // только те, у которых есть слот
+                
+                if (enrichedBookings.length === 0) {
+                    adminBookingsDiv.innerHTML = '<h3>Все записи</h3><p>Нет записей с существующими слотами</p>';
                 } else {
-                    validBookings.sort((a, b) => {
+                    adminBookingsDiv.innerHTML = '<h3>Все записи</h3>';
+                    
+                    // Сортировка по времени
+                    enrichedBookings.sort((a, b) => {
                         const timeA = window.app.utcToMsk(a.slots.start_time);
                         const timeB = window.app.utcToMsk(b.slots.start_time);
                         return timeA - timeB;
                     });
                     
+                    // Группировка по дням
                     const groupedByDay = {};
-                    validBookings.forEach(booking => {
+                    enrichedBookings.forEach(booking => {
                         const date = window.app.utcToMsk(booking.slots.start_time);
                         const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
                         if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
