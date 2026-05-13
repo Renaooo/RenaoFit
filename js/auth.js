@@ -80,18 +80,23 @@ window.app.logout = async function() {
 window.app.isAdmin = async function(userId) {
     if (!userId) return false;
     
-    const { data, error } = await window.app.sb
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', userId)
-        .single();
-    
-    if (error) {
-        console.error('Ошибка проверки админа:', error);
+    try {
+        const { data, error } = await window.app.sb
+            .from('profiles')
+            .select('is_admin')
+            .eq('id', userId)
+            .maybeSingle();  // вместо .single()
+        
+        if (error) {
+            console.warn('Ошибка проверки админа:', error.message);
+            return false;
+        }
+        
+        return data?.is_admin === true;
+    } catch (e) {
+        console.warn('Исключение в isAdmin:', e.message);
         return false;
     }
-    
-    return data?.is_admin === true;
 };
 
 // --- Получение текущего пользователя с его профилем ---
