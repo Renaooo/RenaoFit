@@ -288,44 +288,39 @@ window.app.confirmBooking = async function() {
 
 // --- Загрузка и отображение записей клиента ---
 window.app.loadMyBookings = async function() {
-    const { data: bookings, error } = await window.app.sb
-        .from('bookings')
-        .select('id, slot_id, slots(start_time, end_time)')
-        .eq('user_id', window.app.currentUser.id);
-    
-    if (error) throw error;
+    console.log('loadMyBookings вызвана');
     
     const container = document.getElementById('my-bookings-list');
-    if (!container) return;
-    container.innerHTML = '';
-    
-    if (!bookings || bookings.length === 0) {
-        container.innerHTML = '<p style="text-align: center; padding: 20px;">У вас нет записей</p>';
+    if (!container) {
+        console.error('Контейнер my-bookings-list не найден');
         return;
     }
     
-    // Группируем по дням
-    const groupedByDay = {};
-    bookings.forEach(booking => {
-        const date = window.app.utcToMsk(booking.slots.start_time);
-        const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
-        if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
-        groupedByDay[dayKey].push(booking);
-    });
+    // Получаем записи
+    const { data: bookings, error } = await window.app.sb
+        .from('bookings')
+        .select('*, slots(*)')
+        .eq('user_id', window.app.currentUser.id);
     
-    for (let [day, dayBookings] of Object.entries(groupedByDay)) {
-        const dayDiv = document.createElement('div');
-        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
-        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px;">📅 ${day}</h3>`;
-        
-        dayBookings.forEach(booking => {
+    if (error) {
+        console.error('Ошибка загрузки:', error);
+        container.innerHTML = '<p style="text-align:center;padding:20px;">Ошибка загрузки</p>';
+        return;
+    }
+    
+    if (!bookings || bookings.length === 0) {
+        container.innerHTML = '<p style="text-align:center;padding:20px;">У вас нет записей</p>';
+    } else {
+        container.innerHTML = '';
+        for (let booking of bookings) {
+            if (!booking.slots) continue;
             const start = window.app.utcToMsk(booking.slots.start_time);
             const formatted = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
             const div = document.createElement('div');
             div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #f8f9fa; border-radius: 12px; margin-bottom: 8px;';
             div.innerHTML = `
-                <span style="font-weight: 500;">${formatted}</span>
-                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer;">Отменить</button>
+                <span>${formatted}</span>
+                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px;">Отменить</button>
             `;
             div.querySelector('.cancel-btn').addEventListener('click', async () => {
                 if (confirm('Отменить запись?')) {
@@ -334,10 +329,15 @@ window.app.loadMyBookings = async function() {
                     await window.app.loadMyBookings();
                 }
             });
-            dayDiv.appendChild(div);
-        });
-        container.appendChild(dayDiv);
+            container.appendChild(div);
+        }
     }
+    
+    // Принудительно показываем экран
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const myBookingsScreen = document.getElementById('myBookings-screen');
+    if (myBookingsScreen) myBookingsScreen.classList.add('active');
+    console.log('Экран myBookings показан принудительно');
 };
 
 // --- Генерация слотов на день и половинку ---
