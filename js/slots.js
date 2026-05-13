@@ -305,6 +305,10 @@ window.app.loadMyBookings = async function() {
     if (error) {
         console.error('Ошибка загрузки:', error);
         container.innerHTML = '<p style="text-align:center;padding:20px;">Ошибка загрузки</p>';
+        // Всё равно показываем экран
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        const myBookingsScreen = document.getElementById('myBookings-screen');
+        if (myBookingsScreen) myBookingsScreen.classList.add('active');
         return;
     }
     
@@ -337,7 +341,7 @@ window.app.loadMyBookings = async function() {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const myBookingsScreen = document.getElementById('myBookings-screen');
     if (myBookingsScreen) myBookingsScreen.classList.add('active');
-    console.log('Экран myBookings показан принудительно');
+    console.log('Экран myBookings показан');
 };
 
 // --- Генерация слотов на день и половинку ---
