@@ -521,6 +521,7 @@ window.app.addSlotElement = function(container, slot, isBlockedByRule = false) {
 let isRenderingAdmin = false;
 
 // Загрузка админ-панели
+// Загрузка админ-панели (без ошибок 400)
 window.app.loadAdminData = async function() {
     if (isRenderingAdmin) return;
     isRenderingAdmin = true;
@@ -543,8 +544,7 @@ window.app.loadAdminData = async function() {
                 .gte('start_time', todayStartUTC.toISOString())
                 .lte('start_time', endDateUTC.toISOString())
                 .order('start_time'),
-            window.app.sb.from('bookings').select('*')
-                .order('created_at', { ascending: false }),
+            window.app.sb.from('bookings').select('*'),  // УБРАЛИ order('created_at')
             window.app.sb.from('profiles').select('*').order('name')
         ]);
         
@@ -555,171 +555,173 @@ window.app.loadAdminData = async function() {
         const blockedIds = await getBlockedSlotIds();
         
         // === ОТОБРАЖЕНИЕ СЛОТОВ ===
-        if (adminSlotsDiv && slots.length > 0) {
-            adminSlotsDiv.innerHTML = '';
-            
-            // Группируем по дням
-            const groupedByDay = {};
-            slots.forEach(slot => {
-                const date = window.app.utcToMsk(slot.start_time);
-                const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
-                if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
-                groupedByDay[dayKey].push(slot);
-            });
-            
-            for (let [day, daySlots] of Object.entries(groupedByDay)) {
-                const dayDiv = document.createElement('div');
-                dayDiv.className = 'admin-day';
+        if (adminSlotsDiv) {
+            if (slots.length === 0) {
+                adminSlotsDiv.innerHTML = '<p>Нет слотов на ближайшую неделю</p>';
+            } else {
+                adminSlotsDiv.innerHTML = '';
                 
-                const firstSlotDate = window.app.utcToMsk(daySlots[0]?.start_time);
-                const dayDateStr = firstSlotDate.toISOString().split('T')[0];
+                // Группируем по дням
+                const groupedByDay = {};
+                slots.forEach(slot => {
+                    const date = window.app.utcToMsk(slot.start_time);
+                    const dayKey = date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+                    if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+                    groupedByDay[dayKey].push(slot);
+                });
                 
-                dayDiv.innerHTML = `
-                    <div class="admin-day-header">
-                        <h3 class="admin-day-title">📅 ${day}</h3>
-                        <div class="half-buttons">
-                            <button class="block-morning-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔒 Утро</button>
-                            <button class="unblock-morning-btn" data-day="${dayDateStr}" style="background: #36B647; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔓 Утро</button>
-                            <button class="block-evening-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔒 Вечер</button>
-                            <button class="unblock-evening-btn" data-day="${dayDateStr}" style="background: #36B647; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔓 Вечер</button>
+                for (let [day, daySlots] of Object.entries(groupedByDay)) {
+                    const dayDiv = document.createElement('div');
+                    dayDiv.className = 'admin-day';
+                    
+                    const firstSlotDate = window.app.utcToMsk(daySlots[0]?.start_time);
+                    const dayDateStr = firstSlotDate.toISOString().split('T')[0];
+                    
+                    dayDiv.innerHTML = `
+                        <div class="admin-day-header">
+                            <h3 class="admin-day-title">📅 ${day}</h3>
+                            <div class="half-buttons">
+                                <button class="block-morning-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔒 Утро</button>
+                                <button class="unblock-morning-btn" data-day="${dayDateStr}" style="background: #36B647; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔓 Утро</button>
+                                <button class="block-evening-btn" data-day="${dayDateStr}" style="background: #ff9800; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔒 Вечер</button>
+                                <button class="unblock-evening-btn" data-day="${dayDateStr}" style="background: #36B647; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 10px; cursor: pointer;">🔓 Вечер</button>
+                            </div>
                         </div>
-                    </div>
-                `;
-                
-                const morning = daySlots.filter(s => window.app.utcToMsk(s.start_time).getHours() < 15);
-                const evening = daySlots.filter(s => window.app.utcToMsk(s.start_time).getHours() >= 15);
-                
-                if (morning.length) {
-                    const morningDiv = document.createElement('div');
-                    morningDiv.className = 'morning-section';
-                    morningDiv.innerHTML = '<div class="half-title">☀️ Утро</div>';
-                    const morningContainer = document.createElement('div');
-                    morning.forEach(slot => {
-                        window.app.addSlotElement(morningContainer, slot, blockedIds.has(slot.id));
-                    });
-                    morningDiv.appendChild(morningContainer);
-                    dayDiv.appendChild(morningDiv);
-                }
-                
-                if (evening.length) {
-                    const eveningDiv = document.createElement('div');
-                    eveningDiv.className = 'evening-section';
-                    eveningDiv.innerHTML = '<div class="half-title">🌙 Вечер</div>';
-                    const eveningContainer = document.createElement('div');
-                    evening.forEach(slot => {
-                        window.app.addSlotElement(eveningContainer, slot, blockedIds.has(slot.id));
-                    });
-                    eveningDiv.appendChild(eveningContainer);
-                    dayDiv.appendChild(eveningDiv);
-                }
-                
-                adminSlotsDiv.appendChild(dayDiv);
-                
-                // Обработчики кнопок блокировки/разблокировки половинок
-                const blockMorningBtn = dayDiv.querySelector('.block-morning-btn');
-                const unblockMorningBtn = dayDiv.querySelector('.unblock-morning-btn');
-                const blockEveningBtn = dayDiv.querySelector('.block-evening-btn');
-                const unblockEveningBtn = dayDiv.querySelector('.unblock-evening-btn');
-                
-                if (blockMorningBtn) {
-                    blockMorningBtn.addEventListener('click', async () => {
-                        if (confirm(`Заблокировать все УТРЕННИЕ слоты на ${day}?`)) {
-                            const targetDate = new Date(dayDateStr);
-                            const dayOfWeek = targetDate.getDay();
-                            const morningTimes = (window.app.SCHEDULE[dayOfWeek] || window.app.SCHEDULE[1]).morning;
-                            for (const time of morningTimes) {
-                                const [hours, minutes] = time.split(':');
-                                const slotTimeMSK = new Date(targetDate);
-                                slotTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                                const slotTimeUTC = window.app.mskToUtc(slotTimeMSK);
-                                const slotTimeISO = slotTimeUTC.toISOString();
-                                
-                                const { data: existing } = await window.app.sb.from('slots').select('id').eq('start_time', slotTimeISO);
-                                if (existing?.length) {
-                                    await window.app.sb.from('slots').update({ is_blocked: true }).eq('start_time', slotTimeISO);
-                                } else {
-                                    const endTimeUTC = new Date(slotTimeUTC);
-                                    endTimeUTC.setUTCHours(slotTimeUTC.getUTCHours() + 1);
-                                    await window.app.sb.from('slots').insert({
-                                        start_time: slotTimeISO,
-                                        end_time: endTimeUTC.toISOString(),
-                                        is_available: true,
-                                        is_blocked: true
-                                    });
+                    `;
+                    
+                    const morning = daySlots.filter(s => window.app.utcToMsk(s.start_time).getHours() < 15);
+                    const evening = daySlots.filter(s => window.app.utcToMsk(s.start_time).getHours() >= 15);
+                    
+                    if (morning.length) {
+                        const morningDiv = document.createElement('div');
+                        morningDiv.className = 'morning-section';
+                        morningDiv.innerHTML = '<div class="half-title">☀️ Утро</div>';
+                        const morningContainer = document.createElement('div');
+                        morning.forEach(slot => {
+                            window.app.addSlotElement(morningContainer, slot, blockedIds.has(slot.id));
+                        });
+                        morningDiv.appendChild(morningContainer);
+                        dayDiv.appendChild(morningDiv);
+                    }
+                    
+                    if (evening.length) {
+                        const eveningDiv = document.createElement('div');
+                        eveningDiv.className = 'evening-section';
+                        eveningDiv.innerHTML = '<div class="half-title">🌙 Вечер</div>';
+                        const eveningContainer = document.createElement('div');
+                        evening.forEach(slot => {
+                            window.app.addSlotElement(eveningContainer, slot, blockedIds.has(slot.id));
+                        });
+                        eveningDiv.appendChild(eveningContainer);
+                        dayDiv.appendChild(eveningDiv);
+                    }
+                    
+                    adminSlotsDiv.appendChild(dayDiv);
+                    
+                    // Обработчики кнопок блокировки/разблокировки половинок
+                    const blockMorningBtn = dayDiv.querySelector('.block-morning-btn');
+                    const unblockMorningBtn = dayDiv.querySelector('.unblock-morning-btn');
+                    const blockEveningBtn = dayDiv.querySelector('.block-evening-btn');
+                    const unblockEveningBtn = dayDiv.querySelector('.unblock-evening-btn');
+                    
+                    if (blockMorningBtn) {
+                        blockMorningBtn.addEventListener('click', async () => {
+                            if (confirm(`Заблокировать все УТРЕННИЕ слоты на ${day}?`)) {
+                                const targetDate = new Date(dayDateStr);
+                                const dayOfWeek = targetDate.getDay();
+                                const morningTimes = (window.app.SCHEDULE[dayOfWeek] || window.app.SCHEDULE[1]).morning;
+                                for (const time of morningTimes) {
+                                    const [hours, minutes] = time.split(':');
+                                    const slotTimeMSK = new Date(targetDate);
+                                    slotTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                    const slotTimeUTC = window.app.mskToUtc(slotTimeMSK);
+                                    const slotTimeISO = slotTimeUTC.toISOString();
+                                    
+                                    const { data: existing } = await window.app.sb.from('slots').select('id').eq('start_time', slotTimeISO);
+                                    if (existing?.length) {
+                                        await window.app.sb.from('slots').update({ is_blocked: true }).eq('start_time', slotTimeISO);
+                                    } else {
+                                        const endTimeUTC = new Date(slotTimeUTC);
+                                        endTimeUTC.setUTCHours(slotTimeUTC.getUTCHours() + 1);
+                                        await window.app.sb.from('slots').insert({
+                                            start_time: slotTimeISO,
+                                            end_time: endTimeUTC.toISOString(),
+                                            is_available: true,
+                                            is_blocked: true
+                                        });
+                                    }
                                 }
+                                await window.app.loadAdminData();
+                                alert('✅ Все утренние слоты заблокированы');
                             }
-                            await window.app.loadAdminData();
-                            alert('✅ Все утренние слоты заблокированы');
-                        }
-                    });
-                }
-                
-                if (unblockMorningBtn) {
-                    unblockMorningBtn.addEventListener('click', async () => {
-                        if (confirm(`Разблокировать все УТРЕННИЕ слоты на ${day}?`)) {
-                            const startUTC = window.app.mskToUtc(new Date(`${dayDateStr}T00:00:00`));
-                            const endUTC = window.app.mskToUtc(new Date(`${dayDateStr}T12:00:00`));
-                            await window.app.sb.from('slots').update({ is_blocked: false })
-                                .gte('start_time', startUTC.toISOString())
-                                .lt('start_time', endUTC.toISOString());
-                            await window.app.loadAdminData();
-                            alert('✅ Все утренние слоты разблокированы');
-                        }
-                    });
-                }
-                
-                if (blockEveningBtn) {
-                    blockEveningBtn.addEventListener('click', async () => {
-                        if (confirm(`Заблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
-                            const targetDate = new Date(dayDateStr);
-                            const dayOfWeek = targetDate.getDay();
-                            const eveningTimes = (window.app.SCHEDULE[dayOfWeek] || window.app.SCHEDULE[1]).evening;
-                            for (const time of eveningTimes) {
-                                const [hours, minutes] = time.split(':');
-                                const slotTimeMSK = new Date(targetDate);
-                                slotTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                                const slotTimeUTC = window.app.mskToUtc(slotTimeMSK);
-                                const slotTimeISO = slotTimeUTC.toISOString();
-                                
-                                const { data: existing } = await window.app.sb.from('slots').select('id').eq('start_time', slotTimeISO);
-                                if (existing?.length) {
-                                    await window.app.sb.from('slots').update({ is_blocked: true }).eq('start_time', slotTimeISO);
-                                } else {
-                                    const endTimeUTC = new Date(slotTimeUTC);
-                                    endTimeUTC.setUTCHours(slotTimeUTC.getUTCHours() + 1);
-                                    await window.app.sb.from('slots').insert({
-                                        start_time: slotTimeISO,
-                                        end_time: endTimeUTC.toISOString(),
-                                        is_available: true,
-                                        is_blocked: true
-                                    });
+                        });
+                    }
+                    
+                    if (unblockMorningBtn) {
+                        unblockMorningBtn.addEventListener('click', async () => {
+                            if (confirm(`Разблокировать все УТРЕННИЕ слоты на ${day}?`)) {
+                                const startUTC = window.app.mskToUtc(new Date(`${dayDateStr}T00:00:00`));
+                                const endUTC = window.app.mskToUtc(new Date(`${dayDateStr}T12:00:00`));
+                                await window.app.sb.from('slots').update({ is_blocked: false })
+                                    .gte('start_time', startUTC.toISOString())
+                                    .lt('start_time', endUTC.toISOString());
+                                await window.app.loadAdminData();
+                                alert('✅ Все утренние слоты разблокированы');
+                            }
+                        });
+                    }
+                    
+                    if (blockEveningBtn) {
+                        blockEveningBtn.addEventListener('click', async () => {
+                            if (confirm(`Заблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
+                                const targetDate = new Date(dayDateStr);
+                                const dayOfWeek = targetDate.getDay();
+                                const eveningTimes = (window.app.SCHEDULE[dayOfWeek] || window.app.SCHEDULE[1]).evening;
+                                for (const time of eveningTimes) {
+                                    const [hours, minutes] = time.split(':');
+                                    const slotTimeMSK = new Date(targetDate);
+                                    slotTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                    const slotTimeUTC = window.app.mskToUtc(slotTimeMSK);
+                                    const slotTimeISO = slotTimeUTC.toISOString();
+                                    
+                                    const { data: existing } = await window.app.sb.from('slots').select('id').eq('start_time', slotTimeISO);
+                                    if (existing?.length) {
+                                        await window.app.sb.from('slots').update({ is_blocked: true }).eq('start_time', slotTimeISO);
+                                    } else {
+                                        const endTimeUTC = new Date(slotTimeUTC);
+                                        endTimeUTC.setUTCHours(slotTimeUTC.getUTCHours() + 1);
+                                        await window.app.sb.from('slots').insert({
+                                            start_time: slotTimeISO,
+                                            end_time: endTimeUTC.toISOString(),
+                                            is_available: true,
+                                            is_blocked: true
+                                        });
+                                    }
                                 }
+                                await window.app.loadAdminData();
+                                alert('✅ Все вечерние слоты заблокированы');
                             }
-                            await window.app.loadAdminData();
-                            alert('✅ Все вечерние слоты заблокированы');
-                        }
-                    });
-                }
-                
-                if (unblockEveningBtn) {
-                    unblockEveningBtn.addEventListener('click', async () => {
-                        if (confirm(`Разблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
-                            const startUTC = window.app.mskToUtc(new Date(`${dayDateStr}T12:00:00`));
-                            const endUTC = window.app.mskToUtc(new Date(`${dayDateStr}T23:59:59`));
-                            await window.app.sb.from('slots').update({ is_blocked: false })
-                                .gte('start_time', startUTC.toISOString())
-                                .lt('start_time', endUTC.toISOString());
-                            await window.app.loadAdminData();
-                            alert('✅ Все вечерние слоты разблокированы');
-                        }
-                    });
+                        });
+                    }
+                    
+                    if (unblockEveningBtn) {
+                        unblockEveningBtn.addEventListener('click', async () => {
+                            if (confirm(`Разблокировать все ВЕЧЕРНИЕ слоты на ${day}?`)) {
+                                const startUTC = window.app.mskToUtc(new Date(`${dayDateStr}T12:00:00`));
+                                const endUTC = window.app.mskToUtc(new Date(`${dayDateStr}T23:59:59`));
+                                await window.app.sb.from('slots').update({ is_blocked: false })
+                                    .gte('start_time', startUTC.toISOString())
+                                    .lt('start_time', endUTC.toISOString());
+                                await window.app.loadAdminData();
+                                alert('✅ Все вечерние слоты разблокированы');
+                            }
+                        });
+                    }
                 }
             }
-        } else if (adminSlotsDiv) {
-            adminSlotsDiv.innerHTML = '<p>Нет слотов на ближайшую неделю</p>';
         }
         
-        // === ОТОБРАЖЕНИЕ ВСЕХ ЗАПИСЕЙ ===
+        // === ОТОБРАЖЕНИЕ ВСЕХ ЗАПИСЕЙ (без order) ===
         if (adminBookingsDiv) {
             if (bookings.length === 0) {
                 adminBookingsDiv.innerHTML = '<h3>Все записи</h3><p>Нет записей</p>';
@@ -737,7 +739,7 @@ window.app.loadAdminData = async function() {
                     profile: profilesMap.get(booking.user_id)
                 })).filter(b => b.slot);
                 
-                // Сортируем по времени
+                // Сортируем по времени (вручную, без order)
                 enrichedBookings.sort((a, b) => {
                     const timeA = window.app.utcToMsk(a.slot.start_time);
                     const timeB = window.app.utcToMsk(b.slot.start_time);
