@@ -6,14 +6,14 @@
 async function getBlockedSlotIds() {
     const blockedIds = new Set();
     
-    // 1. Слоты, заблокированные вручную (админом)
+    // 1. Слоты, заблокированные вручную
     const { data: manuallyBlocked } = await window.app.sb
         .from('slots')
         .select('id')
         .eq('is_blocked', true);
     manuallyBlocked?.forEach(slot => blockedIds.add(slot.id));
     
-    // 2. Получаем занятые слоты (на которые есть запись)
+    // 2. Получаем занятые слоты
     const today = new Date();
     const endDate = new Date(today);
     endDate.setDate(today.getDate() + 14);
@@ -36,32 +36,24 @@ async function getBlockedSlotIds() {
     
     if (!allSlots) return blockedIds;
     
-    // Группируем по дням
-    const slotsByDay = new Map();
+    // Создаём Map для быстрого поиска по времени
+    const slotTimeMap = new Map();
     allSlots.forEach(slot => {
-        const date = new Date(slot.start_time);
-        const dayKey = date.toISOString().split('T')[0];
-        const timeValue = date.getUTCHours() + date.getUTCMinutes() / 60;
-        if (!slotsByDay.has(dayKey)) slotsByDay.set(dayKey, []);
-        slotsByDay.get(dayKey).push({ id: slot.id, timeValue });
+        const time = new Date(slot.start_time).getTime();
+        slotTimeMap.set(time, slot.id);
     });
     
-    // Блокируем соседние слоты (±30 минут = 0.5 часа)
-    const halfHour = 0.5;
-    for (let booked of bookedSlots) {
-        const bookedDate = new Date(booked.start_time);
-        const dayKey = bookedDate.toISOString().split('T')[0];
-        const bookedTime = bookedDate.getUTCHours() + bookedDate.getUTCMinutes() / 60;
+    // Блокируем соседние слоты (±30 минут)
+    const halfHour = 30 * 60 * 1000;
+    bookedSlots.forEach(booked => {
+        const bookedTime = new Date(booked.start_time).getTime();
         
-        const daySlots = slotsByDay.get(dayKey);
-        if (!daySlots) continue;
+        const prevId = slotTimeMap.get(bookedTime - halfHour);
+        const nextId = slotTimeMap.get(bookedTime + halfHour);
         
-        daySlots.forEach(slot => {
-            if (slot.id !== booked.id && Math.abs(slot.timeValue - bookedTime) < halfHour) {
-                blockedIds.add(slot.id);
-            }
-        });
-    }
+        if (prevId) blockedIds.add(prevId);
+        if (nextId) blockedIds.add(nextId);
+    });
     
     return blockedIds;
 }
@@ -118,20 +110,21 @@ window.app.renderSlots = async function(slots) {
     
     // Функция проверки, есть ли занятой слот рядом
     function hasAdjacentBooking(dayKey, timeStr) {
-        const [hours, minutes] = timeStr.split(':').map(Number);
-        const currentMinutes = hours * 60 + minutes;
-        const bookedTimes = bookedTimesByDay[dayKey] || [];
-        
-        for (const adjMin of [currentMinutes - 30, currentMinutes + 30]) {
-            if (adjMin < 0) continue;
-            const adjHour = Math.floor(adjMin / 60);
-            const adjMinute = adjMin % 60;
-            if (adjHour > 23) continue;
-            const adjTimeStr = `${adjHour.toString().padStart(2,'0')}:${adjMinute.toString().padStart(2,'0')}`;
-            if (bookedTimes.includes(adjTimeStr)) return true;
-        }
-        return false;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const currentMinutes = hours * 60 + minutes;
+    const bookedTimes = bookedTimesByDay[dayKey] || [];
+    
+    // Проверяем занятость соседних слотов (±30 минут)
+    for (const adjMin of [currentMinutes - 30, currentMinutes + 30]) {
+        if (adjMin < 0) continue;
+        const adjHour = Math.floor(adjMin / 60);
+        const adjMinute = adjMin % 60;
+        if (adjHour > 23) continue;
+        const adjTimeStr = `${adjHour.toString().padStart(2,'0')}:${adjMinute.toString().padStart(2,'0')}`;
+        if (bookedTimes.includes(adjTimeStr)) return true;
     }
+    return false;
+}
     
     // Группируем по дням
     const groupedByDay = {};
