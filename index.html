@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Тренировки | Запись</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- ЭКРАН АВТОРИЗАЦИИ -->
+        <div id="auth-screen" class="screen active">
+            <div class="container">
+                <h1>Твой тренер</h1>
+                <input type="tel" id="phone-input" placeholder="Телефон" autocomplete="off">
+                <input type="text" id="name-input" placeholder="Имя" autocomplete="off">
+                <button id="login-btn" class="btn primary">Войти / Зарегистрироваться</button>
+                <div id="auth-error" style="color: red; margin-top: 10px; text-align: center;"></div>
+            </div>
+        </div>
+
+        <!-- ГЛАВНОЕ МЕНЮ -->
+        <div id="menu-screen" class="screen">
+            <div class="container">
+                <h2>Привет, <span id="user-name"></span>!</h2>
+                <button id="book-btn" class="btn primary">📅 Записаться</button>
+                <button id="my-bookings-btn" class="btn secondary">📋 Мои записи</button>
+                <button id="admin-btn" class="btn admin" style="display: none;">⚙️ Админ-панель</button>
+                <button id="logout-btn" class="btn logout">Выйти</button>
+            </div>
+        </div>
+
+        <!-- ЭКРАН ЗАПИСИ -->
+        <div id="booking-screen" class="screen">
+            <div class="container">
+                <button class="btn back-btn">← Назад</button>
+                <h2>📅 Выбери время</h2>
+                <div id="slots-list" class="slots-grid"></div>
+                <div style="margin-top: 20px;">
+                    <button id="confirm-booking-btn" class="btn primary" style="display: none;">✅ Подтвердить запись (<span id="selected-count">0</span>)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ЭКРАН МОИХ ЗАПИСЕЙ -->
+        <div id="my-bookings-screen" class="screen">
+            <div class="container">
+                <button class="btn back-btn">← Назад</button>
+                <h2>📋 Мои тренировки</h2>
+                <div id="my-bookings-list"></div>
+            </div>
+        </div>
+
+        <!-- АДМИН ПАНЕЛЬ -->
+        <div id="admin-screen" class="screen">
+            <div class="container">
+                <button class="btn back-btn">← Назад</button>
+                <h2>⚙️ Управление</h2>
+                
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #36B647;">📅 Слоты</button>
+                    <button id="admin-clients-tab" class="btn secondary" style="flex: 1;">👥 Клиенты</button>
+                </div>
+                
+                <!-- Панель слотов -->
+                <div id="admin-slots-panel" style="display: block;">
+                    <div id="admin-slots"></div>
+                </div>
+                
+                <!-- Панель клиентов -->
+                <div id="admin-clients-panel" style="display: none;">
+                    <div id="admin-clients-list"></div>
+                </div>
+                
+                <!-- Ручная генерация слотов -->
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 12px;">
+                    <h3>🛠️ Ручная генерация слотов</h3>
+                    <input type="date" id="generate-date" style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button id="generate-morning-btn" class="btn secondary" style="flex: 1; background: #ff9800;">🌅 Утро</button>
+                        <button id="generate-evening-btn" class="btn secondary" style="flex: 1; background: #ff9800;">🌙 Вечер</button>
+                        <button id="generate-week-btn" class="btn secondary" style="flex: 1; background: #36B647;">📅 Неделя (ПН-СБ)</button>
+                    </div>
+                </div>
+                
+                <!-- Добавление слота вручную -->
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 12px;">
+                    <h3>➕ Добавить слот вручную</h3>
+                    <input type="datetime-local" id="admin-start" style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px;">
+                    <button id="admin-add-slot" class="btn primary">➕ Добавить слот</button>
+                </div>
+                
+                <!-- Все записи -->
+                <div id="admin-bookings" style="margin-top: 20px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/globals.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/slots.js"></script>
+    <script src="js/admin-clients.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
