@@ -4,59 +4,69 @@
 
 // --- Авторизация / регистрация ---
 window.app.loginWithPhone = async function(phone, name) {
-    // Очищаем телефон и приводим к единому формату (7XXXXXXXXXX)
     const cleanPhone = window.app.cleanPhone(phone);
     const email = `${cleanPhone}@gmail.com`;
     const password = cleanPhone + 'simplepass';
     
     console.log('Попытка входа с email:', email);
     
+    let user = null;
+    let isNewUser = false;
+    
+    // Пробуем войти
     let { data, error } = await window.app.sb.auth.signInWithPassword({
         email: email,
         password: password
     });
     
-    let isNewUser = false;
-    
-    // Если пользователь не найден - регистрируем
+    // Если не получилось — регистрируем
     if (error && error.message.includes('Invalid login credentials')) {
-        console.log('Пользователь не найден, регистрируем...');
+        console.log('Регистрация нового пользователя...');
         const { data: signUpData, error: signUpError } = await window.app.sb.auth.signUp({
             email: email,
             password: password,
             options: {
-                data: { 
-                    name: name, 
-                    phone: cleanPhone 
-                }
+                data: { name: name, phone: cleanPhone }
             }
         });
         
         if (signUpError) throw signUpError;
         data = signUpData;
         isNewUser = true;
-    } else if (error && !error.message.includes('Invalid login credentials')) {
+    } else if (error) {
         throw error;
     }
     
-    // Сохраняем профиль в таблицу profiles
-    const profileData = {
-        id: data.user.id,
-        phone: cleanPhone,
-        name: name
-    };
+    user = data.user;
     
-    // Создаём или обновляем профиль
-    const { error: profileError } = await window.app.sb
+    // Проверяем, существует ли профиль
+    const { data: existingProfile, error: profileError } = await window.app.sb
         .from('profiles')
-        .upsert(profileData);
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
     
-    if (profileError) {
-        console.error('Ошибка сохранения профиля:', profileError);
+    if (!existingProfile) {
+        // Создаём профиль
+        const { error: insertError } = await window.app.sb
+            .from('profiles')
+            .insert({
+                id: user.id,
+                phone: cleanPhone,
+                name: name,
+                is_admin: false
+            });
+        
+        if (insertError) {
+            console.error('Ошибка создания профиля:', insertError);
+        } else {
+            console.log('Профиль создан');
+        }
     }
     
-    return data.user;
+    return user;
 };
+
 
 // --- Выход из аккаунта ---
 window.app.logout = async function() {
