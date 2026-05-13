@@ -42,8 +42,8 @@
             </div>
         </div>
 
-        <!-- ЭКРАН МОИХ ЗАПИСЕЙ -->
-        <div id="my-bookings-screen" class="screen">
+        <!-- ЭКРАН МОИХ ЗАПИСЕЙ (ID = myBookings-screen) -->
+        <div id="myBookings-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
                 <h2>📋 Мои тренировки</h2>
@@ -59,17 +59,11 @@
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                     <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #36B647;">📅 Слоты</button>
-                    <button id="admin-clients-tab" class="btn secondary" style="flex: 1;">👥 Клиенты</button>
                 </div>
                 
                 <!-- Панель слотов -->
                 <div id="admin-slots-panel" style="display: block;">
                     <div id="admin-slots"></div>
-                </div>
-                
-                <!-- Панель клиентов -->
-                <div id="admin-clients-panel" style="display: none;">
-                    <div id="admin-clients-list"></div>
                 </div>
                 
                 <!-- Ручная генерация слотов -->
@@ -100,6 +94,7 @@
     <script src="js/globals.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/slots.js"></script>
+    <script src="js/admin-clients.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>
