@@ -1,14 +1,14 @@
 // ============================================
-// МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (ФИНАЛЬНЫЙ)
+// МОДУЛЬ ГЛАВНОГО ПРИЛОЖЕНИЯ (ТОЛЬКО ЗАПИСЬ)
 // ============================================
 
 // Флаг для предотвращения многократной генерации
 let isGeneratingSchedule = false;
 
-// --- Функция переключения экранов (работает напрямую с DOM) ---
+// --- Функция переключения экранов ---
 function switchScreen(screenName) {
     console.log('Переключение на экран:', screenName);
-    const screens = ['auth', 'menu', 'booking', 'myBookings', 'dailyReport', 'profile', 'admin'];
+    const screens = ['auth', 'menu', 'booking', 'myBookings', 'admin'];
     screens.forEach(name => {
         const el = document.getElementById(`${name}-screen`);
         if (el) {
@@ -24,20 +24,9 @@ function switchScreen(screenName) {
 // --- Дублируем функцию в window.app для совместимости ---
 window.app.showScreen = switchScreen;
 
-// --- Безопасный вызов генерации (отключён, оставлен для совместимости) ---
-async function safeEnsureWeeklySchedule() {
-    console.log('Автоматическая генерация отключена. Используйте ручную генерацию в админ-панели.');
-    return;
-}
-
 // --- Инициализация приложения ---
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Приложение загружено');
-    
-    if (typeof window.app.initDailyReportUI === 'function') {
-        window.app.initDailyReportUI();
-        console.log('DailyReportUI инициализирован');
-    }
     
     await new Promise(resolve => setTimeout(resolve, 50));
     
@@ -89,6 +78,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const userNameSpan = document.getElementById('user-name');
                 if (userNameSpan) userNameSpan.innerText = name;
                 
+                // Показываем кнопку админа, если пользователь админ
+                const adminBtn = document.getElementById('admin-btn');
+                if (adminBtn && window.app.currentUser?.user_metadata?.is_admin === true) {
+                    adminBtn.style.display = 'block';
+                }
+                
                 switchScreen('menu');
             } catch(e) {
                 console.error('Ошибка входа:', e);
@@ -120,34 +115,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
-    // --- Ежедневный отчет ---
-    const dailyReportBtn = document.getElementById('daily-report-btn');
-    if (dailyReportBtn) {
-        dailyReportBtn.addEventListener('click', async () => {
-            await window.app.openDailyReport();
-            setTimeout(() => {
-                switchScreen('dailyReport');
-            }, 50);
-        });
-    }
-    
-    // --- Мой профиль ---
-    const myProfileBtn = document.getElementById('my-profile-btn');
-    if (myProfileBtn) {
-        myProfileBtn.addEventListener('click', async () => {
-            await window.app.loadMyProfile();
-            if (typeof window.app.updateWeeklyMessage === 'function') {
-                await window.app.updateWeeklyMessage();
-            }
-            switchScreen('profile');
-        });
-    }
-    
-    // --- Админ-панель (ИСПРАВЛЕНО: добавлен вызов loadAdminData) ---
+    // --- Админ-панель ---
     const adminBtn = document.getElementById('admin-btn');
     if (adminBtn) {
         adminBtn.addEventListener('click', async () => {
-            console.log('Загрузка админ-панели...');
             await window.app.loadAdminData();
             switchScreen('admin');
         });
@@ -173,18 +144,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             switchScreen('auth');
         });
     }
-
-    // --- Сброс расписания (если есть кнопка) ---
-    const resetScheduleBtn = document.getElementById('reset-schedule-btn');
-    if (resetScheduleBtn) {
-        resetScheduleBtn.addEventListener('click', async () => {
-            if (confirm('Сбросить расписание? Это удалит ВСЕ слоты и создаст новые.')) {
-                alert('Функция сброса отключена. Используйте ручную генерацию.');
-            }
-        });
-    }
     
-    // --- Добавление слота вручную ---
+    // --- Добавление слота вручную (админка) ---
     const adminAddSlotBtn = document.getElementById('admin-add-slot');
     if (adminAddSlotBtn) {
         adminAddSlotBtn.addEventListener('click', async () => {
@@ -255,7 +216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 alert('Ошибка генерации: ' + e.message);
             } finally {
                 generateMorningBtn.disabled = false;
-                generateMorningBtn.textContent = '🌅 Сгенерировать утро';
+                generateMorningBtn.textContent = '🌅 Утро';
             }
         });
     }
@@ -282,7 +243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 alert('Ошибка генерации: ' + e.message);
             } finally {
                 generateEveningBtn.disabled = false;
-                generateEveningBtn.textContent = '🌙 Сгенерировать вечер';
+                generateEveningBtn.textContent = '🌙 Вечер';
             }
         });
     }
@@ -301,7 +262,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 alert('Ошибка генерации: ' + e.message);
             } finally {
                 generateWeekBtn.disabled = false;
-                generateWeekBtn.textContent = '📅 Сгенерировать неделю (ПН-СБ)';
+                generateWeekBtn.textContent = '📅 Неделя (ПН-СБ)';
             }
         });
     }
