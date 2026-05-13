@@ -435,36 +435,92 @@ window.app.generateFullWeek = async function() {
     isGeneratingWeek = true;
     
     const today = new Date();
-    const currentDay = today.getDay();
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - daysToMonday);
+    today.setHours(0, 0, 0, 0);
+    const daysToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - daysToMonday);
     
     let totalCreated = 0;
+    let totalSkipped = 0;
     
-    for (let i = 0; i < 6; i++) {
-        const currentDate = new Date(monday);
-        currentDate.setDate(monday.getDate() + i);
-        const dateStr = currentDate.toISOString().split('T')[0];
+    // Собираем все слоты, которые нужно создать
+    const slotsToInsert = [];
+    
+    for (let i = 0; i < 7; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + i);
         const dayOfWeek = currentDate.getDay();
         
+        // Пропускаем воскресенье
         if (dayOfWeek === 0) continue;
         
         const daySchedule = window.app.SCHEDULE[dayOfWeek] || window.app.SCHEDULE[1];
+        const allTimes = [...daySchedule.morning, ...daySchedule.evening];
         
-        if (daySchedule.morning.length) {
-            const created = await window.app.generateSlotsForDay(dateStr, 'morning');
-            if (created > 0) totalCreated += created;
-        }
-        
-        if (daySchedule.evening.length) {
-            const created = await window.app.generateSlotsForDay(dateStr, 'evening');
-            if (created > 0) totalCreated += created;
+        for (const time of allTimes) {
+            const [hours, minutes] = time.split(':');
+            const startTimeMSK = new Date(currentDate);
+            startTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            
+            // Пропускаем прошедшие слоты
+            if (startTimeMSK < new Date()) {
+                totalSkipped++;
+                continue;
+            }
+            
+            const startTimeUTC = window.app.mskToUtc(startTimeMSK);
+            const endTimeUTC = new Date(startTimeUTC);
+            endTimeUTC.setUTCHours(startTimeUTC.getUTCHours() + 1);
+            
+            slotsToInsert.push({
+                start_time: startTimeUTC.toISOString(),
+                end_time: endTimeUTC.toISOString(),
+                is_available: true,
+                is_blocked: false
+            });
         }
     }
     
+    if (slotsToInsert.length === 0) {
+        alert('Нет слотов для генерации (все дни уже есть или прошли)');
+        isGeneratingWeek = false;
+        return;
+    }
+    
+    // Получаем существующие слоты, чтобы не создавать дубликаты
+    const startDateUTC = window.app.mskToUtc(startDate);
+    const endDateUTC = window.app.mskToUtc(new Date(startDate));
+    endDateUTC.setUTCDate(startDateUTC.getUTCDate() + 8);
+    
+    const { data: existingSlots } = await window.app.sb
+        .from('slots')
+        .select('start_time')
+        .gte('start_time', startDateUTC.toISOString())
+        .lte('start_time', endDateUTC.toISOString());
+    
+    const existingSet = new Set(existingSlots?.map(s => s.start_time) || []);
+    
+    // Фильтруем только новые слоты
+    const newSlots = slotsToInsert.filter(slot => !existingSet.has(slot.start_time));
+    
+    if (newSlots.length === 0) {
+        alert('Все слоты уже существуют');
+        isGeneratingWeek = false;
+        return;
+    }
+    
+    // Вставляем массово
+    const { error } = await window.app.sb.from('slots').insert(newSlots);
+    
+    if (error) {
+        console.error('Ошибка массовой вставки:', error);
+        alert('Ошибка при создании слотов: ' + error.message);
+    } else {
+        totalCreated = newSlots.length;
+        alert(`✅ Создано ${totalCreated} слотов\n⏭️ Пропущено (прошло/существует): ${totalSkipped + (slotsToInsert.length - newSlots.length)}`);
+    }
+    
     isGeneratingWeek = false;
-    alert(`✅ Генерация недели завершена!\n📊 Всего создано слотов: ${totalCreated}`);
     
     if (typeof window.app.loadAdminData === 'function') {
         await window.app.loadAdminData();
