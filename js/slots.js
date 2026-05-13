@@ -440,11 +440,10 @@ window.app.generateFullWeek = async function() {
     const startDate = new Date(today);
     startDate.setDate(today.getDate() - daysToMonday);
     
-    let totalCreated = 0;
     let totalSkipped = 0;
     
     // Собираем все слоты, которые нужно создать
-    const slotsToInsert = [];
+    const slotsMap = new Map(); // используем Map для автоматической дедупликации
     
     for (let i = 0; i < 7; i++) {
         const currentDate = new Date(startDate);
@@ -472,22 +471,27 @@ window.app.generateFullWeek = async function() {
             const endTimeUTC = new Date(startTimeUTC);
             endTimeUTC.setUTCHours(startTimeUTC.getUTCHours() + 1);
             
-            slotsToInsert.push({
-                start_time: startTimeUTC.toISOString(),
-                end_time: endTimeUTC.toISOString(),
-                is_available: true,
-                is_blocked: false
-            });
+            const key = startTimeUTC.toISOString();
+            if (!slotsMap.has(key)) {
+                slotsMap.set(key, {
+                    start_time: key,
+                    end_time: endTimeUTC.toISOString(),
+                    is_available: true,
+                    is_blocked: false
+                });
+            }
         }
     }
     
-    if (slotsToInsert.length === 0) {
+    if (slotsMap.size === 0) {
         alert('Нет слотов для генерации (все дни уже есть или прошли)');
         isGeneratingWeek = false;
         return;
     }
     
-    // Получаем существующие слоты, чтобы не создавать дубликаты
+    const slotsToInsert = Array.from(slotsMap.values());
+    
+    // Получаем существующие слоты
     const startDateUTC = window.app.mskToUtc(startDate);
     const endDateUTC = window.app.mskToUtc(new Date(startDate));
     endDateUTC.setUTCDate(startDateUTC.getUTCDate() + 8);
@@ -516,8 +520,7 @@ window.app.generateFullWeek = async function() {
         console.error('Ошибка массовой вставки:', error);
         alert('Ошибка при создании слотов: ' + error.message);
     } else {
-        totalCreated = newSlots.length;
-        alert(`✅ Создано ${totalCreated} слотов\n⏭️ Пропущено (прошло/существует): ${totalSkipped + (slotsToInsert.length - newSlots.length)}`);
+        alert(`✅ Создано ${newSlots.length} слотов\n⏭️ Пропущено (прошло/существует): ${totalSkipped + (slotsToInsert.length - newSlots.length)}`);
     }
     
     isGeneratingWeek = false;
