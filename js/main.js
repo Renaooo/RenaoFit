@@ -114,7 +114,7 @@ const myBookingsBtn = document.getElementById('my-bookings-btn');
 if (myBookingsBtn) {
     myBookingsBtn.addEventListener('click', async () => {
         await window.app.loadMyBookings();
-        switchScreen('myBookings');
+        // Не вызываем switchScreen, потому что loadMyBookings уже показывает экран
     });
 }
 
