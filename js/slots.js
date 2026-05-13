@@ -90,41 +90,44 @@ window.app.renderSlots = async function(slots) {
         return;
     }
     
-    // Получаем занятые слоты для определения рекомендаций
+    // Получаем ВСЕ слоты на период (чтобы знать, какие заняты)
+    const today = new Date();
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 8);
+    
     const { data: allSlots } = await window.app.sb
         .from('slots')
         .select('start_time, is_available')
-        .gte('start_time', new Date().toISOString())
-        .lte('start_time', new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString());
+        .gte('start_time', today.toISOString())
+        .lte('start_time', endDate.toISOString());
     
-    const bookedTimesByDay = {};
+    // Создаём Map занятых слотов по дням и времени
+    const bookedMap = new Map(); // ключ: "день|время"
     (allSlots || []).forEach(slot => {
         if (!slot.is_available) {
             const date = window.app.utcToMsk(slot.start_time);
             const dayKey = date.toLocaleDateString('ru-RU');
             const timeStr = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            if (!bookedTimesByDay[dayKey]) bookedTimesByDay[dayKey] = [];
-            bookedTimesByDay[dayKey].push(timeStr);
+            bookedMap.set(`${dayKey}|${timeStr}`, true);
         }
     });
     
     // Функция проверки, есть ли занятой слот рядом
     function hasAdjacentBooking(dayKey, timeStr) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const currentMinutes = hours * 60 + minutes;
-    const bookedTimes = bookedTimesByDay[dayKey] || [];
-    
-    // Проверяем занятость соседних слотов (±30 минут)
-    for (const adjMin of [currentMinutes - 30, currentMinutes + 30]) {
-        if (adjMin < 0) continue;
-        const adjHour = Math.floor(adjMin / 60);
-        const adjMinute = adjMin % 60;
-        if (adjHour > 23) continue;
-        const adjTimeStr = `${adjHour.toString().padStart(2,'0')}:${adjMinute.toString().padStart(2,'0')}`;
-        if (bookedTimes.includes(adjTimeStr)) return true;
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        const currentMinutes = hours * 60 + minutes;
+        
+        // Проверяем слоты ±30 минут
+        for (const adjMin of [currentMinutes - 30, currentMinutes + 30]) {
+            if (adjMin < 0) continue;
+            const adjHour = Math.floor(adjMin / 60);
+            const adjMinute = adjMin % 60;
+            if (adjHour > 23) continue;
+            const adjTimeStr = `${adjHour.toString().padStart(2,'0')}:${adjMinute.toString().padStart(2,'0')}`;
+            if (bookedMap.get(`${dayKey}|${adjTimeStr}`)) return true;
+        }
+        return false;
     }
-    return false;
-}
     
     // Группируем по дням
     const groupedByDay = {};
@@ -165,11 +168,8 @@ window.app.renderSlots = async function(slots) {
                 `;
                 const cb = slotDiv.querySelector('.slot-select');
                 cb.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        window.app.selectedSlotIds.add(slot.id);
-                    } else {
-                        window.app.selectedSlotIds.delete(slot.id);
-                    }
+                    if (e.target.checked) window.app.selectedSlotIds.add(slot.id);
+                    else window.app.selectedSlotIds.delete(slot.id);
                     const confirmBtn = document.getElementById('confirm-booking-btn');
                     const countSpan = document.getElementById('selected-count');
                     if (confirmBtn && countSpan) {
@@ -203,11 +203,8 @@ window.app.renderSlots = async function(slots) {
                 `;
                 const cb = slotDiv.querySelector('.slot-select');
                 cb.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        window.app.selectedSlotIds.add(slot.id);
-                    } else {
-                        window.app.selectedSlotIds.delete(slot.id);
-                    }
+                    if (e.target.checked) window.app.selectedSlotIds.add(slot.id);
+                    else window.app.selectedSlotIds.delete(slot.id);
                     const confirmBtn = document.getElementById('confirm-booking-btn');
                     const countSpan = document.getElementById('selected-count');
                     if (confirmBtn && countSpan) {
@@ -223,6 +220,7 @@ window.app.renderSlots = async function(slots) {
         container.appendChild(dayDiv);
     }
 };
+
 
 // --- Подтверждение записи клиентом ---
 window.app.confirmBooking = async function() {
@@ -289,7 +287,7 @@ window.app.loadMyBookings = async function() {
         return;
     }
     
-    // Получаем записи
+    // Получаем записи с данными о слотах
     const { data: bookings, error } = await window.app.sb
         .from('bookings')
         .select('*, slots(*)')
@@ -298,26 +296,47 @@ window.app.loadMyBookings = async function() {
     if (error) {
         console.error('Ошибка загрузки:', error);
         container.innerHTML = '<p style="text-align:center;padding:20px;">Ошибка загрузки</p>';
-        // Всё равно показываем экран
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        const myBookingsScreen = document.getElementById('myBookings-screen');
-        if (myBookingsScreen) myBookingsScreen.classList.add('active');
         return;
     }
     
     if (!bookings || bookings.length === 0) {
         container.innerHTML = '<p style="text-align:center;padding:20px;">У вас нет записей</p>';
-    } else {
-        container.innerHTML = '';
-        for (let booking of bookings) {
-            if (!booking.slots) continue;
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    // Группируем по дням
+    const groupedByDay = {};
+    bookings.forEach(booking => {
+        if (!booking.slots) return;
+        const start = window.app.utcToMsk(booking.slots.start_time);
+        const dayKey = start.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'numeric' });
+        if (!groupedByDay[dayKey]) groupedByDay[dayKey] = [];
+        groupedByDay[dayKey].push(booking);
+    });
+    
+    // Сортируем дни по возрастанию
+    const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
+        const dateA = new Date(a.split(',')[1] + ' ' + a.split(',')[0]);
+        const dateB = new Date(b.split(',')[1] + ' ' + b.split(',')[0]);
+        return dateA - dateB;
+    });
+    
+    for (let day of sortedDays) {
+        const dayBookings = groupedByDay[day];
+        const dayDiv = document.createElement('div');
+        dayDiv.style.cssText = 'margin-bottom: 20px; border-left: 3px solid #36B647; padding-left: 12px;';
+        dayDiv.innerHTML = `<h3 style="margin-bottom: 10px;">📅 ${day}</h3>`;
+        
+        dayBookings.forEach(booking => {
             const start = window.app.utcToMsk(booking.slots.start_time);
-            const formatted = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            const timeStr = start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
             const div = document.createElement('div');
             div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #f8f9fa; border-radius: 12px; margin-bottom: 8px;';
             div.innerHTML = `
-                <span>${formatted}</span>
-                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px;">Отменить</button>
+                <span style="font-weight: 500;">${timeStr}</span>
+                <button class="cancel-btn" data-id="${booking.id}" data-slot="${booking.slot_id}" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer;">Отменить</button>
             `;
             div.querySelector('.cancel-btn').addEventListener('click', async () => {
                 if (confirm('Отменить запись?')) {
@@ -326,16 +345,17 @@ window.app.loadMyBookings = async function() {
                     await window.app.loadMyBookings();
                 }
             });
-            container.appendChild(div);
-        }
+            dayDiv.appendChild(div);
+        });
+        container.appendChild(dayDiv);
     }
     
-    // Принудительно показываем экран
+    // Показываем экран
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const myBookingsScreen = document.getElementById('myBookings-screen');
     if (myBookingsScreen) myBookingsScreen.classList.add('active');
-    console.log('Экран myBookings показан');
 };
+
 
 // --- Генерация слотов на день и половинку ---
 window.app.generateSlotsForDay = async function(dateStr, half) {
