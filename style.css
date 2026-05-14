@@ -1,13 +1,7 @@
-/* ============================================
-   СТИЛИ ДЛЯ ПРИЛОЖЕНИЯ (ТОЛЬКО ЗАПИСЬ)
-   Цвета: #36B647 (зеленый), #FFFFFF (белый), #323338 (темно-серый)
-   ============================================ */
-
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -23,101 +17,65 @@ body {
     padding: 20px;
 }
 
-/* ========== ЭКРАНЫ ========== */
 .screen {
     display: none;
     min-height: 100vh;
-    background: #FFFFFF;
+    background: #fff;
 }
 
 .screen.active {
     display: block;
 }
 
-/* ========== ЗАГОЛОВКИ ========== */
 h1, h2, h3 {
-    font-weight: 600;
-    margin-bottom: 24px;
     text-align: center;
-    color: #323338;
+    margin-bottom: 24px;
 }
 
 h1 { font-size: 28px; }
 h2 { font-size: 22px; }
-h3 { font-size: 18px; margin-top: 20px; }
 
-/* ========== ПОЛЯ ВВОДА ========== */
-input, textarea {
+input, button {
     width: 100%;
     padding: 14px;
     font-size: 16px;
-    border: 1px solid #e0e0e0;
     border-radius: 12px;
-    margin-bottom: 16px;
-    background: #FFFFFF;
-    color: #323338;
-}
-
-input:focus, textarea:focus {
-    outline: none;
-    border-color: #36B647;
-    box-shadow: 0 0 0 3px rgba(54, 182, 71, 0.2);
-}
-
-/* ========== КНОПКИ ========== */
-.btn {
-    width: 100%;
-    padding: 14px;
-    font-size: 18px;
-    font-weight: 500;
-    border: none;
-    border-radius: 14px;
-    cursor: pointer;
-    transition: all 0.2s;
+    border: 1px solid #ddd;
     margin-bottom: 12px;
-    text-align: center;
 }
 
-.btn:active {
-    transform: scale(0.98);
-    opacity: 0.9;
-}
-
-/* Основная кнопка (зеленая) */
-.primary {
+button {
     background: #36B647;
     color: white;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
-/* Вторичная кнопка (светло-серая) */
-.secondary {
+button:active { transform: scale(0.98); }
+
+.btn-secondary {
     background: #f0f0f0;
     color: #323338;
 }
 
-/* Админ-кнопка (темно-серая) */
-.admin {
+.btn-admin {
     background: #323338;
-    color: white;
 }
 
-/* Кнопка выхода (красная) */
-.logout {
+.btn-logout {
     background: #dc3545;
-    color: white;
 }
 
-/* Кнопка "Назад" */
-.back-btn {
+.btn-back {
     background: none;
     color: #36B647;
-    font-size: 16px;
     text-align: left;
     padding: 8px 0;
     margin-bottom: 10px;
 }
 
-/* ========== СПИСОК СЛОТОВ ========== */
 .slots-grid {
     display: flex;
     flex-direction: column;
@@ -126,12 +84,12 @@ input:focus, textarea:focus {
 }
 
 .slot-item {
-    background: #FFFFFF;
-    padding: 16px;
-    border-radius: 14px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 14px;
     border: 1px solid #e9ecef;
 }
 
@@ -142,20 +100,11 @@ input:focus, textarea:focus {
 
 .slot-time {
     font-weight: 500;
-    color: #323338;
 }
 
 .slot-select {
-    width: 24px;
-    height: 24px;
-    accent-color: #36B647;
-    cursor: pointer;
-}
-
-/* ========== РЕКОМЕНДУЕМЫЙ СЛОТ ========== */
-.slot-item-recommended {
-    background: #e8f5e9;
-    border: 1px solid #36B647;
+    width: 22px;
+    height: 22px;
 }
 
 .recommended-badge {
@@ -167,96 +116,56 @@ input:focus, textarea:focus {
     margin-left: 8px;
 }
 
-/* ========== КАРТОЧКИ ЗАПИСЕЙ ========== */
 .booking-card {
-    background: #f8f9fa;
-    padding: 16px;
-    border-radius: 14px;
-    margin-bottom: 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border: 1px solid #e9ecef;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    margin-bottom: 8px;
 }
 
 .cancel-btn {
     background: #dc3545;
-    color: white;
-    border: none;
     padding: 8px 16px;
     border-radius: 20px;
     font-size: 14px;
-    cursor: pointer;
-    transition: all 0.2s;
+    width: auto;
+    margin-bottom: 0;
 }
 
-.cancel-btn:active {
-    transform: scale(0.95);
-}
-
-/* ========== АДМИН-ПАНЕЛЬ ========== */
 .admin-slot {
-    background: #f1f3f5;
-    padding: 12px;
-    margin-bottom: 8px;
-    border-radius: 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-}
-
-/* ========== КАРТОЧКИ КЛИЕНТОВ ========== */
-.client-card {
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 12px;
-    background: #FFFFFF;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.client-card:hover {
+    padding: 8px 12px;
+    margin-bottom: 6px;
     background: #f8f9fa;
-    border-color: #36B647;
-}
-
-.delete-client-btn {
-    background: #dc3545;
-    color: white;
-    border: none;
-    padding: 6px 12px;
     border-radius: 8px;
-    cursor: pointer;
 }
 
-/* ========== КНОПКИ В АДМИНКЕ ========== */
-.block-morning-btn, .block-evening-btn,
-.unblock-morning-btn, .unblock-evening-btn {
-    background: #ff9800;
-    color: white;
-    border: none;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.unblock-morning-btn, .unblock-evening-btn {
+.unblock-btn {
     background: #36B647;
-}
-
-.delete-slot-btn, .delete-booking-btn {
-    background: #dc3545;
-    color: white;
-    border: none;
     padding: 4px 12px;
-    border-radius: 6px;
-    cursor: pointer;
+    font-size: 12px;
+    width: auto;
 }
 
-/* ========== ДЕНЬ В АДМИНКЕ ========== */
+.block-btn {
+    background: #ff9800;
+    padding: 4px 12px;
+    font-size: 12px;
+    width: auto;
+}
+
+.delete-btn {
+    background: #dc3545;
+    padding: 4px 12px;
+    font-size: 12px;
+    width: auto;
+}
+
 .admin-day {
     margin-bottom: 20px;
     border-left: 3px solid #36B647;
@@ -268,11 +177,6 @@ input:focus, textarea:focus {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
-}
-
-.admin-day-title {
-    margin: 0;
-    font-size: 16px;
 }
 
 .half-title {
@@ -289,42 +193,12 @@ input:focus, textarea:focus {
     margin-top: 15px;
 }
 
-/* ========== КНОПКИ БЛОКИРОВКИ ПОЛОВИНОК ========== */
 .half-buttons {
     display: flex;
     gap: 6px;
 }
 
-/* ========== ВСЕ ЗАПИСИ ========== */
-#admin-bookings {
-    margin-top: 20px;
-}
-
-/* ========== АДАПТИВ ========== */
 @media (max-width: 480px) {
-    .container {
-        padding: 15px;
-    }
-    
-    h1 { font-size: 24px; }
-    h2 { font-size: 20px; }
-    
-    .btn {
-        padding: 12px;
-        font-size: 16px;
-    }
-    
-    .slot-item {
-        padding: 12px;
-    }
-    
-    .slot-time {
-        font-size: 14px;
-    }
-}
-
-@media (max-width: 380px) {
-    .half-buttons {
-        flex-direction: column;
-    }
+    .container { padding: 15px; }
+    .slot-item { padding: 12px; }
 }
