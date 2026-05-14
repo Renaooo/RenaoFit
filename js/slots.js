@@ -5,6 +5,9 @@
 let isRenderingAdmin = false;
 let isGeneratingWeek = false;
 let isBooking = false;
+window.app._isBooking = false;
+window.app._isGeneratingWeek = false;
+window.app._bookedMap = null;
 
 // --- Получение списка заблокированных слотов (соседние ±30 минут) ---
 async function getBlockedSlotIds() {
@@ -94,29 +97,31 @@ window.app.renderSlots = async function(slots) {
         return;
     }
     
-    // Получаем ВСЕ слоты на период (чтобы знать, какие заняты)
-    const today = new Date();
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 8);
+    // Если нет кеша занятых слотов — загружаем один раз
+    if (!window.app._bookedMap) {
+        const today = new Date();
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() + 8);
+        
+        const { data: allSlots } = await window.app.sb
+            .from('slots')
+            .select('start_time, is_available')
+            .gte('start_time', today.toISOString())
+            .lte('start_time', endDate.toISOString());
+        
+        window.app._bookedMap = new Map();
+        (allSlots || []).forEach(slot => {
+            if (!slot.is_available) {
+                const date = window.app.utcToMsk(slot.start_time);
+                const dayKey = date.toLocaleDateString('ru-RU');
+                const timeStr = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                window.app._bookedMap.set(`${dayKey}|${timeStr}`, true);
+            }
+        });
+    }
     
-    const { data: allSlots } = await window.app.sb
-        .from('slots')
-        .select('start_time, is_available')
-        .gte('start_time', today.toISOString())
-        .lte('start_time', endDate.toISOString());
+    const bookedMap = window.app._bookedMap;
     
-    // Создаём Map занятых слотов по дням и времени
-    const bookedMap = new Map(); // ключ: "день|время"
-    (allSlots || []).forEach(slot => {
-        if (!slot.is_available) {
-            const date = window.app.utcToMsk(slot.start_time);
-            const dayKey = date.toLocaleDateString('ru-RU');
-            const timeStr = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            bookedMap.set(`${dayKey}|${timeStr}`, true);
-        }
-    });
-    
-    // Функция проверки, есть ли занятой слот рядом
     function hasAdjacentBooking(dayKey, timeStr) {
         const [hours, minutes] = timeStr.split(':').map(Number);
         const currentMinutes = hours * 60 + minutes;
@@ -132,7 +137,7 @@ window.app.renderSlots = async function(slots) {
         return false;
     }
     
-    // Группируем по дням
+    // Группировка и рендер (как раньше)
     const groupedByDay = {};
     slots.forEach(slot => {
         const date = window.app.utcToMsk(slot.start_time);
@@ -226,17 +231,24 @@ window.app.renderSlots = async function(slots) {
 
 // --- Подтверждение записи (с защитой от повторных кликов) ---
 window.app.confirmBooking = async function() {
-    if (!window.app.currentUser) return;
+    if (!window.app.currentUser) {
+        alert('Пользователь не авторизован');
+        return;
+    }
+    
     if (window.app.selectedSlotIds.size === 0) {
         alert('Выберите слоты для записи');
         return;
     }
-    if (isBooking) {
+    
+    if (window.app._isBooking) {
         alert('Запись уже выполняется, подождите...');
         return;
     }
     
-    isBooking = true;
+    window.app._isBooking = true;
+    
+    // Блокируем кнопку
     const confirmBtn = document.getElementById('confirm-booking-btn');
     const originalText = confirmBtn?.textContent;
     if (confirmBtn) {
@@ -282,6 +294,9 @@ window.app.confirmBooking = async function() {
                 .eq('id', slotId);
         }
         
+        // Сбрасываем кеш занятых слотов, чтобы обновились рекомендации
+        window.app._bookedMap = null;
+        
         alert('✅ Успешно записано!');
         window.app.selectedSlotIds.clear();
         
@@ -289,12 +304,17 @@ window.app.confirmBooking = async function() {
         const slots = await window.app.loadSlots();
         await window.app.renderSlots(slots);
         
+    } catch (err) {
+        console.error('Неожиданная ошибка:', err);
+        alert('Произошла ошибка: ' + err.message);
     } finally {
-        isBooking = false;
+        window.app._isBooking = false;
         if (confirmBtn) {
             confirmBtn.disabled = false;
             confirmBtn.textContent = originalText || '✅ Подтвердить запись (0)';
         }
+        const countSpan = document.getElementById('selected-count');
+        if (countSpan) countSpan.textContent = '0';
     }
 };
 
@@ -394,6 +414,7 @@ window.app.generateSlotsForDay = async function(dateStr, half) {
         const startTimeMSK = new Date(targetDate);
         startTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         
+        // Пропускаем прошедшие слоты
         if (startTimeMSK < nowMSK) {
             skipped++;
             continue;
@@ -426,7 +447,7 @@ window.app.generateSlotsForDay = async function(dateStr, half) {
     }
     
     if (slotsToInsert.length === 0) {
-        alert(`Нет новых слотов для создания. Пропущено (прошло): ${skipped}, уже существует: ${existing}`);
+        alert(`Нет новых слотов для создания.\n⏭️ Пропущено (прошло): ${skipped}\n📌 Уже существовало: ${existing}`);
         return false;
     }
     
@@ -441,6 +462,9 @@ window.app.generateSlotsForDay = async function(dateStr, half) {
     created = slotsToInsert.length;
     alert(`✅ Создано ${created} слотов\n⏭️ Пропущено (прошло): ${skipped}\n📌 Уже существовало: ${existing}`);
     
+    // Сбрасываем кеш занятых слотов (чтобы обновились рекомендации)
+    window.app._bookedMap = null;
+    
     if (typeof window.app.loadAdminData === 'function') {
         await window.app.loadAdminData();
     }
@@ -448,13 +472,15 @@ window.app.generateSlotsForDay = async function(dateStr, half) {
     return created > 0;
 };
 
+
 // --- Генерация всей недели (массовая вставка, без дубликатов) ---
 window.app.generateFullWeek = async function() {
-    if (isGeneratingWeek) {
+    if (window.app._isGeneratingWeek) {
         alert('Генерация уже выполняется, подождите...');
         return;
     }
-    isGeneratingWeek = true;
+    
+    window.app._isGeneratingWeek = true;
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -465,11 +491,13 @@ window.app.generateFullWeek = async function() {
     let totalSkipped = 0;
     const slotsMap = new Map();
     
+    // Собираем все слоты на неделю (ПН-СБ)
     for (let i = 0; i < 7; i++) {
         const currentDate = new Date(startDate);
         currentDate.setDate(startDate.getDate() + i);
         const dayOfWeek = currentDate.getDay();
         
+        // Воскресенье пропускаем
         if (dayOfWeek === 0) continue;
         
         const daySchedule = window.app.SCHEDULE[dayOfWeek] || window.app.SCHEDULE[1];
@@ -480,6 +508,7 @@ window.app.generateFullWeek = async function() {
             const startTimeMSK = new Date(currentDate);
             startTimeMSK.setHours(parseInt(hours), parseInt(minutes), 0, 0);
             
+            // Пропускаем прошедшие слоты
             if (startTimeMSK < new Date()) {
                 totalSkipped++;
                 continue;
@@ -503,13 +532,13 @@ window.app.generateFullWeek = async function() {
     
     if (slotsMap.size === 0) {
         alert('Нет слотов для генерации (все дни уже есть или прошли)');
-        isGeneratingWeek = false;
+        window.app._isGeneratingWeek = false;
         return;
     }
     
     const slotsToInsert = Array.from(slotsMap.values());
     
-    // Получаем существующие слоты
+    // Получаем существующие слоты, чтобы не создавать дубликаты
     const startDateUTC = window.app.mskToUtc(startDate);
     const endDateUTC = window.app.mskToUtc(new Date(startDate));
     endDateUTC.setUTCDate(startDateUTC.getUTCDate() + 8);
@@ -525,10 +554,11 @@ window.app.generateFullWeek = async function() {
     
     if (newSlots.length === 0) {
         alert('Все слоты уже существуют');
-        isGeneratingWeek = false;
+        window.app._isGeneratingWeek = false;
         return;
     }
     
+    // Массовая вставка
     const { error } = await window.app.sb.from('slots').insert(newSlots);
     
     if (error) {
@@ -538,7 +568,10 @@ window.app.generateFullWeek = async function() {
         alert(`✅ Создано ${newSlots.length} слотов\n⏭️ Пропущено (прошло/существует): ${totalSkipped + (slotsToInsert.length - newSlots.length)}`);
     }
     
-    isGeneratingWeek = false;
+    window.app._isGeneratingWeek = false;
+    
+    // Сбрасываем кеш занятых слотов (чтобы обновились рекомендации)
+    window.app._bookedMap = null;
     
     if (typeof window.app.loadAdminData === 'function') {
         await window.app.loadAdminData();
