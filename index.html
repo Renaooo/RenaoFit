@@ -42,7 +42,7 @@
             </div>
         </div>
 
-        <!-- ЭКРАН МОИХ ЗАПИСЕЙ (ID = myBookings-screen) -->
+        <!-- ЭКРАН МОИХ ЗАПИСЕЙ -->
         <div id="myBookings-screen" class="screen">
             <div class="container">
                 <button class="btn back-btn">← Назад</button>
@@ -57,31 +57,25 @@
                 <button class="btn back-btn">← Назад</button>
                 <h2>⚙️ Управление</h2>
                 
-                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    <button id="admin-slots-tab" class="btn primary" style="flex: 1; background: #36B647;">📅 Слоты</button>
-                </div>
+                <!-- Слоты -->
+                <div id="admin-slots"></div>
                 
-                <!-- Панель слотов -->
-                <div id="admin-slots-panel" style="display: block;">
-                    <div id="admin-slots"></div>
-                </div>
-                
-                <!-- Ручная генерация слотов -->
+                <!-- Ручная генерация -->
                 <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 12px;">
-                    <h3>🛠️ Ручная генерация слотов</h3>
-                    <input type="date" id="generate-date" style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px;">
+                    <h3>🛠️ Генерация слотов</h3>
+                    <input type="date" id="generate-date" style="width: 100%; padding: 10px; margin-bottom: 10px;">
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button id="generate-morning-btn" class="btn secondary" style="flex: 1; background: #ff9800;">🌅 Утро</button>
-                        <button id="generate-evening-btn" class="btn secondary" style="flex: 1; background: #ff9800;">🌙 Вечер</button>
-                        <button id="generate-week-btn" class="btn secondary" style="flex: 1; background: #36B647;">📅 Неделя (ПН-СБ)</button>
+                        <button id="generate-morning-btn" class="btn secondary" style="background: #ff9800;">🌅 Утро</button>
+                        <button id="generate-evening-btn" class="btn secondary" style="background: #ff9800;">🌙 Вечер</button>
+                        <button id="generate-week-btn" class="btn secondary" style="background: #36B647;">📅 Неделя</button>
                     </div>
                 </div>
                 
                 <!-- Добавление слота вручную -->
                 <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 12px;">
-                    <h3>➕ Добавить слот вручную</h3>
-                    <input type="datetime-local" id="admin-start" style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px;">
-                    <button id="admin-add-slot" class="btn primary">➕ Добавить слот</button>
+                    <h3>➕ Добавить слот</h3>
+                    <input type="datetime-local" id="admin-start" style="width: 100%; padding: 10px; margin-bottom: 10px;">
+                    <button id="admin-add-slot" class="btn primary">➕ Добавить</button>
                 </div>
                 
                 <!-- Все записи -->
